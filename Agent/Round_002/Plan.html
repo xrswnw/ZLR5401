@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 Round_002 主控更换 GD32F303RC 迁移计划</title>
+<style>
+  :root{
+    --bg:#0f1419; --panel:#1a212b; --border:#2c3742; --fg:#dce3ea;
+    --muted:#8896a3; --accent:#4da3ff; --good:#38c172; --warn:#ffb347; --bad:#ff6b6b;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);font-family:-apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,Roboto,sans-serif;line-height:1.6}
+  .wrap{max-width:1060px;margin:0 auto;padding:32px 24px 80px}
+  h1{font-size:26px;border-bottom:3px solid var(--accent);padding-bottom:12px;margin-top:0}
+  h2{font-size:20px;margin-top:38px;border-left:4px solid var(--accent);padding-left:10px}
+  h3{font-size:16px;color:var(--accent);margin-top:24px}
+  .sub{color:var(--muted);font-size:13px;margin-top:6px}
+  .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:16px 18px;margin:14px 0}
+  .tag{display:inline-block;padding:1px 9px;border-radius:20px;font-size:12px;margin-right:6px}
+  .t-good{background:rgba(56,193,114,.15);color:var(--good);border:1px solid rgba(56,193,114,.4)}
+  .t-warn{background:rgba(255,179,71,.12);color:var(--warn);border:1px solid rgba(255,179,71,.4)}
+  .t-bad{background:rgba(255,107,107,.12);color:var(--bad);border:1px solid rgba(255,107,107,.4)}
+  .t-info{background:rgba(77,163,255,.12);color:var(--accent);border:1px solid rgba(77,163,255,.4)}
+  table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13.5px}
+  th,td{border:1px solid var(--border);padding:7px 10px;text-align:left;vertical-align:top}
+  th{background:#232c38;color:var(--accent)}
+  code{background:#0a0e13;border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:12.5px;color:#e6b573;font-family:SF Mono,Menlo,monospace}
+  pre{background:#0a0e13;border:1px solid var(--border);border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+  pre code{border:none;padding:0;color:#c9d6e0}
+  .box{background:#0a0e13;border-radius:8px;padding:12px 14px;font-size:13.5px}
+  .decision{list-style:none;padding:0}
+  .decision li{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:12px 14px;margin:8px 0}
+  .decision b{color:var(--accent)}
+  .foot{margin-top:50px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);padding-top:14px}
+  ul,ol{margin:8px 0}
+  .file{font-family:SF Mono,Menlo,monospace;font-size:12.5px;color:#9fd3ff}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ZLR5401 · Round_002 主控更换为 GD32F303RC — 迁移实施计划</h1>
+<div class="sub">文档性质：调研 + 实施计划（<b>本计划不执行</b>，待用户审阅确认后方可动工）&nbsp;|&nbsp; 生成日期：2026-08-08 &nbsp;|&nbsp; <b>Rev2</b>：接入 <span class="file">Sdk/CherryUSB</span>、锁定 HSE 12MHz、新增自动烧录验证流程</div>
+
+<div class="card">
+  <h3 style="margin-top:0">一、需求确认</h3>
+  <blockquote style="margin:8px 0;padding-left:14px;border-left:3px solid var(--accent);color:var(--muted)">
+    1. 本系统主控更改为 <b>GD32F303RC</b>，使用 <b>STM32 的库</b>，原则上应该兼容，调研下相关配置文件调整等等。<b>保持逻辑不动。</b>
+  </blockquote>
+  <p>需求要点拆解：</p>
+  <ul>
+    <li><b>目标器件</b>：GD32F303RC（GigaDevice，STM32F103 的"增强版"），LQFP64 封装。</li>
+    <li><b>约束 A</b>：尽量沿用现有 <span class="file">STM32F10x_StdPeriph</span> 库，不整体换用 GD 官方库，最大限度复用代码。</li>
+    <li><b>约束 B</b>：业务逻辑（协议、分发、参数、SysTick、看门狗、LED 等"与芯片无关"层）保持不变。</li>
+    <li><b>约束 C</b>：仅做与芯片相关的"底层/配置"调整（时钟树、启动、链接脚本、烧录、调试）。</li>
+    <li><b>约束 D（Rev2 新增）</b>：USB 底层接入 <span class="file">Sdk/CherryUSB</span>（替代 STM32 PMA USB 库）。</li>
+    <li><b>硬件基线（Rev2 确认）</b>：外部晶振 <b>HSE = 12MHz</b>；开发板由用户连好后执行<b>自动烧录 + 验证</b>。</li>
+  </ul>
+  <p><b>当前架构基线</b>（Round_001 已成型）：App + Boot 双区，USB FS 设备传输 + IAP 握手升级；STM32F10x StdPeriph + STM32 官方 USB 设备库（PMA 架构）；HSE=12MHz，PLLx6=72MHz 主频。</p>
+</div>
+
+<h2>二、目标器件事实（GD32F303RC）</h2>
+<table>
+  <tr><th>属性</th><th>STM32F103C8T6（当前）</th><th>GD32F303RC（目标）</th><th>迁移影响</th></tr>
+  <tr><td>内核</td><td>Cortex-M3 @ 72MHz</td><td><b>Cortex-M4F @ 120MHz</b></td><td class="t-warn"><b>编译选项 + FPU</b> 需改</td></tr>
+  <tr><td>Flash / RAM</td><td>64KB / 20KB</td><td><b>256KB / 48KB</b></td><td class="t-info">链接脚本需重写（内存变大）</td></tr>
+  <tr><td>Flash 控制器</td><td>FLASH（KEYR=0x45670123…）</td><td><b>FMC（寄存器/位定义不同）</b></td><td class="t-bad"><b>flash HAL 必须重写</b></td></tr>
+  <tr><td>USB 外设</td><td>USB Device FS（PMA 架构）</td><td><b>USB OTG FS（FIFO 架构，Synopsys 核）</b></td><td class="t-bad"><b>USB 底层必须替换</b></td></tr>
+  <tr><td>外部晶振</td><td>HSE 12MHz（软件设定）</td><td>HSE <b>12MHz</b>（板级已确认）</td><td class="t-info">时钟按 12MHz 基准重算</td></tr>
+  <tr><td>调试/烧录</td><td>SWD</td><td>SWD（BOOT0 需下拉）</td><td class="t-info">脚本/调试配置微调</td></tr>
+</table>
+
+<h2>三、兼容性调研结论（本计划核心）</h2>
+<p>GD32F303 官方定位"STM32F103 寄存器级兼容"，但对当前工程而言是 <b>「部分兼容」</b>，不是即插即用。分三层评估：</p>
+
+<h3>3.1 完全/基本兼容（逻辑可原样保留） — 占代码主体</h3>
+<div class="card">
+  <table>
+    <tr><th>模块</th><th>评估</th></tr>
+    <tr><td>GPIO / USART / SPI / I2C / 定时器 / ADC / SysTick / NVIC</td><td><span class="tag t-good">兼容</span>寄存器地址一致，StdPeriph 驱动可直接编译使用</td></tr>
+    <tr><td>业务层：Dispatch / CustomProtocol / Param / Iwdg_HL / Led_HL / SysTick_HL / Usb_HL(上层)</td><td><span class="tag t-good">不变</span>与芯片无关，保持原样</td></tr>
+    <tr><td>USB 协议逻辑（描述符、类处理、枚举流程的"协议层"）</td><td><span class="tag t-info">部分复用</span>协议概念可沿用，寄存器 IO 层废弃</td></tr>
+  </table>
+  <p>注：GD 要求"先开时钟再配外设"，当前代码 RCC 驱动为 StdPeriph，顺序一般正确；个别位定义差异需编译期验证。</p>
+</div>
+
+<h3>3.2 需要改动（与芯片强相关）</h3>
+<div class="card">
+  <table>
+    <tr><th>#</th><th>项</th><th>原因</th><th>改动范围</th></tr>
+    <tr><td>1</td><td>编译器参数 <code>-mcpu</code></td><td>M3 → M4，需选软/硬浮点</td><td>toolchain + 启动文件</td></tr>
+    <tr><td>2</td><td>时钟树</td><td>Cortex-M4 支持 120MHz；PLL 倍频位、USB 48MHz 时钟分频不同；当前 72MHz PLLMul_6 需按新晶振重算</td><td>App_Sys_CfgClock / Boot 时钟 + CMake HSE_VALUE</td></tr>
+    <tr><td>3</td><td>Flash 控制器 HAL</td><td>寄存器名/位定义不同（FLASH→FMC），<code>FLASH_SetLatency/PrefetchBuffer</code> 语义不同</td><td>Boot_Param_HL.c（ramcode 烧写）+ 时钟里的 Flash 等待态</td></tr>
+    <tr><td>4</td><td>USB 设备底层</td><td>PMA 架构 → OTG FIFO 架构，寄存器/IP/中断完全不相容</td><td><b>接入 Sdk/CherryUSB（dwc2 端口）</b>替代 STM32_USB 库</td></tr>
+    <tr><td>5</td><td>启动文件 / 向量表</td><td>中断向量数量与名称不同（GD F30x 无 USB_LP_CAN 共享向量，改独立 OTG/USBFS IRQ）</td><td>App/Boot 启动 .s + stm32f10x_it.c</td></tr>
+    <tr><td>6</td><td>链接脚本</td><td>Flash 256K、RAM 48K；App/Boot 分区地址与容量调整</td><td>App/Boot 的 .ld</td></tr>
+    <tr><td>7</td><td>工程宏定义</td><td><code>STM32F10X_MD</code> → GD 型号宏；去密度宏改器件宏</td><td>两个 CMakeLists.txt</td></tr>
+    <tr><td>8</td><td>调试/烧录配置</td><td>device 名、FLASH_SIZE、openocd target、jlink device</td><td>.vscode/*、flash_*.sh</td></tr>
+  </table>
+</div>
+
+<h3>3.3 「保持逻辑不动」的边界说明（重要，需用户知晓）</h3>
+<div class="card">
+  <p><b>结论：</b>业务逻辑（3.1）可完全不动；但 <b>USB 设备底层</b>与 <b>Flash 控制器 HAL</b> 无法"改了配置就兼容"——这两个是 GD32F303RC 与 STM32F103 的核心差异点。USB 底层已确定<b>接入 CherryUSB</b> 解决；Flash HAL 仍需按 GD FMC 重写。因此 <span class="tag t-bad">"保持逻辑不动"</span> 精确含义：<b>App/Boot 业务逻辑不变，仅芯片相关底层/配置替换</b>。</p>
+  <p class="sub">USB 的"上层逻辑"（协议传输 App_Usb_HL 之上）保持不变；底层驱动从 STM32 PMA 库换成 CherryUSB。</p>
+</div>
+
+<h2>四、实施步骤（默认路径 A：沿用 STM32 库 + 局部适配）</h2>
+
+<h3>步骤 0 · 备份与变更日志（遵循全局 CLAUDE.md 规则）</h3>
+<div class="card">
+  <ol>
+    <li>执行 <code>./backup.sh "Round_002: 主控更换 GD32F303RC"</code> 生成全量快照（当前备份已至 Round_004）。</li>
+    <li>确认备份 4 步：快照生成、Changelog 追加、轮转（超 32 层删最旧）、源-目的计数验证。</li>
+    <li>任何违规删除一律 <code>mv</code> 至 <code>TrashCan/</code>，不用 <code>rm</code>。</li>
+  </ol>
+</div>
+
+<h3>步骤 1 · 编译器与内核切换</h3>
+<div class="card">
+  <p>修改 <span class="file">toolchain-arm-none-eabi.cmake</span>：</p>
+  <pre><code># M3 → M4（默认软浮点，不引入 FPU 依赖，保证逻辑不变、行为稳定）
+set(CMAKE_C_FLAGS  "-mcpu=cortex-m4 -mthumb -mfloat-abi=soft -Wall -std=gnu11 -ffreestanding")
+set(CMAKE_ASM_FLAGS "-mcpu=cortex-m4 -mthumb -mfloat-abi=soft")</code></pre>
+  <p>同时 App/Boot 启动文件中 <code>.cpu cortex-m3</code> 改为 <code>cortex-m4</code>、<code>.fpu softvfp</code> 与软浮点一致。</p>
+  <p class="sub">若后续要用 FPU/DSP，可改 <code>-mfloat-abi=hard -mfpu=fpv4-sp-d16</code> 并启用 FPU——但<b>默认不做</b>以贴合"逻辑不动"。</p>
+</div>
+
+<h3>步骤 2 · 时钟树重算（HSE = 12MHz 已确认）</h3>
+<div class="card">
+  <p>当前：HSE 12MHz × PLL6 = 72MHz。GD32F303RC 最高 120MHz，充分利用性能建议 120MHz，且 12MHz × 10 = 120MHz 是整数倍频、USB 48MHz（120/2.5 或专用分频）可整除，时钟干净：</p>
+  <pre><code>// 目标 120MHz, HSE=12MHz: 12 × PLL10 = 120MHz
+RCC_PLLConfig(RCC_PLLSource_HSE_Div1, RCC_PLLMul_10);
+
+// USB 48MHz：GD F303 OTG 的 48MHz 时钟由专用分频导出（非 F103 的 72MHz/1.5）
+// 由 CherryUSB dwc2 初始化的 usbd 时钟树接管配置</code></pre>
+  <ul>
+    <li>改 <span class="file">App_Sys_CfgClock.c</span> 与 Boot 对应时钟文件：PLL 倍频、Flash 等待态（120MHz 的 FMC_WS 数与 Prefetch 语义）、USB 时钟分频。</li>
+    <li>两个 <span class="file">CMakeLists.txt</span> 的 <code>HSE_VALUE</code>：当前已是 <code>12000000</code>，与 12MHz 晶振一致，<b>无需改动</b>。</li>
+    <li><code>SystemCoreClock</code> 宏、SysTick 配置（App_SysTick_HL.c 定时基准）需同步到 120MHz。</li>
+    <li><span class="tag t-info">定案</span>：主频取 <b>120MHz</b>（12MHz×10 整数倍，性能最佳、USB 48MHz 干净）；如想最小改动可退回 72MHz（改 PLLMul_6），默认按 120MHz 实施。</li>
+  </ul>
+</div>
+
+<h3>步骤 3 · Flash 控制器（FMC）HAL 重写</h3>
+<div class="card">
+  <p>当前 <span class="file">Boot_Param_HL.c</span> 用 STM32 的 <code>FLASH->KEYR/CR/AR/SR/ACR</code> 寄存器直接操作。GD32F303 的 Flash 控制器为 <b>FMC</b>，寄存器布局/位定义不同，需改为 GD 模型：</p>
+  <ul>
+    <li>解锁键、擦除（按页/扇区）、编程（半字）、<code>FMC_WS</code> 等待态、Prefetch 使能位均按 GD32F30x 用户手册重写。</li>
+    <li>该文件为 <code>.ramcode</code>（RAM 中执行），重写后<b>必须保留 RAM 执行属性</b>（IAP 擦写时 Flash 代码不可执行）。</li>
+    <li>App/Boot 时钟配置里引用的 <code>FLASH_SetLatency / FLASH_PrefetchBufferCmd</code>（StdPeriph 封装）对应改为 FMC 等待态设置。</li>
+  </ul>
+  <p><span class="tag t-bad">高风险</span>：IAP 升级可靠性依赖此层，需在本步后专项验证擦/写/校验。</p>
+</div>
+
+<h3>步骤 4 · USB 底层接入 CherryUSB（最大工作量）</h3>
+<div class="card">
+  <p>STM32F103 的 USB Device FS（PMA，<code>RegBase 0x40005C00 / PMA 0x40006000</code>，共享 USB_LP_CAN 中断）在 GD32F303RC 上<b>不复存在</b>。GD F303 采用 <b>USB OTG FS</b>（Synopsys/FIFO 架构，独立 OTG/USBFS 中断）。本步将该底层<b>换为 CherryUSB</b>，上层逻辑保持不动。</p>
+
+  <p><b>4.1 CherryUSB 能力核对（已调研）</b></p>
+  <ul>
+    <li><span class="file">Sdk/CherryUSB</span> 已在库内（版本 1.6.1），含官方 CMake 接入文件 <span class="file">cherryusb.cmake</span>（勿直接用根目录那个，需看各端口接入样例）。</li>
+    <li>GD32F303 的 OTG FS 走 <b>dwc2 端口</b>（<span class="file">port/dwc2/usb_dc_dwc2.c</span> + <span class="file">usb_glue_gd.c</span>），dwc2 README 明确列支持 <b>GD32F30X</b>。</li>
+    <li><span class="tag t-warn">注意</span><span class="file">usb_glue_gd.c</span> 顶部有 <code>#error</code>，需按 GD32F303 实际 OTG 寄存器值补全/放开（GCCFG 等），并按 <b>CONFIG_USBDEV_EP_NUM=4</b> 确认端点数限制。</li>
+    <li>选用 <b>HID 类</b>（<span class="file">class/hid/usbd_hid.c</span>）以匹配现有传输端点规划（EP1 IN / EP2 OUT）。</li>
+  </ul>
+
+  <p><b>4.2 工程接入点（保持上层逻辑不动）</b></p>
+  <ol>
+    <li>保留 <span class="file">App_Usb_HL.h</span> 对上层暴露的接口签名不变（<code>App_Usb_HL_Init/Connect/Disconnect/Transmit/IsConfigured</code> 等），业务层 <span class="file">App_Usb.c / App_Usb_Transport.c</span> 不动。</li>
+    <li>重写 <span class="file">App_Usb_HL.c</span>：内部从"调用 STM32 PMA 库"改为"调用 CherryUSB HID 设备 API"（<code>usbd_hid_*</code>，<code>usbd_initialize</code> 等），把原有 HID 上报/收发逻辑映射到 CherryUSB HID 回调与 API。</li>
+    <li>删除/停用 <span class="file">Application/STM32_USB/</span> 下 PMA 底层（usb_core/regs/int/istr/mem/pwr/init/prop）编译单元，保留可作参考移入 TrashCan。</li>
+    <li>在 CMake 中加入 CherryUSB 源（dwc2 + HID class + core）与头文件路径；按 <span class="file">cherryusb_config_template.h</span> 生成 <span class="file">usb_config.h</span>（端点号、包大小、VID/PID 沿用 APP_USB_HL.h 宏）。</li>
+  </ol>
+
+  <p><b>4.3 中断与时钟</b></p>
+  <ul>
+    <li>中断向量：<code>USB_LP_CAN1_RX0_IRQHandler</code> 改为 GD OTG FS 的中断入口（如 <code>USBFS_IRQHandler</code> / OTG 中断），在 <span class="file">stm32f10x_it.c</span> 与启动 .s 同步。</li>
+    <li>USB 48MHz 时钟由 CherryUSB 初始化路径（dwc2 时钟使能）接管，与步骤 2 的 120MHz 时钟树配合。</li>
+  </ul>
+  <p><span class="tag t-bad">需专项验证</span>：USB 枚举 48MHz、HID 端点收发、升级通道是否经 USB 传输——接入后 <b>必须先验证</b>（见自动烧录验证步骤）。</p>
+</div>
+
+<h3>步骤 5 · 链接脚本与分区</h3>
+<div class="card">
+  <p>依据 GD32F303RC（Flash 256K / RAM 48K）重写分区，保留原分区策略与偏移约定：</p>
+  <pre><code>// Boot（示例，22K 区，具体偏移按原约定保留）
+MEMORY {
+  FLASH : ORIGIN = 0x08000000, LENGTH = 22K
+  PARAM : ORIGIN = 0x08005800, LENGTH = 2K
+  RAM   : ORIGIN = 0x20000000, LENGTH = 48K   // 20K→48K
+}
+// App（示例，FLASH 0x08006000 起，LENGTH 40K→按剩余 232K 起等）</code></pre>
+  <ul>
+    <li><span class="file">App/ld/App_STM32F103C8.ld</span> → 重命名为 <code>App_GD32F303RC.ld</code>；Boot 同理。</li>
+    <li>RAM 由 20K 增至 48K（<code>_estack</code> 需同步上移）。</li>
+    <li>CMakeLists 中链接脚本路径同步。</li>
+  </ul>
+</div>
+
+<h3>步骤 6 · 工程宏与启动/中断</h3>
+<div class="card">
+  <ul>
+    <li>App/Boot <span class="file">CMakeLists.txt</span>：<code>STM32F10X_MD</code> → GD 型号宏（如 <code>GD32F30X</code> + <code>GD32F303</code>），保留 <code>USE_STDPERIPH_DRIVER</code>。</li>
+    <li>启动文件若改用 GD 启动模板，则其命名/中断表与 GD 库保持一致；若沿用 STM32 启动文件，仅改 <code>.cpu</code>/FPU 并补 GD 专属中断号。二选一，优先沿用 + 最小改。</li>
+    <li>确认 StdPeriph 的 <span class="file">stm32f10x.h</span> 与 GD 器件头（<code>gd32f30x.h</code>）二选一作为系统头，避免同名冲突。</li>
+  </ul>
+  <p><span class="tag t-info">决策点③</span>：沿用 STM32F10x 头文件 + 库（推荐，逻辑最小动）还是切换 GD 库头文件？</p>
+</div>
+
+<h3>步骤 7 · 调试 / 烧录 / 固件脚本（自动烧录工具化）</h3>
+<div class="card">
+  <table>
+    <tr><th>文件</th><th>改动</th></tr>
+    <tr><td><span class="file">.vscode/launch.json</span></td><td><code>GD32F103C8T6</code> → <code>GD32F303RC</code>（2 处 device）</td></tr>
+    <tr><td><span class="file">.vscode/openocd_daplink.cfg</span></td><td>target 改用 <code>stm32f4x</code>/GD 的 <code>gd32f30x</code> 目标，FLASH_SIZE 0x10000 → 0x40000（256K）</td></tr>
+    <tr><td><span class="file">flash_app.sh</span></td><td>JLink device <code>STM32F103C8</code> → <code>STM32F303RC</code>（或 GD32F303RC）</td></tr>
+    <tr><td><span class="file">flash_boot.sh</span> / <span class="file">flash_all.sh</span></td><td>openocd target、FLASH_SIZE、device 同步到 F303 / 256K</td></tr>
+    <tr><td><span class="file">gen_firmware.sh</span> / <span class="file">build_*.sh</span></td><td>产物命名保留 ZLR5401；如需区分器件可加后缀</td></tr>
+  </table>
+  <p><span class="tag t-info">自动烧录 + 验证流程</span>：由于开发板由用户接好，本步落地一个<b>一键烧录并核验</b>的脚本，把"编译 → 烧录 → 状态验证"串起来，供真机验证时自动执行（详见步骤 9）。</p>
+</div>
+
+<h3>步骤 8 · 构建验证（含 CherryUSB）</h3>
+<div class="card">
+  <ol>
+    <li>清空 <span class="file">Build/</span> 后 <code>./build_boot.sh && ./build_app.sh</code>，确认无编译/链接错误（含 CherryUSB dwc2/HID 源码编译通过）。</li>
+    <li>核对 <code>--print-memory-usage</code>：App/Boot 在 256K/48K 内，关键段（.isr_vector 首 512B）落到预期地址。</li>
+    <li><code>./build_all.sh && ./gen_firmware.sh all</code> 生成合并 HEX，确认分区偏移正确。</li>
+    <li>用 <code>size</code>/<code>readelf</code> 检查向量表首项 <code>_estack</code>、复位向量指向正确；确认 OTG/USBFS 中断符号已进入链接产物。</li>
+  </ol>
+</div>
+
+<h3>步骤 9 · 自动烧录 + 真机验证（开发板已接好）</h3>
+<div class="card">
+  <p>开发板已由用户连好，本步的<b>编译 → 烧录 → 验证</b>做成一条自动化流程，减少人工介入。流程载体：脚本（macOS 下 openocd / JLink GDB Server），按以下阶段执行并输出 PASS/FAIL：</p>
+
+  <p><b>9.1 一键烧录脚本</b>：封装 openocd 对 <code>GD32F303RC</code>（256K）的写入</p>
+  <ul>
+    <li><span class="file">flash_all.sh</span>（合并 HEX 全片）与 <span class="file">flash_boot.sh</span>（仅 Boot）改到 F303 目标。</li>
+    <li><span class="file">openocd_daplink.cfg</span> 用 GD32F30x 目标定义 + <code>FLASH_SIZE 0x40000</code>，SWD 速度按 GD 建议下调。</li>
+    <li>烧录后 openocd 回读 flash 首区，<b>与源 HEX 比对校验</b>，不一致即 FAIL。</li>
+  </ul>
+
+  <p><b>9.2 Boot → App 握手跳转</b></p>
+  <ul>
+    <li>烧入 Boot + App → 复位 → openocd/GDB 读 PC 与栈指针，确认已跳入 App（<code>_estack</code> 与 App 复位向量命中）。</li>
+    <li>核对 <code>SCB->VTOR</code> 指向 App 基址。</li>
+  </ul>
+
+  <p><b>9.3 USB 枚举验证（验证 CherryUSB dwc2）</b></p>
+  <ul>
+    <li>主机侧用 <code>system_profiler SPUSBDataType</code>（macOS）或 <code>lsusb</code> 检查设备枚举，VID/PID 应为 <code>0x5377:0x5378</code>。</li>
+    <li>若升级走 USB HID，则跑一次 HID 读写回环，确认 48MHz 时钟与端点收发正确。</li>
+  </ul>
+
+  <p><b>9.4 IAP 升验（验证 FMC HAL）</b></p>
+  <ul>
+    <li>走升级协议：擦页 → 写 → 校验 → 复位，核验新固件运行，必要时读 Flash 关键区比对。</li>
+  </ul>
+
+  <p><b>9.5 其余外设</b></p>
+  <ul>
+    <li>SysTick/看门狗/LED PWM 在 120MHz 下定时正确；I/O（PB5 LED 等）行为与旧板一致。</li>
+  </ul>
+
+  <p class="sub">自动化能覆盖的（烧录、枚举、握手跳转、IAP 校验）尽量一键完成并输出 PASS/FAIL；无法自动判定的（如 LED 肉眼观察、示波器量测 USB 波形）明示为"待硬件人工确认"。<b>验证失败即从备份全量回滚</b>（规则 6）。</p>
+</div>
+
+<h2>五、实现策略（已确定，仅一条主线）</h2>
+<ul class="decision">
+  <li><b>主路径（已定）</b>：沿用 <span class="file">STM32F10x_StdPeriph</span> 库 + STM32F10x 头文件；业务逻辑全保留。<br>
+      - Flash HAL 按 GD <b>FMC</b> 重写（[Boot_Param_HL.c](Bootloader/src/Boot_Param_HL.c) + 时钟等待态）；<br>
+      - USB 底层<b>接入 Sdk/CherryUSB</b>（dwc2 + HID），替换 [STM32_USB/](Application/STM32_USB/)；<br>
+      - 改时钟（12MHz→120MHz）、宏、链接、调试/烧录。<br>
+      <span class="tag t-good">逻辑 100% 不动</span> &nbsp;<span class="tag t-warn">代价</span>Flash HAL 手写 + CherryUSB 工程接入两处重点工作量。</li>
+  <li><b>否决项（不采用）</b>：整体迁移 GD 官方 <span class="file">GD32F30x_Firmware_Library</span>——违背"使用 STM32 库"与"保持逻辑不动"，仅当主路径 USB 接入失败时才回退考虑。</li>
+</ul>
+
+<h2>六、风险与缓解</h2>
+<table>
+  <tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+  <tr><td>CherryUSB dwc2 GD glue 需按 F303 补全（<code>#error</code> 未放开、EP 数=4 限制）</td><td><span class="tag t-warn">中</span></td><td>按 GD32F303 OTG 寄存器补 GCCFG 等；EP<sub>num</sub>=4 下规划好 IN/OUT 端点</td></tr>
+  <tr><td>USB 上层 HID 收发语义映射到 CherryUSB HID API 出错</td><td><span class="tag t-warn">中</span></td><td>仅重写 App_Usb_HL.c，接口签名不变；USB 枚举+收发专项验证</td></tr>
+  <tr><td>FMC Flash HAL 误写导致 IAP 损坏</td><td><span class="tag t-bad">高</span></td><td>按 GD 手册逐寄存器核对；擦/写/校验分步验证；保留 RAM 执行属性 + 自动回滚</td></tr>
+  <tr><td>120MHz 下 FMC_WS/预取配置错误 → Flash 读异常</td><td><span class="tag t-warn">中</span></td><td>按 GD 数据手册设正确 FMC_WS；自动验证稳定性</td></tr>
+  <tr><td>头文件/宏冲突（STM32 vs GD）</td><td><span class="tag t-warn">中</span></td><td>系统头二选一（STM32F10x），避免混入</td></tr>
+  <tr><td>中断向量不同步 → USB 中断不触发</td><td><span class="tag t-warn">中</span></td><td>启动 .s 与 it.c 同步更新 OTG/USBFS 中断名</td></tr>
+  <tr><td>真机验证失败 / USB 无法枚举</td><td><span class="tag t-warn">中</span></td><td>自动烧录脚本输出 PASS/FAIL；失败按规则 6 全量回滚</td></tr>
+</table>
+
+<h2>七、已定案与待确认</h2>
+<p><b>已定案（源自需求补充）</b>：</p>
+<ul>
+  <li>USB 底层 → <b>接入 Sdk/CherryUSB</b>（dwc2 + HID）。</li>
+  <li>外部晶振 → <b>12MHz</b>；主频默认 <b>120MHz</b>（12×10）。</li>
+  <li>开发板已接好 → 落实<b>自动烧录 + 验证</b>脚本（步骤 9）。</li>
+</ul>
+<p><b>待确认（不影响主线，仅需知会）</b>：</p>
+<ol>
+  <li>主频 120MHz（默认）可否？如要最小改动可退回 72MHz。</li>
+  <li><b>Flash 分区</b>是否保持当前 22K Boot + 2K Param + 40K App 偏移约定（仅扩 RAM 至 48K）？</li>
+  <li>自动烧录用 <b>openocd</b>（.cfg 已存在）还是 <b>JLink GDB Server</b> 作为主工具？默认沿用现有 openocd 流程。</li>
+</ol>
+
+<div class="foot">
+  本计划基于对当前工程源码的静态调研与公开资料（GD32F303 数据手册/社区迁移经验）编写。<br>
+  「逻辑不动」的精确边界：业务逻辑不动，芯片相关底层（内核编译参数、时钟树、FMC Flash、USB 底层、链接、调试）按 GD32F303RC 适配。<br>
+  计划经用户审阅确认后，方可执行变更（执行时按全局 CLAUDE.md 规则先备份、记日志、验证）。
+</div>
+
+</div>
+</body>
+</html>

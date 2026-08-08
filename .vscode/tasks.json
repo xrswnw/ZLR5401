@@ -1,0 +1,64 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Build Bootloader",
+      "type": "shell",
+      "command": "./build_boot.sh",
+      "group": "build",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Build Application",
+      "type": "shell",
+      "command": "./build_app.sh",
+      "group": "build",
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Build All",
+      "type": "shell",
+      "command": "./build_all.sh",
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": ["$gcc"]
+    },
+    {
+      "label": "Generate Firmware Only",
+      "type": "shell",
+      "command": "./gen_firmware.sh all",
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "Flash Bootloader",
+      "type": "shell",
+      "command": "./flash_boot.sh",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Flash Application",
+      "type": "shell",
+      "command": "./flash_app.sh",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Flash All",
+      "type": "shell",
+      "command": "./flash_all.sh",
+      "group": "test",
+      "problemMatcher": []
+    },
+    {
+      "label": "Build & Flash Application",
+      "dependsOn": ["Build Application", "Flash Application"],
+      "dependsOrder": "sequence",
+      "group": "test",
+      "problemMatcher": []
+    }
+  ]
+}

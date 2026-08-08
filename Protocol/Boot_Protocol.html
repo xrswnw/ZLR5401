@@ -1,0 +1,1057 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Boot USB 协议规范 - Bootloader IAP 升级</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0d1117; color: #c9d1d9; line-height: 1.7; padding: 20px; }
+        .container { max-width: 1240px; margin: 0 auto; }
+        h1 { color: #58a6ff; border-bottom: 2px solid #30363d; padding-bottom: 10px; margin-bottom: 20px; }
+        h2 { color: #7ee787; margin-top: 34px; margin-bottom: 15px; padding-left: 10px; border-left: 4px solid #7ee787; }
+        h3 { color: #ffa657; margin-top: 22px; margin-bottom: 10px; }
+        h4 { color: #79c0ff; margin-top: 16px; margin-bottom: 8px; }
+        p { margin: 8px 0; }
+        .phase { background: #161b22; border-radius: 8px; padding: 20px; margin-bottom: 20px; border: 1px solid #30363d; }
+        .phase-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+        .phase-title { font-size: 1.25em; font-weight: bold; color: #58a6ff; }
+        .status { display: inline-block; padding: 4px 12px; border-radius: 20px; font-size: 0.85em; }
+        .status-done { background: #238636; color: white; }
+        .file { background: #0d1117; padding: 10px; border-radius: 4px; font-family: 'Monaco', 'Menlo', monospace; font-size: 0.88em; margin: 5px 0; }
+        .file .path { color: #79c0ff; }
+        .file .action { color: #7ee787; font-weight: bold; }
+        .file .mod { color: #ffa657; font-weight: bold; }
+        .success-box { background: #1f3d1f; border: 1px solid #238636; padding: 15px; border-radius: 6px; margin: 10px 0; }
+        .success-title { color: #7ee787; font-weight: bold; margin-bottom: 5px; }
+        .warn { background: #3b2d1f; padding: 15px; border-radius: 6px; margin: 10px 0; border-left: 3px solid #f85149; }
+        .warn-title { color: #f85149; font-weight: bold; margin-bottom: 5px; }
+        .tip { background: #1f2d1f; padding: 15px; border-radius: 6px; margin: 10px 0; border-left: 3px solid #7ee787; }
+        .tip-title { color: #7ee787; font-weight: bold; margin-bottom: 5px; }
+        .insight { background: #1f2d3d; padding: 15px; border-radius: 6px; margin: 10px 0; border-left: 3px solid #79c0ff; }
+        .insight-title { color: #79c0ff; font-weight: bold; margin-bottom: 5px; }
+        table { width: 100%; border-collapse: collapse; background: #161b22; border-radius: 8px; overflow: hidden; margin: 12px 0; }
+        th, td { padding: 10px 12px; text-align: left; border-bottom: 1px solid #30363d; font-size: 0.92em; }
+        th { background: #21262d; color: #58a6ff; }
+        code { background: #2d333b; padding: 2px 6px; border-radius: 4px; font-family: 'Monaco', 'Menlo', monospace; }
+        pre { background: #0d1117; padding: 15px; border-radius: 6px; overflow-x: auto; font-size: 0.84em; line-height: 1.5; border: 1px solid #30363d; }
+        ul, ol { margin-left: 22px; margin-top: 6px; }
+        li { margin: 4px 0; }
+        .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; margin-right: 5px; }
+        .tag-new { background: #238636; color: white; }
+        .tag-mod { background: #1f6feb; color: white; }
+        .tag-boot { background: #d29922; color: white; }
+        .summary { background: #1c2128; padding: 20px; border-radius: 8px; margin-top: 30px; border: 1px solid #30363d; }
+        .summary h2 { color: #f778ba; border-left-color: #f778ba; }
+        .layer-diagram { background: #0d1117; padding: 20px; border-radius: 6px; font-family: 'Monaco', 'Menlo', monospace; font-size: 0.85em; line-height: 1.5; border: 1px solid #30363d; white-space: pre; overflow-x: auto; }
+        details { background: #0d1117; padding: 10px; border-radius: 4px; margin: 8px 0; border: 1px solid #30363d; cursor: pointer; }
+        details summary { color: #79c0ff; font-weight: bold; padding: 4px 0; }
+        details[open] summary { margin-bottom: 8px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔧 Boot USB 协议规范 — Bootloader IAP 升级</h1>
+
+        <div class="phase">
+            <p><strong>协议版本：</strong>PROTO_VERSION = <code>2</code></p>
+            <p><strong>设备层：</strong>BOOT（Layer=0）</p>
+            <p><strong>USB VID:PID：</strong><code>0x5377:0x5378</code>（与 App 相同）</p>
+            <p><strong>Manufacturer：</strong><code>SW COMPOSITE</code> &nbsp;|&nbsp; <strong>Product：</strong><code>SwCcrd</code> &nbsp;|&nbsp; <strong>Serial：</strong><code>SwCcrd</code></p>
+            <p><strong>物理层：</strong>USB HID Interrupt (Full Speed 12 Mb/s, EP1 IN / EP2 OUT, 64B 包, 16ms 轮询)</p>
+            <p><strong>帧格式标识：</strong><code>0x53 0x77</code> ("Sw" LE) + devAddr + reserved + length(LE16) + func(1B) + data(N) + crc32(LE32)</p>
+            <p><strong>目标读者：</strong>上位机开发者（PC 升级工具 / OTA 服务端）</p>
+        </div>
+
+        <!-- 协议栈分层 -->
+        <h2>🏗️ 协议栈分层</h2>
+        <div class="phase">
+            <div class="layer-diagram">┌─────────────────────────────────────────────────────────────────┐
+│  Host (PC) OTA 工具                                              │
+│   - 探测设备 (VID 0x5377:0x5378, 报告 ID = 0x02)                 │
+│   - 发送 FC_HANDSHAKE → 接收 Layer=0 确认 Boot 模式              │
+│   - FC_UPGRADE_START → 多次 FC_FW_DATA → FC_UPGRADE_VERIFY →   │
+│   - FC_UPGRADE_EXEC → 设备软复位, 跳到新 App                   │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ USB HID Interrupt 报告 (64B)
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  USB HID 传输层 (Bootloader/STM32_USB)                           │
+│   - CustomHID Device / Config / Report 描述符                    │
+│   - EP1 IN (device→host) / EP2 OUT (host→device)                │
+│   - ST 官方 USB 库 v2.2.1 + 回调映射                            │
+│   - BootUsbHL_EnablePower + USB_Init + GPIO_SetBits(USB_EN)      │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ Boot_Usb_HL (EP1_IN_User/EP2_OUT_User)
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  协议层 (Boot_CustomProtocol.c)                                  │
+│   - 帧格式: header + devAddr + reserved + length + FC + data + CRC32 │
+│   - ProtoTransport_t 接口抽象 (Boot 端仅注册 UART)              │
+│   - 解析状态机 + CRC32 校验                                     │
+└──────────────────────────┬──────────────────────────────────────┘
+                           │ ProtoFrameCb → BootDispatch
+                           ▼
+┌─────────────────────────────────────────────────────────────────┐
+│  应用层 (Boot_Dispatch.c)                                       │
+│   - IAP 状态机: IDLE → ERASED → DATA_DONE → VERIFY_OK          │
+│   - Flash 擦除 / 写 / 校验 (MSP/Reset/CRC32/绑定)              │
+│   - 跳 App: NVIC_SystemReset() → APP 接管                       │
+└─────────────────────────────────────────────────────────────────┘</div>
+            <div class="tip">
+                <div class="tip-title">💡 设计核心</div>
+                <p>Bootloader 是升级通道的核心。Boot 启动后若 <code>deviceStatus != UPG</code>（无待升级标志的冷启动），跑 <strong>2500ms</strong> 超时窗口（<code>BOOT_TIMEOUT_MS</code>，Round 014 起 500→2500，覆盖 Mac/Win 1~3s USB 枚举时延），期间主机通过 USB 或 UART 发握手 → 升级启动 → 数据传输 → 校验 → 执行 5 步完成固件更新。若 <code>deviceStatus == UPG</code>（由 App 的 FC_ENTER_BOOT 置位后复位进来），则 <code>stayInUpdate=true</code> <strong>不超时</strong>，无限等待升级；可用 <code>FC_EXIT_BOOT (0x09)</code> 退出回 App。</p>
+            </div>
+        </div>
+
+        <!-- USB HID 描述符 -->
+        <h2>🔌 USB HID 描述符</h2>
+        <div class="phase">
+            <h3>设备描述符 (Device Descriptor)</h3>
+            <pre>Offset  Field            Value
+0x00    bLength            0x12 (18 bytes)
+0x01    bDescriptorType    0x01 (DEVICE)
+0x02    bcdUSB             0x0200 (USB 2.00)
+0x04    bDeviceClass       0x00
+0x05    bDeviceSubClass    0x00
+0x06    bDeviceProtocol    0x00
+0x07    bMaxPacketSize0    0x40 (64 bytes)
+0x08    idVendor           0x5377  ← 权威宏 BOOT_USB_VID
+0x0A    idProduct          0x5378  ← 权威宏 BOOT_USB_PID
+0x0C    bcdDevice          0x0200 (2.00)
+0x0E    iManufacturer      1 (字符串索引 1: "SW COMPOSITE")
+0x0F    iProduct           2 (字符串索引 2: "SwCcrd")
+0x10    iSerialNumber      3 (字符串索引 3: "SwCcrd")
+0x11    bNumConfigurations 1</pre>
+
+            <h3>配置描述符 (Configuration Descriptor)</h3>
+            <pre>Offset  Field               Value
+0x00    bLength               0x09
+0x01    bDescriptorType       0x02 (CONFIGURATION)
+0x02    wTotalLength          0x0029 (41 bytes)
+0x04    bNumInterfaces        1
+0x05    bConfigurationValue   1
+0x06    iConfiguration        0
+0x07    bmAttributes          0xC0 (Bus powered)
+0x08    bMaxPower             0x32 (100 mA)
+
+0x09  Interface Descriptor
+  bInterfaceClass    0x03 (HID)
+  bNumEndpoints      2
+
+0x1B  Endpoint Descriptor (IN: device→host, EP1)
+  bEndpointAddress   0x81
+  bmAttributes       0x03 (Interrupt)
+  wMaxPacketSize     0x0040 (64 bytes)
+  bInterval          0x0A (16 ms)
+
+0x23  Endpoint Descriptor (OUT: host→device, EP2)
+  bEndpointAddress   0x02
+  bmAttributes       0x03 (Interrupt)
+  wMaxPacketSize     0x0040 (64 bytes)
+  bInterval          0x0A (16 ms)</pre>
+
+            <h3>HID Report Descriptor (Vendor Defined)</h3>
+            <pre>Usage Page (ST Page 0x8C)  // Vendor Defined
+Collection (Application)
+  Input  (Data, Variable, Absolute)  // Report ID 0x02 + 64B payload (Boot→主机)
+  Output (Data, Variable, Absolute)  // 64B payload (主机→Boot)
+  Feature (Data, Variable, Absolute) // 2B
+End Collection</pre>
+            <div class="tip">
+                <div class="tip-title">💡 Report ID = 0x02</div>
+                <p>Boot 发送时第一个字节固定为 <code>0x02</code>（参见 <code>Boot_Usb_HL_Transmit</code>）。Host 接收 64B 报告时，前缀 <code>0x02</code> 是 HID 标准报告 ID，需要先剥除再解析协议层帧。</p>
+            </div>
+        </div>
+
+        <!-- 协议层帧格式 -->
+        <h2>📦 协议层帧格式</h2>
+        <div class="phase">
+            <h3>通用帧结构</h3>
+            <pre>偏移  字段         长度  说明
+0x00   header1     1B    固定 0x53 ('S')
+0x01   header2     1B    固定 0x77 ('w')
+0x02   devAddr     1B    设备地址 (广播 0xFF, 默认 0x01)
+0x03   reserved    1B    保留 0x00
+0x04   length      2B    payload 长度 (LE), 含 func + data + CRC32
+0x06   func        1B    命令码
+0x07   data        N     数据载荷 (N = length - 5)
+N+7    crc32       4B    CRC32 (LE), 覆盖前 N+3 字节
+
+总长 = 6 (header+addr+reserved+length 自身) + payload
+      = 6 + (1 + data_len + 4)
+      = 11 + data_len
+
+★ length 范围: 5 ≤ length ≤ 1029 (5 = FC + CRC32, 1029 = 1024 + 5) ★
+★ length 是 payload, 不包括 header/addr/reserved/length 自身 ★</pre>
+
+            <h3>请求帧 (Host → Boot)</h3>
+            <pre>┌──────┬──────┬─────┬─────┬─────────┬──────┬─────────┬─────────┐
+│ 0x53 │ 0x77 │ ADDR│ 0x00│ length  │ func │ data...  │ CRC32   │
+│  S   │  w   │     │RSV  │LE16     │ 1B   │ N bytes   │ LE32    │
+└──────┴──────┴─────┴─────┴─────────┴──────┴──────┴─────────┘
+                                              ▲                ▲
+                                              │                └─ 大端字节序 (高字节在后)
+                                              └─ 小端字节序 (低字节在前)</pre>
+
+            <h3>响应帧 (Boot → Host)</h3>
+            <pre>响应 = 请求的反向:
+  帧结构相同
+  func = req_func ^ 0xFF  (例如 0x03 → 0xFC)
+  data = 业务结果 (通常第一个字节是 RESULT_OK 或错误码)
+
+★ 响应经"收到帧的同一通道"回 (UART 收 → UART 回, USB 收 → USB 回) ★
+★ 帧头定义: PROTO_HEADER = 0x7753 ('Sw' LE) ★
+★ 校验失败 / length 越界 → 静默丢弃, 不响应 ★</pre>
+        </div>
+
+        <!-- 命令码 -->
+        <h2>📋 命令码 (FC) 与响应</h2>
+        <div class="phase">
+            <p>Boot 实现的全部 8 个命令（接管 IAP 全流程 + 软件复位）：</p>
+            <table>
+                <tr><th>FC</th><th>名称</th><th>Request payload</th><th>Response payload</th><th>说明</th></tr>
+                <tr><td>0x01</td><td>FC_HANDSHAKE</td><td>(空)</td><td>28B: result/protoVer/status/UID/uidHash/layer(0)/upgradeCount/baudRate</td><td>握手, layer=0 表示 Boot (与 App 字段一致, 仅 Layer 不同; Round 019)</td></tr>
+                <tr><td>0x03</td><td>FC_UPGRADE_START</td><td>16 或 17 字节: FwSize(4) + FwCrc32(4) + FwVer(4) + BindVerify(4) + [VerifyLevel(1)]</td><td>1 字节: result</td><td>启动升级, 擦除 Flash, 进入 IAP_ERASED 状态</td></tr>
+                <tr><td>0x04</td><td>FC_FW_DATA</td><td>≥4 字节: seq(2) + addrOffset(2) + data(N)</td><td>3 字节: seq(2) + result(1)</td><td>传输一包固件数据 (写 flash)</td></tr>
+                <tr><td>0x05</td><td>FC_UPGRADE_VERIFY</td><td>(空)</td><td>2 字节: result + subCode</td><td>CRC32 + Size + 向量 + 绑定校验 (按 VerifyLevel)</td></tr>
+                <tr><td>0x06</td><td>FC_UPGRADE_EXEC</td><td>(空)</td><td>1 字节: result</td><td>写 Param + NVIC_SystemReset() 跳 App</td></tr>
+                <tr><td>0x07</td><td>FC_DEVICE_INFO</td><td>(空)</td><td>34B: result/addr/hwVersion/bootVersion</td><td>设备信息, version 字段在 Boot 层内容为 bootVersion</td></tr>
+                <tr><td>0x08</td><td>FC_RESET</td><td>(空)</td><td>1 字节: result</td><td>软件复位 (空参数, 回 OK 后延时 20ms 再 NVIC_SystemReset; Round 046, App/Boot 对称)</td></tr>
+                <tr><td>0x09</td><td>FC_EXIT_BOOT</td><td>(空)</td><td>1 字节: result</td><td>退出升级: 校验 App flash 完好(向量+CRC)则清 UPG->RUN + 复位跳 App; 失败回错不复位 (Round 016)</td></tr>
+                <tr><td>0x02</td><td>FC_ENTER_BOOT</td><td>—</td><td>—</td><td><strong>Boot 忽略</strong> (此命令仅 App 处理; Round 016 起 App 置 UPG 后自动复位进 Boot)</td></tr>
+            </table>
+            <div class="warn">
+                <div class="warn-title">⚠️ Boot 端的所有响应使用 <code>Proto_TxResponseTo</code></div>
+                <p>Boot 端响应时使用 <code>Proto_TxResponseTo(ch, devAddr, reqFc, ...)</code> 而不是 <code>Proto_TxResponse</code>，因为 Boot 需要把响应回给<strong>请求方地址</strong>（devAddr 字段），可能与本机地址不同（多机场景）。</p>
+            </div>
+        </div>
+
+        <!-- IAP 升级流程 -->
+        <h2>🚀 IAP 升级流程</h2>
+        <div class="phase">
+            <h3>完整升级序列</h3>
+            <pre>1. 探测设备 (USB 或 UART)
+   └─ 主机枚举 USB HID (VID 0x5377:0x5378)
+
+2. 握手: FC_HANDSHAKE (0x01)
+   └─ 接收 12B 响应, 确认 Layer=0 (Boot) / Status=UPG 或 IDLE
+
+3. 进入升级模式 (可选)
+   └─ 通过 App 发 FC_ENTER_BOOT (0x02) → App 写 PARAM_STATUS_UPG + 延 50ms + 自动软复位
+       → Boot 看到 status=UPG → stayInUpdate=true 无限等待升级 (不超时)
+   └─ 或: Boot 冷启动无 UPG 标志时, 在 2500ms 超时窗口内直接发 START 也可
+   └─ 进 Boot 后若决定不升级: 发 FC_EXIT_BOOT (0x09) → Boot 校验 App 完好后清 UPG->RUN
+       + 复位 → 跳回 App (Round 016)
+
+4. 启动升级: FC_UPGRADE_START (0x03)
+   └─ Request data (16 字节):
+        [0..3]   FwSize (u32 LE)         // 固件大小 (字节, ≤ 40KB)
+        [4..7]   FwCrc32 (u32 LE)        // 期望 CRC32
+        [8..11]  FwVer (u32 LE)          // 固件版本号
+        [12..15] BindVerify (u32 LE)     // 绑定校验值 (VerifyLevel=FULL 时使用)
+        [16]     VerifyLevel (u8, 可选) // 0=FULL / 1=MID(默认) / 2=BASIC
+   └─ Boot 处理:
+        FwSize 校验 (≤ 40KB = APP_FLASH_SIZE, > 0)
+        FlashHl_WriteBegin
+        擦除 ceil(FwSize/PAGE) 页 (PAGE=1KB)
+        FlashHl_WriteEnd
+        若成功 → IapCtx.State = IAP_ERASED → 返回 RESULT_OK
+        若失败 → 返回 UPG_ERASE_FAIL
+
+5. 数据传输: 多次 FC_FW_DATA (0x04)
+   └─ 每包 Request data (≥4 字节):
+        [0..1]   seq (u16 LE)            // 包序号
+        [2..3]   addrOffset (u16 LE)     // APP 区偏移 (0..FwSize-1)
+        [4..N]   data (N-4 字节)          // 实际固件数据
+   └─ Boot 处理:
+        检查 state==IAP_ERASED
+        检查 addrOffset+dataLen ≤ APP_FLASH_END
+        按 4 字节对齐写 Flash (不满 4B 用 0xFF 填充)
+        IapCtx.Written += dataLen
+        若 Written >= FwSize → state = IAP_DATA_DONE
+        返回 [seq(2) + result(1)]
+   └─ 主机: 循环发包直到收到足够数据 (按 FwSize 分片)
+
+6. 校验: FC_UPGRADE_VERIFY (0x05)
+   └─ Boot 处理 (按 VerifyLevel):
+        [BASIC]  Written != FwSize 或 state != DATA_DONE → VERIFY_SIZE_MISMATCH
+        [BASIC]  Crc32Calc(APP_FLASH_ORIGIN, FwSize) != FwCrc32 → VERIFY_CRC_MISMATCH
+        [MID]    *APP_FLASH_ORIGIN & 0x2FFC0000 != 0x20000000 → VERIFY_VECTOR_INVALID (MSP)
+        [MID]    *(APP_FLASH_ORIGIN+4) 越界 → VERIFY_VECTOR_INVALID (Reset)
+        [FULL]    Crc32CalcReflect(APP_FLASH_ORIGIN, FwSize, &deviceUidHash, 4) != BindVerify → VERIFY_BIND_FAIL
+        全部通过 → state = IAP_VERIFY_OK → RESULT_OK
+   └─ 返回 [result + subCode]
+        subCode = 0 (通过) / 1 (Reset 向量越界, 仅 VERIFY_VECTOR_INVALID 时填)
+
+7. 执行跳转: FC_UPGRADE_EXEC (0x06)
+   └─ Boot 处理:
+        若 state != IAP_VERIFY_OK → 返回 VERIFY_CRC_MISMATCH (拒绝跳转)
+        ParamSave: deviceStatus=RUN, appCrc32=FwCrc32, appSize=FwSize, upgradeCount++, bindVerify
+        NVIC_SystemReset()  →  软复位, 跳新 App
+   └─ 返回 RESULT_OK</pre>
+
+            <h3>时序图</h3>
+            <pre>Host                                    Boot
+ │                                          │
+ │──── FC_HANDSHAKE ──────────────────────→│
+ │←──── 12B (layer=0, status=UPG) ─────────│
+ │                                          │
+ │──── FC_UPGRADE_START ──────────────────→│
+ │      [FwSize 4B][FwCrc 4B]...           │
+ │←──── 1B (0=OK) ─────────────────────────│
+ │      [擦除 Flash, state=ERASED]         │
+ │                                          │
+ │──── FC_FW_DATA #1 ─────────────────────→│
+ │      [seq=0][off=0][data...]           │
+ │←──── 3B [0,0,0=OK] ────────────────────│
+ │──── FC_FW_DATA #2 ─────────────────────→│
+ │      [seq=1][off=N][data...]           │
+ │←──── 3B [1,0,0=OK] ────────────────────│
+ │      ...                                 │
+ │──── FC_FW_DATA #N ─────────────────────→│
+ │      [seq=N-1][off=FwSize-LEN]         │
+ │←──── 3B [N-1,0,0=OK] ──────────────────│
+ │      [state=DATA_DONE]                  │
+ │                                          │
+ │──── FC_UPGRADE_VERIFY ─────────────────→│
+ │      [空]                                │
+ │      [CRC + Size + 向量 + 绑定]         │
+ │←──── 2B [0,0=OK] ───────────────────────│
+ │      [state=VERIFY_OK]                   │
+ │                                          │
+ │──── FC_UPGRADE_EXEC ───────────────────→│
+ │      [空]                                │
+ │←──── 1B [0=OK] ────────────────────────│
+ │      [ParamSave + SystemReset]           │
+ │                                          ▼
+ │                                       (APP 启动)
+ │                                          │
+ │──── FC_HANDSHAKE ──────────────────────→│
+ │←──── 12B (layer=1, status=RUN) ────────│  ★ 升级完成</pre>
+        </div>
+
+        <!-- FC_UPGRADE_START -->
+        <h2>🚀 FC_UPGRADE_START (0x03) 详细</h2>
+        <div class="phase">
+            <h3>请求帧</h3>
+            <pre>data (16 或 17 字节, LE):
+  Offset  字段         长度  说明
+  0x00    FwSize       4B    固件大小 (字节, ≤ APP_FLASH_SIZE = 40KB)
+  0x04    FwCrc32      4B    期望 CRC32 (覆盖 APP_FLASH_ORIGIN..+FwSize)
+  0x08    FwVer        4B    固件版本号 (任意业务定义)
+  0x0C    BindVerify   4B    绑定校验值 (VerifyLevel=FULL 时必填)
+  0x10    VerifyLevel  1B    可选, 不传默认 MID (0=FULL / 1=MID / 2=BASIC)
+
+frame.length = 5 + 16 = 21 = 0x15 (无 VerifyLevel)
+frame.length = 5 + 17 = 22 = 0x16 (带 VerifyLevel)</pre>
+            <h3>响应帧</h3>
+            <pre>data (1 字节):
+  Offset  字段    值       说明
+  0x00    result  0=OK     擦除成功, 进入 IAP_ERASED 状态, 可开始 FC_FW_DATA
+                1=NO_SPACE   FwSize > 40KB 或 == 0
+                2=ERASE_FAIL Flash 擦除失败
+
+完整响应帧: 53 77 ADDR 00 0600 FC result [CRC32 4B]
+                                  ↑  ↑
+                                  │  └─ result
+                                  └─ FC_RSP(0x03) = 0xFC</pre>
+            <h3>Flash 擦除策略</h3>
+            <pre>/* 仅擦除必要页数, 不动 boot/param 区 */
+erasePages = (FwSize + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE
+              = ceil(FwSize / 1024)
+for (i = 0; i < erasePages; i++) {
+    addr = APP_FLASH_ORIGIN + i * 1024
+    if (addr >= APP_FLASH_END) break    // 40KB 越界保护
+    FlashHl_ErasePage(addr)
+}</pre>
+            <div class="warn">
+                <div class="warn-title">⚠️ Flash 擦除的安全保证</div>
+                <p>擦除范围严格限定在 <code>APP_FLASH_ORIGIN</code> (0x08006000) 之后的 <code>FwSize</code> 字节内，<strong>不擦 boot/param 区</strong>。即使 FwSize 设错（如 0xFFFFFFFF），循环里的 <code>addr >= APP_FLASH_END</code> 检查保证不会越界到 boot 区。</p>
+            </div>
+        </div>
+
+        <!-- FC_FW_DATA -->
+        <h2>📦 FC_FW_DATA (0x04) 详细</h2>
+        <div class="phase">
+            <h3>请求帧</h3>
+            <pre>data (≥4 字节, LE):
+  Offset  字段         长度  说明
+  0x00    seq          2B    包序号 (主机递增, 用于匹配响应)
+  0x02    addrOffset   2B    APP 区偏移 (0..FwSize-1, 从 APP_FLASH_ORIGIN 开始)
+  0x04    data         N     实际固件数据 (N = dataLen - 4)
+
+frame.length = 5 + N (N = addrOffset_end - addrOffset, 主机分片决定)
+
+★ 注意: 单包 data 长度受 UART DMA buffer 限制 (1024B) 或 USB HID 64B 限制
+★ 推荐每包 ≤ 1024B (UART) 或 ≤ 53B (USB, Report ID 占 1B, frame header 占 6B, seq+off 占 4B)
+★ 主机按 FwSize / 单包大小 计算包数, 逐包发到 Written >= FwSize</pre>
+            <h3>响应帧</h3>
+            <pre>data (3 字节):
+  Offset  字段    长度  说明
+  0x00    seq     2B    回显主机发的包序号 (确认哪一包已处理)
+  0x02    result  1B    0=OK, 2=DATA_FLASH_FAIL, 3=DATA_ADDR_ERR
+
+完整响应帧: 53 77 ADDR 00 0800 FB [seq 2B] result [CRC32 4B]
+                                  ↑        ↑
+                                  │        └─ result
+                                  └─ FC_RSP(0x04) = 0xFB</pre>
+            <h3>Boot 处理流程</h3>
+            <pre>FC_FW_DATA 收到 →
+  检查 state == IAP_ERASED, 否则拒绝
+  解析 seq + addrOffset
+  dataLen = f.dataLen - 4
+  检查 addrOffset + dataLen ≤ FwSize, 否则 DATA_ADDR_ERR
+  FlashHl_WriteBegin
+  按 4 字节对齐写 (不足 4B 用 0xFF 填充)
+  FlashHl_WriteEnd
+  写失败 → DATA_FLASH_FAIL
+  写成功 → Written += dataLen
+            若 Written >= FwSize → state = IAP_DATA_DONE
+  返回 [seq(2) + result(1)]</pre>
+            <div class="warn">
+                <div class="warn-title">⚠️ Flash 写的 4 字节对齐</div>
+                <p>STM32 Flash 只能按 4 字节 (1 word) 编程。Boot 在 <code>FlashHl_WriteWord</code> 内部按 4B 对齐写，最后不足 4B 的尾包自动用 0xFF 填充（避免固件尾段被前一次烧写的旧数据覆盖）。</p>
+            </div>
+        </div>
+
+        <!-- FC_UPGRADE_VERIFY -->
+        <h2>✅ FC_UPGRADE_VERIFY (0x05) 详细</h2>
+        <div class="phase">
+            <h3>请求帧</h3>
+            <pre>data = (空)  →  frame.length = 5</pre>
+            <h3>响应帧</h3>
+            <pre>data (2 字节):
+  Offset  字段      说明
+  0x00    result    0=OK (通过), 1=CRC, 2=SIZE, 3=VECTOR, 4=BIND
+  0x01    subCode   仅当 result=3 (VERIFY_VECTOR_INVALID) 有效:
+                    0 = MSP 向量无效
+                    1 = Reset 向量越界
+                    其他 result 时填 0
+
+完整响应帧: 53 77 ADDR 00 0700 FA result subCode [CRC32 4B]
+                                  ↑  ↑
+                                  │  └─ subCode
+                                  └─ FC_RSP(0x05) = 0xFA</pre>
+            <h3>三级校验</h3>
+            <table>
+                <tr><th>级别</th><th>校验项</th><th>失败返回</th></tr>
+                <tr><td rowspan="2"><strong>BASIC</strong> (VerifyLevel=2)</td><td>Written == FwSize 且 state=DATA_DONE</td><td>VERIFY_SIZE_MISMATCH</td></tr>
+                <tr><td>Crc32Calc(APP_FLASH_ORIGIN, FwSize) == FwCrc32</td><td>VERIFY_CRC_MISMATCH</td></tr>
+                <tr><td rowspan="2"><strong>MID</strong> (VerifyLevel=1, 默认)</td><td>(APP_FLASH_ORIGIN) &amp; 0x2FFC0000 == 0x20000000 (MSP 在 RAM 区)</td><td>VERIFY_VECTOR_INVALID, subCode=0</td></tr>
+                <tr><td>(APP_FLASH_ORIGIN+4) 在 [APP_FLASH_ORIGIN, APP_FLASH_ORIGIN+FwSize) (Reset 向量合法)</td><td>VERIFY_VECTOR_INVALID, subCode=1</td></tr>
+                <tr><td><strong>FULL</strong> (VerifyLevel=0)</td><td>Crc32CalcReflect(APP_FLASH_ORIGIN, FwSize, &amp;deviceUidHash, 4) == BindVerify (设备绑定)</td><td>VERIFY_BIND_FAIL</td></tr>
+            </table>
+            <div class="tip">
+                <div class="tip-title">💡 校验级别含义</div>
+                <ul>
+                    <li><strong>BASIC</strong>：开发期, 仅 CRC 校验, 快速验证 flash 内容</li>
+                    <li><strong>MID</strong>：生产固件默认, 加向量检查确保不烧坏 boot 跳转</li>
+                    <li><strong>FULL</strong>：量产防伪, 固件与设备 UID 绑定, 防止跨机刷写</li>
+                </ul>
+            </div>
+            <h3>Crc32CalcReflect 算法</h3>
+            <pre>/* 计算带 suffix 的 CRC32:
+ *   CRC32(APP_FLASH_ORIGIN..FwSize) XOR reflect(suffix, suffixLen)
+ *
+ * 防止跨设备刷写: 即使固件内容相同, 不同设备的 deviceUidHash 不同,
+ *   计算结果也不同, BindVerify 校验失败, 拒绝执行 */
+uint32_t Crc32CalcReflect(data, len, suffix, suffixLen) {
+    uint32_t crc = 0xFFFFFFFF;
+    for (uint32_t i = 0; i < len; i++)
+        crc = (crc >> 8) ^ table[(crc ^ data[i]) & 0xFF];
+    for (uint32_t i = 0; i < suffixLen; i++)
+        crc = (crc >> 8) ^ table[(crc ^ suffix[i]) & 0xFF];
+    return crc ^ 0xFFFFFFFF;
+}</pre>
+        </div>
+
+        <!-- FC_UPGRADE_EXEC -->
+        <h2>🔄 FC_UPGRADE_EXEC (0x06) 详细</h2>
+        <div class="phase">
+            <h3>请求帧</h3>
+            <pre>data = (空)  →  frame.length = 5</pre>
+            <h3>响应帧</h3>
+            <pre>data (1 字节):
+  Offset  字段    值      说明
+  0x00    result  0=OK    校验通过, 即将 ParamSave + SystemReset
+                1=CRC    state != IAP_VERIFY_OK, 拒绝跳转
+
+完整响应帧: 53 77 ADDR 00 0600 F9 00/01 [CRC32 4B]
+                                  ↑  ↑
+                                  │  └─ result
+                                  └─ FC_RSP(0x06) = 0xF9</pre>
+            <h3>Boot 处理</h3>
+            <pre>FC_UPGRADE_EXEC 收到 →
+  if (state != IAP_VERIFY_OK) → 返回 VERIFY_CRC_MISMATCH (拒绝)
+  ParamSave:
+    deviceStatus  = PARAM_STATUS_RUN (1)
+    appCrc32      = g_sIap.FwCrc32
+    appSize       = g_sIap.FwSize
+    upgradeCount++ (升级次数累加)
+    bindVerify    = g_sIap.BindVerify
+  NVIC_SystemReset()  → 软复位, 跳到新 App (PC = APP_FLASH_ORIGIN + 4, 即新 Reset 向量)</pre>
+            <div class="warn">
+                <div class="warn-title">⚠️ ParamSave 失败保护</div>
+                <p>Boot <strong>不检查</strong> ParamSave 返回值（参数区写失败概率极低，因为之前擦过 APP 区但不动 PARAM 区）。如果发生写失败，设备重启后会回到"默认行为"：Boot 看到 status 不是 UPG → 2500ms 后跳 APP，新固件仍在但参数区为旧值（不影响固件运行，只是升级次数和 bindVerify 没更新）。</p>
+            </div>
+        </div>
+
+        <!-- FC_EXIT_BOOT -->
+        <h2>🚪 FC_EXIT_BOOT (0x09) 详细 — 退出升级回 App (Round 016)</h2>
+        <div class="phase">
+            <h3>用途</h3>
+            <p>主机经 App 的 <code>FC_ENTER_BOOT</code> 进入 Boot 升级等待后，若决定<strong>不升级</strong>，发本指令退出。Boot 校验 App flash 完好后清 UPG 标志 + 复位，自动跳回现有 App，无需走完整升级流程。</p>
+            <h3>请求帧</h3>
+            <pre>data = (空, dataLen 必须 = 0)  →  frame.length = 5</pre>
+            <h3>响应帧</h3>
+            <pre>data (1 字节):
+  Offset  字段    值              说明
+  0x00    result  0=OK            校验通过, 清 UPG->RUN, 即将复位跳 App
+                  1=NO_APP        App flash 无有效镜像 (MSP/Reset 向量非法)
+                  2=CRC_MISMATCH  App CRC 与参数记录不符 (flash 被擦除/损坏)
+                  2=ENTER_BOOT_PARAM_ERR  ParamSave 写失败 (复用参数错码)
+
+完整响应帧: 53 77 ADDR 00 0500 F6 00/01/02 [CRC32 4B]
+                                ↑      ↑
+                                │      └─ result
+                                └─ FC_RSP(0x09) = 0xF6</pre>
+            <h3>Boot 处理</h3>
+            <pre>FC_EXIT_BOOT 收到 →
+  if (dataLen != 0) → 回 result=1 (参数必须为空), 不复位
+  1) MSP 向量合法性: (*APP_FLASH_ORIGIN & 0x2FFC0000) == 0x20000000
+     否则 → EXIT_BOOT_NO_APP (1), 不复位
+  2) Reset 向量合法性: APP_FLASH_ORIGIN ≤ resetVec < APP_FLASH_ORIGIN + APP_FLASH_SIZE
+     否则 → EXIT_BOOT_NO_APP (1), 不复位
+  3) CRC 校验 (仅当参数记录 appCrc32!=0 且 appSize!=0 且 appSize≤APP_FLASH_SIZE):
+     Crc32Calc(APP_FLASH_ORIGIN, appSize) == appCrc32?
+     否则 → EXIT_BOOT_CRC_MISMATCH (2), 不复位
+  通过 → deviceStatus = PARAM_STATUS_RUN (1)
+       → ParamSave 持久化
+       → 回 OK
+       → 延时 50ms (等 ACK 发出)
+       → NVIC_SystemReset() → 复位后 Boot 读 RUN, stayInUpdate=false,
+         2500ms 窗口后 JumpToApp → 跳回现有 App</pre>
+            <div class="tip">
+                <div class="tip-title">💡 设计要点</div>
+                <p>校验逻辑与 <code>main.c::JumpToApp()</code> 完全一致（向量 + CRC），确保<strong>flash 正常才跳</strong>。校验失败时<strong>不复位</strong>，避免跳到被擦除/损坏的空 App（此时只能通过完整升级恢复）。CRC 仅在参数有记录时校验；无记录（<code>appCrc32==0</code>）则只做向量校验，仍允许跳。</p>
+            </div>
+            <div class="warn">
+                <div class="warn-title">⚠️ 与 FC_RESET 区别</div>
+                <p><code>FC_RESET (0x08)</code> 仅复位，<strong>不清 deviceStatus</strong>——若当前 status=UPG，复位后仍卡 Boot。要在 Boot 中退出回 App，必须用 <code>FC_EXIT_BOOT (0x09)</code>（清 UPG + 校验 + 跳 App）。</p>
+            </div>
+        </div>
+
+        <!-- FC_HANDSHAKE / FC_DEVICE_INFO -->
+        <h2>🤝 FC_HANDSHAKE (0x01) 详细</h2>
+        <div class="phase">
+            <p>Round 018 协议 (App/Boot 一致): 请求和响应 payload 完全相同, <strong>仅 Layer 字段不同</strong>（App=1, Boot=0）。</p>
+            <h3>响应帧</h3>
+            <pre>data (28 字节, LE, Round 019 移除冗余 version 字段):
+  Offset  字段          类型    说明
+  0x00    result        u8      0 = RESULT_OK
+  0x01    protoVer      u8      PROTO_VERSION = 2
+  0x02    status        u8      IDLE/RUN/UPG/FAULT
+  0x03    UID           12B     STM32 唯一 ID (@ 0x1FFFF7E8)
+  0x0F    uidHash       u32 LE  CRC32(UID)
+  0x13    layer         u8      1 = APP / 0 = BOOT
+  0x14    upgradeCount  u32 LE  累计升级次数
+  0x18    baudRate      u32 LE  USART 当前波特率
+
+完整响应帧: 53 77 ADDR 00 2100 FE [28B payload] [CRC32 4B]
+len=0x21=33 = 1(func)+28(payload)+4(CRC)</pre>
+            <h3>Device Status 含义</h3>
+            <ul>
+                <li><strong>UPG (2)</strong>：App 收到 FC_ENTER_BOOT 后写入。Boot 看到 UPG <strong>停留等待升级</strong>，超时 = 0 (无限)</li>
+                <li><strong>IDLE/RUN/FAULT</strong>：上电默认或上次升级完成。Boot 看到这些状态 → 跑 500ms 超时窗口后跳 APP</li>
+            </ul>
+        </div>
+
+        <!-- FC_DEVICE_INFO -->
+        <h2>📊 FC_DEVICE_INFO (0x07) 详细</h2>
+        <div class="phase">
+            <p>Round 018 协议: Boot 层响应 payload 34B。</p>
+            <h3>响应帧</h3>
+            <pre>data (34 字节, LE):
+  Offset  字段          类型    说明
+  0x00    result        u8      0 = OK
+  0x01    addr          u8      设备地址（默认 0x01）
+  0x02    hwVersion     16B     硬件版本字符串
+  0x12    version       16B     <strong>Boot 层: bootVersion</strong>（DEV_BOOT_VERSION）
+
+完整响应帧: 53 77 ADDR 00 2700 F8 [34B payload] [CRC32 4B]
+len=0x27=39 = 1(func)+34(payload)+4(CRC)</pre>
+        </div>
+
+        <!-- 错误码 -->
+        <h2>❌ 错误码</h2>
+        <div class="phase">
+            <h3>通用</h3>
+            <pre>#define RESULT_OK               0</pre>
+            <h3>FC=0x03 (UPGRADE_START)</h3>
+            <pre>#define UPG_NO_SPACE            1  // FwSize > 40KB 或 == 0
+#define UPG_ERASE_FAIL          2  // Flash 擦除失败</pre>
+            <h3>FC=0x04 (FW_DATA)</h3>
+            <pre>#define DATA_FLASH_FAIL         2  // Flash 写失败
+#define DATA_ADDR_ERR           3  // addrOffset+dataLen 越界</pre>
+            <h3>FC=0x05 (UPGRADE_VERIFY)</h3>
+            <pre>#define VERIFY_CRC_MISMATCH    1  // CRC32 不匹配
+#define VERIFY_SIZE_MISMATCH   2  // Written != FwSize
+#define VERIFY_VECTOR_INVALID  3  // MSP/Reset 向量无效 (subCode 区分)
+#define VERIFY_BIND_FAIL       4  // 设备绑定校验失败</pre>
+        </div>
+
+        <!-- 状态机 -->
+        <h2>🔄 IAP 状态机</h2>
+        <div class="phase">
+            <h3>IapState_t (Boot_Dispatch.h)</h3>
+            <pre>typedef enum {
+    IAP_IDLE = 0,         // 初始 / 上一轮完成, 等待下一轮
+    IAP_ERASED,           // 收到 UPGRADE_START, Flash 已擦除, 等待 FC_FW_DATA
+    IAP_DATA_DONE,        // 数据传输完成, 等待 FC_UPGRADE_VERIFY
+    IAP_VERIFY_OK         // 校验通过, 等待 FC_UPGRADE_EXEC
+} IapState_t;</pre>
+
+            <h3>状态转换</h3>
+            <pre>                  ┌──────────────────────────────────────┐
+                  │ IAP_IDLE (初始, 等待 START)            │
+                  │  - 收 Handshake / DevInfo             │
+                  │  - 收 UpgradeStart → 擦 flash          │
+                  └───────────────┬──────────────────────┘
+                                  │ FC_UPGRADE_START 成功
+                                  ▼
+                  ┌──────────────────────────────────────┐
+                  │ IAP_ERASED                            │
+                  │  - 收 FwData → 写 flash                │
+                  │  - 累 Written                          │
+                  └───────────────┬──────────────────────┘
+                                  │ Written >= FwSize
+                                  ▼
+                  ┌──────────────────────────────────────┐
+                  │ IAP_DATA_DONE                         │
+                  │  - 收 Verify → 三级校验               │
+                  └───────────────┬──────────────────────┘
+                                  │ 校验全部通过
+                                  ▼
+                  ┌──────────────────────────────────────┐
+                  │ IAP_VERIFY_OK                         │
+                  │  - 收 Exec → ParamSave + Reset        │
+                  └───────────────┬──────────────────────┘
+                                  │ NVIC_SystemReset
+                                  ▼
+                              (新 APP 启动)
+                                  │
+                                  ▼
+                  ┌──────────────────────────────────────┐
+                  │ IAP_IDLE (新一轮)                      │
+                  └──────────────────────────────────────┘</pre>
+        </div>
+
+        <!-- 应用层上下文 -->
+        <h2>📦 IapCtx_t (Boot_Dispatch.h)</h2>
+        <div class="phase">
+            <pre>typedef struct {
+    IapState_t State;
+    uint32_t   FwSize;        // FC_UPGRADE_START 提供
+    uint32_t   FwCrc32;       // FC_UPGRADE_START 提供
+    uint32_t   FwVer;         // FC_UPGRADE_START 提供
+    uint32_t   BindVerify;    // FC_UPGRADE_START 提供 (FULL 时使用)
+    uint32_t   Written;       // 累计写入字节数
+    uint8_t    VerifyLevel;   // FC_UPGRADE_START 提供 (默认 MID)
+} IapCtx_t;
+
+extern IapCtx_t g_sIap;
+extern DeviceParam_t g_sParam;  // 共享设备参数</pre>
+        </div>
+
+        <!-- 协议层结构 -->
+        <h2>📦 协议层结构 (与 App 同)</h2>
+        <div class="phase">
+            <p>Boot 端协议层结构与 App 完全相同（<code>Boot_CustomProtocol.h</code> 是 App 版的 copy，命名空间用 BOOT_*）。详见 [App_Protocol.html § 协议层结构](./App_Protocol.html)。</p>
+            <h3>要点</h3>
+            <pre>/* Boot 端 ProtoFrame_t 与 App 端相同字段:
+ *   header / devAddr / reserved / length / func / data / dataLen / crc32 / channel
+ *
+ * 通道: USB HID 为主, UART 为备用 (Round 044 与 App 对齐):
+ *   - USB transport 由 Boot_Usb_Init() 注册 (PROTO_CH_USB), 默认通道 USB
+ *   - UART transport 由 BootDispatchInit() 注册 (PROTO_CH_UART), 备用
+ *   - USB 字节流: EP2_OUT_User → Boot_Usb_OnReceive → Proto_OnDataFromUsb → parser
+ *   - ⚠ Proto_OnDataFromUsb 在 pc->ops==NULL 时早退, 故 USB 必须在 Proto_Poll 前注册
+ *
+ * 唯一额外状态: IapCtx_t 记录升级进度 (写入 flash 区)</pre>
+        </div>
+
+        <!-- Boot 启动时序 -->
+        <h2>⏱ Boot 启动时序</h2>
+        <div class="phase">
+            <pre>main() {
+    Sys_CfgClock()                     // 72MHz PLL
+    System_PeriphClkInit()             // GPIO/USART/USB/SPI/DMA 时钟
+    __asm volatile ("cpsid i")         // ★ 关中断 (待所有外设初始化完才开)
+
+    SysTickHl_Init()                   // 1ms tick
+    BootDispatchInit()                 // 注册 UART transport + 帧回调, 默认通道 USB
+    bootStartMs = SysTickHl_GetMs()
+
+    BootLedInit()                      // PB4 LED
+    ParamInit(&g_sParam)
+    if (ParamLoad(&g_sParam) != 0) {  // 读参数区 (主+影子) 失败
+        // 用默认参数重新初始化并保存 (主+影子)
+        g_sParam.magic = PARAM_MAGIC;
+        g_sParam.version = PARAM_VERSION;
+        g_sParam.baudRate = 115200U;
+        g_sParam.deviceStatus = PARAM_STATUS_IDLE;
+        g_sParam.deviceAddr = PROTO_DEV_ADDR_DEFAULT;
+        g_sParam.deviceUidHash = Crc32CalcUid();
+        // ... 版本字符串/用户区清零
+        ParamSave(&g_sParam);
+    }
+    ParamSyncVersion(&g_sParam);      // 把代码里版本同步回参数区
+
+    uint32_t baud = g_sParam.baudRate;
+    Uart_Init(baud);                   // HOST_UART (USART2)
+    Boot_Usb_Init();                   // USB HL + 注册 USB transport (Round 044, 与 App 对齐)
+    IwdgHl_Init();                     // 独立看门狗 (未启用)
+
+    int stayInUpdate = (g_sParam.deviceStatus == PARAM_STATUS_UPG);
+
+    __asm volatile ("cpsie i")         // ★ 开中断 (所有初始化完成)
+
+    while (stayInUpdate || (SysTickHl_GetMs() - bootStartMs) < BOOT_TIMEOUT_MS) {
+        Proto_Poll();                  // 收帧 → BootDispatch
+        if (g_sIap.State != IAP_IDLE && g_sIap.State != IAP_VERIFY_OK)
+            bootStartMs = SysTickHl_GetMs();  // 升级中重置超时
+        BootLedProcess();              // 1Hz LED 心跳
+        IwdgHl_Feed();
+    }
+
+    SysTickHl_Stop();
+    BootLedOff();
+    JumpToApp();                       // 校验 + 关中断 + 清 NVIC + 设 VTOR + 跳
+}</pre>
+            <h3>超时与跳转决策</h3>
+            <pre>BOOT_TIMEOUT_MS = 500ms:
+  IDLE/RUN/FAULT:
+    → 500ms 内无 EnterBoot, 跳 APP
+  UPG (deviceStatus=2):
+    → 停留等待 FC_HANDSHAKE/START
+    → 收到任何升级命令, bootStartMs 重置 (再给 500ms)
+    → 完成升级 (Exec 后) NVIC_SystemReset → APP
+    → 主机可以通过 FC_ENTER_BOOT 把 Boot 状态再延 500ms</pre>
+        </div>
+
+        <!-- Flash 布局 -->
+        <h2>🗺️ Flash 布局</h2>
+        <div class="phase">
+            <pre>地址            区域              大小    用途
+─────────────────────────────────────────────────────────────────
+0x08000000      BOOT_CODE        22 KB   Bootloader 代码
+0x08005800      PARAM            2 KB    参数区 (主 256B + 影子 256B, 实际 512B)
+0x08006000      APP              40 KB   Application 代码 (升级目标)
+0x08010000      Flash 末尾
+─────────────────────────────────────────────────────────────────
+
+参数区 (0x08005800) 详细:
+  +0x000  主区 DeviceParam_t (256B)
+  +0x100  影子区 DeviceParam_t (256B)
+  └  CRC32 覆盖前 0xFC 字节, 主区/影子区独立校验
+
+APP 区擦除策略:
+  - 仅擦除 APP 区, 不动 BOOT/PARAM 区
+  - 按 FwSize / PAGE_SIZE (1KB) 计算擦除页数
+  - 严格在 APP_FLASH_ORIGIN (0x08006000) 之后
+
+校验向量:
+  - MSP @ APP_FLASH_ORIGIN:    须 = 0x2XXXXXXX (栈顶在 RAM)
+  - Reset @ APP_FLASH_ORIGIN+4: 须 ∈ [APP_FLASH_ORIGIN, APP_FLASH_ORIGIN+FwSize)</pre>
+        </div>
+
+        <!-- 关键常量 -->
+        <h2>📊 关键常量 (Boot_Config.h / Boot_CustomProtocol.h / Boot_Param.h)</h2>
+        <div class="phase">
+            <pre>/* Protocol */
+#define PROTO_HEADER             0x7753U        // "Sw" LE
+#define PROTO_VERSION            2
+#define PROTO_MAX_DATA           1024
+#define PROTO_FRAME_MIN          5
+#define PROTO_DEV_ADDR_DEFAULT   0x01U
+#define PROTO_DEV_ADDR_BROADCAST 0xFFU
+#define PROTO_RESERVED           0x00U
+
+/* Channels */
+#define PROTO_CH_NONE            0x00U
+#define PROTO_CH_UART            0x01U          // Boot 唯一通道
+#define PROTO_CH_USB             0x02U
+#define PROTO_CH_NET             0x03U
+#define PROTO_CH_MAX             0x04U
+
+/* Status */
+#define PARAM_STATUS_IDLE        0
+#define PARAM_STATUS_RUN         1
+#define PARAM_STATUS_UPG         2              // 触发进入升级模式
+#define PARAM_STATUS_FAULT       3
+
+/* Verify Level */
+#define VERIFY_LEVEL_FULL        0              // CRC+Size+向量+绑定
+#define VERIFY_LEVEL_MID         1              // CRC+Size+向量 (默认)
+#define VERIFY_LEVEL_BASIC       2              // 仅 CRC+Size
+
+/* Verify Result */
+#define VERIFY_CRC_MISMATCH    1
+#define VERIFY_SIZE_MISMATCH   2
+#define VERIFY_VECTOR_INVALID  3
+#define VERIFY_BIND_FAIL       4
+
+/* Boot timeout */
+#define BOOT_TIMEOUT_MS         500U           // 跳 App 超时 (status != UPG)
+#define BOOT_STAY_INFINITE      0xFFFFFFFFU   // status=UPG 时无限等
+
+/* Flash */
+#define APP_FLASH_ORIGIN         0x08006000U    // APP 区起点
+#define APP_FLASH_SIZE           (40U * 1024U)
+#define APP_FLASH_END            0x08010000U
+#define FLASH_PAGE_SIZE          1024U
+
+/* USB */
+#define BOOT_USB_VID             0x5377         // 权威宏
+#define BOOT_USB_PID             0x5378
+#define BOOT_USB_MAX_POWER       100
+#define BOOT_USB_LANGID_STRING   1033</pre>
+        </div>
+
+        <!-- 关键文件 -->
+        <h2>📁 关键文件</h2>
+        <div class="phase">
+            <table>
+                <tr><th>层级</th><th>文件</th><th>说明</th></tr>
+                <tr><td>USB HID 层</td><td>Bootloader/STM32_USB/src/usb_desc.c</td><td>描述符 + VID/PID/字符串</td></tr>
+                <tr><td>USB HID 层</td><td>Bootloader/STM32_USB/src/usb_istr.c</td><td>EP 回调 (pEpInt_IN/OUT 数组)</td></tr>
+                <tr><td>USB HAL</td><td>Bootloader/src/Boot_Usb_HL.c</td><td>EP1_IN_User / EP2_OUT_User / GPIO_SetBits(USB_EN)</td></tr>
+                <tr><td>协议层</td><td>Bootloader/inc/Boot_CustomProtocol.h</td><td>ProtoFrame_t / FC 定义 / API 声明</td></tr>
+                <tr><td>协议层</td><td>Bootloader/src/Boot_CustomProtocol.c</td><td>组帧/解析/CRC32/通道路由</td></tr>
+                <tr><td>应用层</td><td>Bootloader/inc/Boot_Dispatch.h</td><td>IapState_t / IapCtx_t / API</td></tr>
+                <tr><td>应用层</td><td>Bootloader/src/Boot_Dispatch.c</td><td>FC 路由 + IAP 状态机 + Flash 写/擦/校验</td></tr>
+                <tr><td>Flash HAL</td><td>Bootloader/src/Boot_Param_HL.c</td><td>FlashHl_ErasePage / FlashHl_WriteWord</td></tr>
+                <tr><td>参数</td><td>Bootloader/inc/Boot_Param.h</td><td>PARAM_STATUS_*, VERIFY_LEVEL_*</td></tr>
+            </table>
+        </div>
+
+
+        <!-- 与 App 协议对比 -->
+        <h2>🔗 与 App 协议的差异</h2>
+        <div class="phase">
+            <table>
+                <tr><th>维度</th><th>App</th><th>Boot</th></tr>
+                <tr><td>VID:PID</td><td>0x5377:0x5378</td><td>0x5377:0x5378 (相同)</td></tr>
+                <tr><td>Layer 字段</td><td>1</td><td>0</td></tr>
+                <tr><td>实现命令</td><td>7 个 (HANDSHAKE/ENTER_BOOT/DEVICE_INFO/RESET/RFID_14443A/RFID_15693/RFID_CTRL)</td><td>8 个 (全 IAP 流程 + HANDSHAKE/DEVICE_INFO/RESET)</td></tr>
+                <tr><td>状态机</td><td>NORMAL → BOOT_PENDING</td><td>IDLE → ERASED → DATA_DONE → VERIFY_OK</td></tr>
+                <tr><td>主用通道</td><td>USB HID (Round 044 注册 App_Usb_GetTransport)</td><td>USB HID (Round 044 注册 Boot_Usb_GetTransport, SetDefaultChannel=USB)</td></tr>
+                <tr><td>UART 通道</td><td>未注册</td><td>已注册 (备用, PROTO_CH_UART)</td></tr>
+                <tr><td>ROM 区</td><td>0x08006000-0x08010000 (40KB)</td><td>0x08000000-0x08005800 (22KB)</td></tr>
+                <tr><td>跳转方向</td><td>BOOT_PENDING → NVIC_SystemReset → Boot</td><td>Exec → NVIC_SystemReset → App</td></tr>
+                <tr><td>CRC32 算法</td><td>MPEG-2 (poly=0x04C11DB7, init=0xFFFFFFFF, 无反射, 无最终 XOR)</td><td>MPEG-2 (同 App, 见 App_Param.c:14 / Boot_Param.c:14)</td></tr>
+            </table>
+        </div>
+
+        <!-- 总结 -->
+        <div class="summary">
+            <h2>📋 Boot 协议总结</h2>
+            <ul>
+                <li>✅ <strong>USB HID Custom 设备</strong>：VID 0x5377 / PID 0x5378 (同 App) / "SW COMPOSITE" / "SwCcrd"</li>
+                <li>✅ <strong>2 个中断端点</strong>：EP1 IN (TX) / EP2 OUT (RX)，各 64B，16ms 轮询</li>
+                <li>✅ <strong>完整 IAP 流程</strong>：5 步 (START → DATA → VERIFY → EXEC) + 2 辅助 (HANDSHAKE / DEVICE_INFO)</li>
+                <li>✅ <strong>三级校验</strong>：BASIC / MID / FULL，可按需配置</li>
+                <li>✅ <strong>设备绑定</strong>：FULL 校验时固件与 UID 哈希绑定，跨机刷写被拒</li>
+                <li>✅ <strong>Flash 安全</strong>：仅擦 APP 区，不动 BOOT/PARAM 区；addrOffset 严格越界检查</li>
+                <li>✅ <strong>状态机</strong>：4 状态 IDLE → ERASED → DATA_DONE → VERIFY_OK</li>
+                <li>✅ <strong>错误码</strong>：所有 FC 失败都有明确定义 (UPG_*, DATA_*, VERIFY_*)</li>
+                <li>✅ <strong>CRC32 算法</strong>：MPEG-2，多项式 0x04C11DB7，init=0xFFFFFFFF，无反射，无最终 XOR (App/Boot 同算法)</li>
+                <li>✅ <strong>USB 通道</strong>：App/Boot 均已注册 USB HID transport (Round 044)，主用通道 = USB；UART 仅作为 Boot 备用通道</li>
+                <li>⚠️ <strong>单帧限制</strong>：USB HID Report 64B（含 Report ID），剥后 63B 给协议；协议层帧体 11 + data_len ≤ 63 → <strong>单包 data ≤ 52B</strong>。超过 52B 的命令（仅 FC_FW_DATA）需主机分片；其余命令（START/HANDSHAKE/VERIFY/EXEC）均在单包内。</li>
+                <li>⚠️ UPG 状态停留依赖 ParamSave 成功，Flash 异常会卡死</li>
+            </ul>
+
+            <!-- 上位机 OTA 参考实现 -->
+            <h2>🛠 上位机 OTA 参考实现 (供工具开发)</h2>
+            <div class="phase">
+                <h3>1. USB HID 通信约束</h3>
+                <pre>// 单包上限计算 (USB HID Full Speed Interrupt):
+//   USB Report 总长:        64B  (含 1B Report ID, Boot 端用 Report ID=0x02)
+//   协议层可用:             63B  (剥 Report ID)
+//   协议帧头:               header(2) + devAddr(1) + reserved(1) + length(2) = 6B
+//   payload:                 func(1) + data(N) + CRC32(4) = N + 5B
+//   单包 data 上限 = 63 - 6 - 1 - 4 = 52B
+//
+// 命令单包 vs 分片:
+//   FC_HANDSHAKE          1B data  → 单包
+//   FC_DEVICE_INFO         0B      → 单包
+//   FC_RESET               0B      → 单包
+//   FC_UPGRADE_START       16/17B  → 单包
+//   FC_UPGRADE_VERIFY      0B      → 单包
+//   FC_UPGRADE_EXEC        0B      → 单包
+//   FC_FW_DATA             ≥4+data → 主机分片, data 每片 ≤ 52B (推荐 48B 留余)
+//
+// UART 通道 (备用):
+//   波特率 115200 (默认, 参数区 baudRate 可改)
+//   1 start + 8 data + 1 stop = 10 bit/byte → 单字节 86.8us
+//   单包理论上限受 UART DMA 限制 (1024B), 实际推荐 ≤ 256B 一片</pre>
+
+                <h3>2. 帧结构精确公式</h3>
+                <pre>// 发送帧总长 = 6 + (1 + data_len + 4) = 11 + data_len
+// 单包 data 上限 52B → 协议帧总长 11 + 52 = 63B (刚好填满 64B Report)
+//
+// 字段字序 (LE 小端):
+//   length(2):   [low byte, high byte]
+//   CRC32(4):    [b0, b1, b2, b3]  (LE)
+//   uint32_t 值: [b0, b1, b2, b3]  (LE)
+//
+// CRC32 算法 (与固件 Crc32Calc 一致):
+//   poly = 0x04C11DB7
+//   init = 0xFFFFFFFF
+//   无反射 (no reflection)
+//   无最终 XOR (no final xor)
+//   覆盖范围: 帧头 + devAddr + reserved + length + func + data (前 N+7 字节)
+//   注意: 这是 MPEG-2 风格 CRC32, 与 Python binascii.crc32 不同!</pre>
+
+                <h3>3. 完整 OTA 升级流程 (上位机伪代码)</h3>
+                <pre>#!/usr/bin/env python3
+# 上位机 OTA 参考实现 (Python 伪代码)
+import hid, struct, time
+
+VID, PID = 0x5377, 0x5378
+DEV_ADDR = 0x01
+
+def crc32_mpeg2(data: bytes) -> int:
+    """与固件 Crc32Calc 一致 (MPEG-2, 无反射/无最终 XOR)"""
+    crc = 0xFFFFFFFF
+    for b in data:
+        crc ^= b << 24
+        for _ in range(8):
+            crc = ((crc << 1) ^ 0x04C11DB7) & 0xFFFFFFFF if (crc & 0x80000000) else (crc << 1) & 0xFFFFFFFF
+    return crc
+
+def build_frame(func: int, data: bytes = b"") -> bytes:
+    payload = 1 + len(data) + 4  # FC + data + CRC
+    body = bytes([0x53, 0x77, DEV_ADDR, 0x00,
+                  payload & 0xFF, (payload >> 8) & 0xFF, func]) + data
+    crc = crc32_mpeg2(body)
+    return body + bytes([crc & 0xFF, (crc >> 8) & 0xFF,
+                         (crc >> 16) & 0xFF, (crc >> 24) & 0xFF])
+
+def send_and_recv(dev, tx: bytes, wait_ms: int = 800) -> bytes:
+    """发送 + 异步等响应 (drain 异步 DATA 行, 见 ComforTool daemon)"""
+    # 主机: 写入 HID Output Report (自动填 64B)
+    padded = tx.ljust(64, b'\x00')
+    dev.write(padded)
+    # 等设备处理 + 异步返回
+    time.sleep(0.15)
+    raw = dev.read(64, timeout_ms=wait_ms)
+    if raw and len(raw) > 0:
+        frame = raw[1:] if raw[0] == 0x02 else raw  # 剥 Report ID
+        return frame
+    return b""
+
+def ota_upgrade(dev, fw_image: bytes, fw_crc32: int, fw_ver: int,
+                bind_verify: int = 0, verify_level: int = 1):
+    """完整 IAP 升级流程: HANDSHAKE → START → DATA* → VERIFY → EXEC"""
+    fw_size = len(fw_image)
+
+    # ① HANDSHAKE (探活 + 确认 Boot 层, layer=0)
+    rsp = send_and_recv(dev, build_frame(0x01))
+    if rsp[6] != 0xFE or rsp[7+20] != 0:
+        raise RuntimeError("握手失败或不在 Boot 层")
+
+    # ② UPGRADE_START (16/17B data, 单包)
+    data = struct.pack("<IIII", fw_size, fw_crc32, fw_ver, bind_verify)
+    if verify_level in (0, 1, 2):  # FULL/MID/BASIC
+        data += bytes([verify_level])
+    rsp = send_and_recv(dev, build_frame(0x03, data))
+    if rsp[7] != 0:
+        raise RuntimeError(f"擦除失败 result={rsp[7]}")
+
+    # ③ FW_DATA 分片 (单包 data ≤ 52B, 推荐 48B)
+    CHUNK_SIZE = 48
+    seq = 0
+    offset = 0
+    while offset < fw_size:
+        chunk = fw_image[offset:offset + CHUNK_SIZE]
+        data = struct.pack("<HH", seq, offset) + chunk
+        rsp = send_and_recv(dev, build_frame(0x04, data))
+        # 响应 [seq 2B][result 1B]
+        result = rsp[7+2]
+        if result != 0:
+            raise RuntimeError(f"写 Flash 失败 seq={seq} result={result}")
+        offset += len(chunk)
+        seq += 1
+
+    # ④ UPGRADE_VERIFY (空 data, 内部 CRC+Size+向量+绑定 校验)
+    rsp = send_and_recv(dev, build_frame(0x05))
+    res, sub = rsp[7], rsp[7+1]
+    if res != 0:
+        raise RuntimeError(f"校验失败 result={res} subCode={sub} "
+                           f"(1=CRC 2=Size 3=Vector[0=MSP 1=Reset] 4=Bind)")
+
+    # ⑤ UPGRADE_EXEC (空 data, ParamSave + 软复位)
+    rsp = send_and_recv(dev, build_frame(0x06))
+    if rsp[7] != 0:
+        raise RuntimeError(f"Exec 拒绝 result={rsp[7]}")
+    # 设备将软复位, 等待新 App 启动后再发 HANDSHAKE 验证 layer=1
+
+# 使用示例:
+#   dev = hid.Device(vendor_id=VID, product_id=PID)
+#   dev.open_path(hid.enumerate(VID, PID)[0]['path'])
+#   ota_upgrade(dev, open('app.bin','rb').read(), fw_crc32, fw_ver, bind_verify, verify_level=1)
+</pre>
+
+                <h3>4. 错误码与恢复策略</h3>
+                <pre>// IAP 流程错误码 (Boot 返回 result 字段) 与建议恢复动作:
+UPG_NO_SPACE(1):    FwSize > 40KB 或 == 0         → 检查 app.bin 大小
+UPG_ERASE_FAIL(2):  Flash 擦除失败 (硬件)        → 重启设备, 重试 START
+DATA_FLASH_FAIL(2): Flash 写失败 (addr 越界/坏块) → 检查 addrOffset, 重传该包
+DATA_ADDR_ERR(3):   addrOffset + dataLen 越界     → 重新计算分片, 重传
+VERIFY_CRC(1):      CRC 不匹配                    → 重新计算 FwCrc32, 重传整个 DATA
+VERIFY_SIZE(2):     Written != FwSize              → 检查丢包, 重传漏掉的包
+VERIFY_VECTOR(3):   MSP/Reset 向量无效 (subCode)  → 检查固件 .bin 头部
+VERIFY_BIND(4):     绑定校验失败 (FULL 模式)      → 用相同 deviceUidHash 重新算 BindVerify
+
+// 通用恢复:
+//   - 任一 IAP 错误: 主机可重发命令 (Boot 仍处于当前 IAP 状态)
+//   - 恢复 IAP 状态: 发一次 UPGRADE_START (从 IDLE 重置到 ERASED)
+//   - 设备卡死: 按复位或重新上电, 重启后 Boot 看 status 是否为 UPG 决定停留</pre>
+
+                <h3>5. 参数计算 (用于 UPGRADE_START)</h3>
+                <pre>// 主机在发 UPGRADE_START 前必须算好:
+uint32_t fw_size   = len(fw_image);                     // 字节数, ≤ 40KB
+uint32_t fw_crc32  = crc32_mpeg2(fw_image);             // 覆盖整个 fw_image (字节序见下)
+uint32_t fw_ver    = <业务定义版本号>;
+uint32_t bind_vfy  = (verify_level == FULL) ? crc32_mpeg2(fw_image) ^ reflect(g_sParam.deviceUidHash, 4)
+                                              : 0;     // FULL 时绑定, 需用设备 UID 哈希
+                                                              // reflect 在 Boot_Param.c Crc32CalcReflect
+uint8_t  lvl       = 0;  // FULL: 含绑定; 1=MID: CRC+Size+向量; 2=BASIC: CRC+Size
+// bind_vfy 严格按 Crc32CalcReflect 算法 (对 data||suffix 串接做同一 CRC32)
+
+// fw_crc32 字节序:
+//   主机算 crc32_mpeg2(fw_image) → uint32
+//   通过 struct.pack("<I", crc) 转 LE 4B 写入 data 字段
+//   设备按 LE 4B 读出还原为 uint32, 与 Crc32Calc(APP_FLASH_ORIGIN, FwSize) 对比
+//   设备端 Crc32Calc 也是 MPEG-2 风格, 算法一致</pre>
+
+                <h3>6. 时序与超时 (重要)</h3>
+                <pre>// 上位机需合理设置超时:
+START:  wait_ms ≥ 1500  (擦 Flash 慢, 1 页 ~50ms, 40 扇区最差 2s)
+DATA:   wait_ms ≥ 500   (写 1 扇区 ~10-50ms, 单包通常 <100ms)
+VERIFY: wait_ms ≥ 800   (CRC 重算 + 向量校验, 40KB 需 ~10ms)
+EXEC:   wait_ms ≥ 300   (ParamSave + 复位, <100ms)
+
+// 关键: 设备 IN 端 16ms 轮询, OUT 报告主机需在 16ms 内取走 (否则丢包)
+// 建议主机持续 poll IN 报告, 不要等响应才发下一包
+
+// 升级完成后:
+//   1. Boot 软复位 → 跳新 App (App 启动需要几十~几百 ms)
+//   2. 主机延时 500~1000ms 后发 HANDSHAKE, 应回 layer=1 (App 升级成功)
+//   3. 也可发 DEVICE_INFO (0x07) 检查 version 字段确认是新版本</pre>
+            </div>
+    </div>
+</body>
+</html>

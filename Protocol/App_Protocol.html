@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>App USB Protocol — Host API Reference</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f5f7fb; color: #1f2937; line-height: 1.65; padding: 24px; font-size: 14.5px; }
+.container { max-width: 1000px; margin: 0 auto; }
+h1 { color: #0b3d91; font-size: 1.65em; border-bottom: 3px solid #0b3d91; padding-bottom: 12px; margin-bottom: 6px; letter-spacing: .3px; }
+.subtitle { color: #5b6b8c; margin-bottom: 20px; font-size: .93em; }
+h2 { color: #0b3d91; margin-top: 32px; margin-bottom: 14px; padding: 6px 0 6px 12px; border-left: 5px solid #0b3d91; background: linear-gradient(90deg, #eef3fb 0%, transparent 75%); font-size: 1.28em; }
+h3 { color: #1a4fa0; margin-top: 18px; margin-bottom: 8px; font-size: 1.08em; }
+h4 { color: #2a5db0; margin-top: 14px; margin-bottom: 6px; font-size: 1em; font-weight: 600; }
+p { margin: 7px 0; }
+.meta { background: #fff; border: 1px solid #e2e8f3; border-left: 4px solid #0b3d91; border-radius: 8px; padding: 12px 16px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(11,61,145,.05); }
+.phase { background: #fff; border: 1px solid #e2e8f3; border-radius: 8px; padding: 16px 18px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(11,61,145,.05); }
+table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 6px; overflow: hidden; margin: 10px 0; font-size: .92em; }
+th, td { padding: 7px 10px; text-align: left; border-bottom: 1px solid #e8edf6; vertical-align: top; }
+th { background: #0b3d91; color: #fff; font-weight: 600; }
+tr:nth-child(even) td { background: #f8fafe; }
+td.mono, code.mono { font-family: 'SF Mono', 'Monaco', 'Menlo', monospace; }
+code { background: #eaf0fa; color: #0b3d91; padding: 1px 6px; border-radius: 4px; font-family: 'SF Mono', 'Monaco', 'Menlo', monospace; font-size: .9em; }
+pre { background: #0b2046; color: #e6edf7; padding: 12px 14px; border-radius: 8px; overflow-x: auto; font-size: .84em; line-height: 1.55; font-family: 'SF Mono', 'Monaco', 'Menlo', monospace; border: 1px solid #0b3d91; }
+ul, ol { margin-left: 22px; margin-top: 4px; }
+li { margin: 3px 0; }
+.note { background: #eef3fb; border-left: 4px solid #0b3d91; padding: 10px 14px; border-radius: 6px; margin: 10px 0; }
+.note-title { color: #0b3d91; font-weight: 700; margin-bottom: 4px; font-size: .95em; }
+.warn { background: #fff8e8; border-left: 4px solid #e8b400; padding: 10px 14px; border-radius: 6px; margin: 10px 0; }
+.warn-title { color: #b8860b; font-weight: 700; margin-bottom: 4px; font-size: .95em; }
+.tip { background: #eef7ee; border-left: 4px solid #2e7d32; padding: 10px 14px; border-radius: 6px; margin: 10px 0; }
+.tip-title { color: #2e7d32; font-weight: 700; margin-bottom: 4px; font-size: .95em; }
+.quick { background: #f0f4fb; border-left: 4px solid #2a5db0; padding: 10px 14px; border-radius: 6px; margin: 10px 0; }
+.quick-title { color: #2a5db0; font-weight: 700; margin-bottom: 4px; font-size: .95em; }
+.foot { margin-top: 30px; padding-top: 12px; border-top: 1px solid #d5dde9; color: #5b6b8c; font-size: .88em; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>App USB Protocol — Host API Reference</h1>
+<div class="subtitle">应用层通信协议 · 命令 / 帧格式 / 校验 / 子命令 · 完整 API 参考</div>
+
+<div class="meta">
+<p style="margin:0;"><strong>协议版本：</strong><code>2</code> &nbsp;|&nbsp; <strong>传输：</strong>USB HID Interrupt / 64B 包 / 16ms 轮询 / 报告 ID=<code>0x02</code></p>
+<p style="margin:6px 0 0 0;"><strong>响应规则：</strong>响应 <code>func</code> = 请求 <code>func ^ 0xFF</code>（如 <code>0x01→0xFE</code>、<code>0x14→0xEB</code>、<code>0x15→0xEA</code>、<code>0x16→0xE9</code>）</p>
+</div>
+
+<!-- 帧格式 -->
+<h2>1. 帧格式（所有命令通用）</h2>
+<div class="phase">
+<pre>┌──────┬──────┬─────┬─────┬─────────┬──────┬─────────┬─────────┐
+│ 0x53 │ 0x77 │ ADDR│ 0x00│ length  │ func │ data    │ crc32   │
+│  S   │  w   │ 1B  │RSV  │ LE16     │ 1B   │ N bytes  │ LE32    │
+└──────┴──────┴─────┴─────┴─────────┴──────┴─────────┴─────────┘
+  0    1    2     3    4     5   6    7..7+N  7+N+1..7+N+4</pre>
+<table>
+<tr><th>字段</th><th>长度</th><th>说明</th></tr>
+<tr><td><code>header1</code></td><td>1B</td><td>固定 <code>0x53</code>（ASCII 'S'）</td></tr>
+<tr><td><code>header2</code></td><td>1B</td><td>固定 <code>0x77</code>（ASCII 'w'）</td></tr>
+<tr><td><code>devAddr</code></td><td>1B</td><td>目标设备地址；本机默认 <code>0x01</code>，广播 <code>0xFF</code></td></tr>
+<tr><td><code>reserved</code></td><td>1B</td><td>固定 <code>0x00</code>；非 0 静默丢弃（Round 018 起强制校验）</td></tr>
+<tr><td><code>length</code></td><td>2B LE</td><td><strong>payload</strong> 字节数 = <code>1 + N + 4</code>（func + data + CRC32）；范围 <code>5..1029</code></td></tr>
+<tr><td><code>func</code></td><td>1B</td><td>命令码（见 §3）</td></tr>
+<tr><td><code>data</code></td><td>N</td><td>命令参数或响应数据，<code>N = length - 5</code></td></tr>
+<tr><td><code>crc32</code></td><td>4B LE</td><td>覆盖前面 <code>N + 7</code> 字节；CRC32 (MPEG-2, poly=0x04C11DB7, init=0xFFFFFFFF, 无反射, 无最终 XOR)</td></tr>
+</table>
+<div class="warn">
+<div class="warn-title">约束</div>
+<ul>
+<li><strong>字序</strong>：多字节字段（小端 LE），<code>length[lo,hi]</code>, <code>crc32[b0,b1,b2,b3]</code>。</li>
+<li><strong>校验</strong>：CRC 不匹配、length 越界或 reserved≠0x00 → 设备静默丢弃，<strong>不响应</strong>。</li>
+</ul>
+</div>
+</div>
+
+<!-- USB 物理层 -->
+<h2>2. USB HID 传输层</h2>
+<div class="phase">
+<h3>端点</h3>
+<table>
+<tr><th>EP</th><th>方向</th><th>类型</th><th>包大小</th><th>轮询</th></tr>
+<tr><td>EP1</td><td>IN（设备→主机）</td><td>Interrupt</td><td>64B</td><td>16 ms</td></tr>
+<tr><td>EP2</td><td>OUT（主机→设备）</td><td>Interrupt</td><td>64B</td><td>16 ms</td></tr>
+</table>
+<h3>HID 报告 ID</h3>
+<p>设备发送的 64B Interrupt Report <strong>第一个字节</strong>固定为报告 ID <code>0x02</code>。主机接收时先剥除这个字节，剩余 63B 才是协议层帧。</p>
+<h3>HID 描述符</h3>
+<pre>报告描述符: Usage Page 0x8C (Vendor Defined), Collection Application
+              Input + Output + Feature (各 64B 或 2B)
+接口类    : HID (0x03)
+子类/协议  : 0 / 0</pre>
+<div class="warn">
+<div class="warn-title">单包帧大小限制</div>
+<p>帧体 ≤ 63B（剥掉 Report ID）。即 <code>data_len ≤ 63 - 7 = 56</code> 字节的单包可承载。需要更大帧时必须实现 USB 分片协议（本工程不实现）。</p>
+</div>
+</div>
+
+<!-- 命令总览 -->
+<h2>3. 命令总览</h2>
+<div class="phase">
+<p>App 实现 7 个命令。其余命令（FC=0x03/0x04/0x05/0x06/0x09）由 Bootloader 处理（详见 Boot_Protocol.html）。</p>
+<table>
+<tr><th>FC</th><th>名称</th><th>Host → Device</th><th>Device → Host</th><th>用途</th></tr>
+<tr><td><code>0x01</code></td><td>FC_HANDSHAKE</td><td>—</td><td>28B: result/protoVer/status/UID/uidHash/layer/upgradeCount/baudRate</td><td>发现/存活探测</td></tr>
+<tr><td><code>0x02</code></td><td>FC_ENTER_BOOT</td><td>—</td><td>1B: result</td><td>预升级: 置 UPG 标志 + 延时 50ms + 自动软复位进 Boot</td></tr>
+<tr><td><code>0x07</code></td><td>FC_DEVICE_INFO</td><td>—</td><td>34B: result/addr/hwVersion/version (App层=swVersion)</td><td>查询版本 / 设备地址</td></tr>
+<tr><td><code>0x08</code></td><td>FC_RESET</td><td>—</td><td>1B: result</td><td>软件复位 (空参数, 回 OK 后延时 20ms 再复位)</td></tr>
+<tr><td><code>0x09</code></td><td>FC_EXIT_BOOT</td><td>—</td><td>1B: result</td><td>退出升级 (Boot 处理); App 忽略</td></tr>
+<tr><td><code>0x14</code></td><td>FC_RFID_14443A</td><td>data 首字节为子命令码</td><td>异步响应, 格式见 §8 (subCmd 0x00~0x02/0x10~0x13/0x20~0x21/0x30~0x35)</td><td>ISO14443A 射频卡操作</td></tr>
+<tr><td><code>0x15</code></td><td>FC_RFID_15693</td><td>data 首字节为子命令码</td><td>分片格式见 §7</td><td>ISO15693 射频卡操作</td></tr>
+<tr><td><code>0x16</code></td><td>FC_RFID_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 格式见 §9 (subCmd 0x00~0x03)</td><td>射频控制原语 (INIT/关/开/延时)</td></tr>
+</table>
+<p>响应帧的 <code>func</code> = 请求 <code>func ^ 0xFF</code>（例如 <code>0x01 → 0xFE</code>，<code>0x15 → 0xEA</code>）。</p>
+</div>
+
+<!-- FC_HANDSHAKE -->
+<h2>4. FC_HANDSHAKE (0x01)</h2>
+<div class="phase">
+<h4>请求</h4>
+<pre>发送帧（data 为空）:
+53 77 01 00 05 00 01  [CRC32 4B]
+│                       │
+header                   FC=0x01
+length=5 (FC + CRC32)</pre>
+
+<h4>响应 data（28 字节, App/Boot 一致）</h4>
+<table>
+<tr><th>偏移</th><th>字段</th><th>类型</th><th>说明</th></tr>
+<tr><td>0</td><td><code>result</code></td><td>u8</td><td><code>0</code>=<code>RESULT_OK</code>；其他=错误</td></tr>
+<tr><td>1</td><td><code>protoVer</code></td><td>u8</td><td>协议版本 = <code>2</code></td></tr>
+<tr><td>2</td><td><code>status</code></td><td>u8</td><td>设备状态：<code>0</code>=IDLE / <code>1</code>=RUN / <code>2</code>=UPG / <code>3</code>=FAULT</td></tr>
+<tr><td>3</td><td><code>UID</code></td><td>12B</td><td>STM32 唯一 ID（96 位）</td></tr>
+<tr><td>15</td><td><code>uidHash</code></td><td>u32 LE</td><td>CRC32(UID)</td></tr>
+<tr><td>19</td><td><code>layer</code></td><td>u8</td><td><code>1</code>=App（Boot 返回 <code>0</code>）</td></tr>
+<tr><td>20</td><td><code>upgradeCount</code></td><td>u32 LE</td><td>累计升级次数</td></tr>
+<tr><td>24</td><td><code>baudRate</code></td><td>u32 LE</td><td>UART 当前波特率</td></tr>
+</table>
+<h4>示例响应</h4>
+<pre>53 77 01 00 21 00 FE [28B] [CRC32 4B]
+            │       │   └─ func = 0x01 ^ 0xFF = 0xFE
+            │       └─ length = 0x21 = 33 = 1(func) + 28(payload) + 4(CRC)</pre>
+</div>
+
+<!-- FC_ENTER_BOOT -->
+<h2>5. FC_ENTER_BOOT (0x02)</h2>
+<div class="phase">
+<h4>请求</h4>
+<pre>53 77 01 00 05 00 02  [CRC32 4B]
+                      └─ FC=0x02</pre>
+<h4>响应 data（1 字节）</h4>
+<table>
+<tr><th>值</th><th>含义</th></tr>
+<tr><td><code>0</code></td><td><code>RESULT_OK</code> — 参数已保存，设备将软复位进入 Boot 升级模式</td></tr>
+<tr><td><code>2</code></td><td><code>ENTER_BOOT_PARAM_ERR</code> — Flash 参数区写入失败</td></tr>
+</table>
+<div class="warn">
+<div class="warn-title">后续（预升级指令）</div>
+<p>App 收到本命令后：写 <code>deviceStatus = PARAM_STATUS_UPG (2)</code> 到参数区（持久化），回 OK，<strong>延时 50ms</strong>（等 ACK 经 USB 1ms 帧周期完整推送 + 主机拉走），然后 <code>NVIC_SystemReset()</code> <strong>自动软复位</strong> → Bootloader 接管。Boot 看到 <code>status=UPG</code> 后 <code>stayInUpdate=true</code>，<strong>不超时</strong>，停留等待升级。</p>
+</div>
+<div class="tip">
+<div class="tip-title">退出 Boot（不升级）</div>
+<p>若进 Boot 后决定不升级，主机发 <code>FC_EXIT_BOOT (0x09)</code>（由 Boot 处理）：Boot 校验 App flash 完好后清 <code>deviceStatus=RUN</code> + 复位跳 App。详见 Boot_Protocol.html。</p>
+</div>
+</div>
+
+<!-- FC_DEVICE_INFO -->
+<h2>6. FC_DEVICE_INFO (0x07)</h2>
+<div class="phase">
+<h4>请求</h4>
+<pre>53 77 01 00 05 00 07  [CRC32 4B]
+                      └─ FC=0x07</pre>
+<h4>响应 data（34 字节, App 层）</h4>
+<table>
+<tr><th>偏移</th><th>字段</th><th>长度</th><th>说明</th></tr>
+<tr><td>0</td><td><code>result</code></td><td>1B</td><td><code>0</code>=OK</td></tr>
+<tr><td>1</td><td><code>addr</code></td><td>1B</td><td>设备地址（默认 0x01）</td></tr>
+<tr><td>2</td><td><code>hwVersion</code></td><td>16B</td><td>硬件版本字符串</td></tr>
+<tr><td>18</td><td><code>version</code></td><td>16B</td><td>App 层固件版本（swVersion）</td></tr>
+</table>
+<p><strong>Boot 层响应格式相同</strong>，但 <code>version</code> 字段内容为 <code>bootVersion</code>。</p>
+</div>
+
+<!-- FC_RESET -->
+<h2>7. FC_RESET (0x08)</h2>
+<div class="phase">
+<h4>请求</h4>
+<pre>53 77 01 00 05 00 08  [CRC32 4B]
+                      └─ FC=0x08 (data 必须为空)</pre>
+<h4>响应 data（1 字节）</h4>
+<table>
+<tr><th>值</th><th>含义</th></tr>
+<tr><td><code>0</code></td><td><code>RESULT_OK</code> — 已调度复位，延时 20ms 后 NVIC_SystemReset</td></tr>
+<tr><td><code>1</code></td><td><code>RESET_PARAM_ERR</code> — data 非空（必须为空参数）</td></tr>
+</table>
+<div class="warn">
+<div class="warn-title">时序</div>
+<p>回 OK 后延时 <strong>20ms</strong>（让 USB 1ms 帧周期完整推送 ACK + 主机拉走）再 <code>NVIC_SystemReset()</code>，否则 ACK 可能随复位丢失。主机收到 OK 后应等待设备重新枚举。</p>
+</div>
+</div>
+
+<!-- FC_RFID_15693 -->
+<h2>8. FC_RFID_15693 (0x15) — ISO15693 射频卡操作</h2>
+<div class="phase">
+<p>本命令把 ISO15693 射频卡操作打包暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>subCmd</code></strong>（0x00~0x08），其后为子命令参数。块大小固定为 <code>4B</code>。</p>
+
+<h3>8.1 子命令总览</h3>
+<table>
+<tr><th>子码</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th></tr>
+<tr><td><code>0x00</code></td><td>Inventory 盘点</td><td><code>[0x00]</code></td><td><code>[0x00][seq][total][result][uidCount][UID 8B…]</code></td></tr>
+<tr><td><code>0x01</code></td><td>ReadBlock 读块</td><td><code>[0x01][UID 8B][addr][count]</code></td><td><code>[0x01][seq][total][result][data]</code>（可分片）</td></tr>
+<tr><td><code>0x02</code></td><td>WriteBlock 写块</td><td><code>[0x02][UID 8B][addr][count][data]</code></td><td><code>[0x02][seq][total][result]</code></td></tr>
+<tr><td><code>0x03</code></td><td>DSFID 读写</td><td><code>[0x03][UID 8B][mode][value?]</code></td><td>读:<code>[…][result][dsfid]</code> / 写·锁:<code>[…][result]</code></td></tr>
+<tr><td><code>0x04</code></td><td>EAS 操作</td><td><code>[0x04][UID 8B][op]</code></td><td><code>[0x04][seq][total][result]</code></td></tr>
+<tr><td><code>0x05</code></td><td>LockBlock 锁块</td><td><code>[0x05][UID 8B][addr]</code></td><td><code>[0x05][seq][total][result]</code></td></tr>
+<tr><td><code>0x06</code></td><td>StayQuiet 静默</td><td><code>[0x06][UID 8B]</code></td><td><code>[0x06][seq][total][result]</code></td></tr>
+<tr><td><code>0x07</code></td><td>WriteAFI 写 AFI</td><td><code>[0x07][UID 8B][afi]</code></td><td><code>[0x07][seq][total][result]</code></td></tr>
+<tr><td><code>0x08</code></td><td>LockAFI 锁 AFI</td><td><code>[0x08][UID 8B]</code></td><td><code>[0x08][seq][total][result]</code></td></tr>
+</table>
+<p><strong>mode</strong>（0x03）：<code>0</code>=读 / <code>1</code>=写(带 value) / <code>2</code>=锁。<strong>op</strong>（0x04）：<code>0</code>=置位 / <code>1</code>=复位 / <code>2</code>=锁定。</p>
+
+<h3>8.2 分片协议</h3>
+<p>USB HID 单包 <code>data ≤ 56B</code>。所有 FC=0x15 响应<strong>统一带分片头 <code>[seq][total]</code></strong>（紧跟 subCmd 之后），<code>total=1</code> 即单包。读块响应载荷超 56B 时按每片 payload ≤ 53B 拆分连发：</p>
+<pre>响应 data = [subCmd][seq][total][payload]
+  seq   = 分片序号 0..total-1
+  total = 总片数 (1=不分片)
+  payload:
+    - 读响应: 片0含 [result][data…], 后续片纯 data 续传
+    - 其余子命令: total=1, payload=[result]…</pre>
+<div class="warn">
+<div class="warn-title">约束</div>
+<ul>
+<li>写块受 SDK 缓冲限制 <code>count ≤ 8</code>（<code>4*8=32B</code>），单包足够，不分片。</li>
+<li>读块 <code>count ≤ 32</code>，<code>count*4 &gt; 53B</code> 时启用分片。</li>
+<li>非 0x01 子命令 <code>total</code> 必须为 1，否则 <code>RFID_FRAG_ERR</code>。</li>
+</ul>
+</div>
+
+<h3>8.3 报文示例</h3>
+<pre>Inventory(0x00):
+  请求: 53 77 01 00 06 00 15 00 [CRC32 4B]
+  响应: 53 77 01 00 10 00 EA 00 00 01 01 [UID 8B] [CRC32 4B]
+                       └subCmd └seq └total └uidCount=1
+ReadBlock(0x01, count=4, 单包):
+  请求: 53 77 01 00 10 00 15 01 [UID 8B] [addr] [count=4] [CRC32 4B]
+  响应: 53 77 01 00 0E 00 EA 01 00 01 00 [data 16B] [CRC32 4B]
+EAS置位(0x04, op=0):
+  请求: 53 77 01 00 0F 00 15 04 [UID 8B] 00 [CRC32 4B]
+  响应: 53 77 01 00 08 00 EA 04 00 01 00 [CRC32 4B]</pre>
+</div>
+
+<!-- FC_RFID_14443A -->
+<h2>9. FC_RFID_14443A (0x14) — ISO14443A 射频卡操作</h2>
+<div class="phase">
+<p>本命令把 ISO14443A / Mifare / Topaz 射频卡操作打包暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>subCmd</code></strong>，其后为子命令参数。</p>
+<p>所有响应<strong>统一带分片头 <code>[subCmd][seq=0][total=1][result][data..]</code></strong>（与 §8 15693 同款）；当前实现所有子命令 <code>total=1</code>，单包可发（最大 TransAPDU 响应 ≤ 64B）。</p>
+
+<h3>9.1 子命令总览</h3>
+<table>
+<tr><th>子码</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th></tr>
+<tr><td><code>0x00</code></td><td>GetUid 读 UID</td><td><code>[0x00]</code></td><td><code>[0x00][0][1][result][count][uidType 2B BE][uidLen][uid..][sak]</code>（count=1）</td></tr>
+<tr><td><code>0x01</code></td><td>Halt 静默</td><td><code>[0x01]</code></td><td><code>[0x01][0][1][result]</code></td></tr>
+<tr><td><code>0x02</code></td><td>AuthM1 M1 认证</td><td><code>[0x02][uid 4B][authMode 1B][key 6B][blockAddr 1B]</code></td><td><code>[0x02][0][1][result]</code></td></tr>
+<tr><td><code>0x10</code></td><td>RATS ISO14443A-4 入口</td><td><code>[0x10]</code></td><td><code>[0x10][0][1][result][ATS..]</code></td></tr>
+<tr><td><code>0x11</code></td><td>TransAPDU 透传</td><td><code>[0x11][apdu 1..64B]</code>（长度由帧 length 隐式给出，无独立 len 字节）</td><td><code>[0x11][0][1][result][R-APDU..]</code></td></tr>
+<tr><td><code>0x12</code></td><td>Topaz ReadBlock</td><td><code>[0x12][addr 1B]</code></td><td><code>[0x12][0][1][result][data 8B]</code></td></tr>
+<tr><td><code>0x13</code></td><td>Topaz WriteBlock</td><td><code>[0x13][addr 1B][data 8B]</code></td><td><code>[0x13][0][1][result]</code></td></tr>
+<tr><td><code>0x20</code></td><td>WriteBlockM0 写 4B（Ultralight 页，0xA2，无认证）</td><td><code>[0x20][blockAddr][data 4B]</code></td><td><code>[0x20][0][1][result]</code></td></tr>
+<tr><td><code>0x21</code></td><td>ReadBlockM0 读 16B（Ultralight，0x30，4 页连读，无认证）</td><td><code>[0x21][blockAddr]</code></td><td><code>[0x21][0][1][result][data 16B]</code></td></tr>
+<tr><td><code>0x30</code></td><td>AuthReadBlockM1 读 16B（Mifare Classic，0x30）</td><td><code>[0x30][blockAddr][mode][key 6B][uid 4B]</code>（强制 AuthM1，uid 始终在帧，空=00 00 00 00）</td><td><code>[0x30][0][1][result][data 16B]</code></td></tr>
+<tr><td><code>0x31</code></td><td>AuthWriteBlockM1 写 16B（Mifare Classic，0xA0）</td><td><code>[0x31][blockAddr][mode][key 6B][uid 4B][data 16B]</code></td><td><code>[0x31][0][1][result]</code></td></tr>
+<tr><td><code>0x32</code></td><td>AuthIncrement M1 值块加（0xC1+自动Transfer）</td><td><code>[0x32][valueAddr][transAddr][mode][key 6B][uid 4B][value 4B]</code></td><td><code>[0x32][0][1][result]</code></td></tr>
+<tr><td><code>0x33</code></td><td>AuthDecrement M1 值块减（0xC0+自动Transfer）</td><td><code>[0x33][valueAddr][transAddr][mode][key 6B][uid 4B][value 4B]</code></td><td><code>[0x33][0][1][result]</code></td></tr>
+<tr><td><code>0x34</code></td><td>AuthTransfer M1 值块裸提交（0xB0）</td><td><code>[0x34][transAddr][mode][key 6B][uid 4B]</code></td><td><code>[0x34][0][1][result]</code></td></tr>
+<tr><td><code>0x35</code></td><td>AuthRestore M1 值块恢复（0xC2+自动Transfer）</td><td><code>[0x35][valueAddr][transAddr][mode][key 6B][uid 4B][value 4B]</code></td><td><code>[0x35][0][1][result]</code></td></tr>
+</table>
+<p><strong>mode 字段</strong>（仅 0x02 AuthM1 与 0x30~0x35 M1 系列的 <code>mode</code>）= authMode：<code>0x60</code>=KeyA / <code>0x61</code>=KeyB。<strong>Auth 前缀命令强制 AuthM1</strong>：mode 非 0x60/0x61 一律 <code>RFID_PARAM_ERR</code>。Mifare 值块操作（Increment/Decrement/Transfer/Restore）必须先对所在扇区 AuthM1，故均带 Auth 前缀。<strong>M0 (0x20/0x21) 与 Topaz (0x12/0x13) 无 mode/key/uid 字段</strong>。<strong>blockAddr/valueAddr/transAddr</strong>：Mifare Classic 块号（0..63，按扇区）；M0 为页号。</p>
+<p><strong>一键 UID 校验</strong>（同步时序）：仅<strong>Auth 前缀命令</strong>（0x30~0x35）帧中带 <code>mode + key + uid 4B</code>，uid 字段<strong>始终在帧中 4 字节</strong>（空 = <code>00 00 00 00</code>，不是省略字段）。<code>uid 全 0</code> → 设备内部 <code>GetUid(REQALL)</code> 盘点拿 uid 再 <code>AuthM1</code>；<code>uid 非全 0</code> → 用下发 uid 直接 <code>AuthM1</code>（跳过盘点）。主机一条命令完成「盘点→认证→操作」，无需先发 GetUid+AuthM1。<strong>M0 (0x20/0x21) 与 Topaz (0x12/0x13) 不带 uid 字段</strong>，由设备内部激活卡（无密钥认证）。</p>
+<p><strong>GetUid 新格式</strong>：响应 result 后为 <code>[count][uidType 2B BE][uidLen][uid..][sak]</code>。<code>uidType</code> = 卡型码（<code>0x0044</code>=MF0 Ultralight / <code>0x0004</code>=MF1 S50 / <code>0x0002</code>=MF1 S70 / <code>0x0344</code>=MF3 DESFire）；<code>uidLen</code> 用于定界 uid/sak 边界（M1 UID 可 4B/7B 级联，长度可变）；保留 sak。当前 <code>count 上限 1</code>。</p>
+<p><strong>AuthWriteBlockM1 (0x31) vs WriteBlockM0 (0x20)</strong>（底层都只发原始字节）：<strong>0x31</strong> 走 Classic <code>0xA0</code>，写 16B 块（数据块/尾块/值块——值块需主机按 NXP 值块格式 <code>[value 4B][~value 4B][value 4B][addr 1B][~addr 1B][pad 2B]</code> 共 16B 组好整块下发）。<strong>0x20</strong> 走 Ultralight <code>0xA2</code>，写 4B 页，无认证字段。<strong>0x21</strong> 走 <code>0x30</code> 读，回 16B（4 页连读），无认证。M0 读写不对称（写 4B/读 16B）符合 Ultralight 物理特性。</p>
+<p><strong>值块四件套 (0x32/0x33/0x34/0x35)</strong>：电子钱包的增/减/转/恢复。<strong>AuthIncrement/AuthDecrement/AuthRestore</strong> 走 SDK <code>ISO14443A_Value</code>（opMode=0xC1/0xC0/0xC2），先对 <code>valueAddr</code> 所在扇区 AuthM1，把 <code>value</code> 加/减（Restore 原样读入、忽略 value）到卡内缓冲，再<strong>自动 Transfer</strong> 到 <code>transAddr</code>。<strong>AuthTransfer</strong> 为裸 <code>0xB0</code> 提交，仅把卡内缓冲写入 <code>transAddr</code>，<strong>依赖前序 Inc/Dec/Restore 已装入缓冲</strong>。<strong>AuthRestore</strong> 用于值块复制：把源值块原值装入缓冲并自动转到 transAddr，帧与 Inc/Dec 同构 17B（value 字段保留，卡端忽略）。</p>
+
+<h3>9.2 响应字段说明</h3>
+<table>
+<tr><th>子命令</th><th>成功时 result 之后的 data</th><th>说明</th></tr>
+<tr><td>GetUid (0x00)</td><td><code>count(1B)</code> + <code>uidType(2B BE)</code> + <code>uidLen(1B)</code> + <code>uid[uidLen]</code> + <code>sak(1B)</code></td><td>count=1；uidType=卡型码；UID 级联长度 4/7/10B，sak = Select ACK</td></tr>
+<tr><td>AuthReadBlockM1 (0x30)</td><td><code>data 16B</code></td><td>一键模式内部自动 AuthM1，认证失败则无 data</td></tr>
+<tr><td>ReadBlockM0 (0x21)</td><td><code>data 16B</code></td><td>M0 读 4 页连读 16B，设备内部激活（无认证），失败则无 data</td></tr>
+<tr><td>RATS (0x10)</td><td><code>ATS[len]</code></td><td>ISO14443A-4 ATS，变长</td></tr>
+<tr><td>TransAPDU (0x11)</td><td><code>R-APDU[..]</code></td><td>变长，≤ 64B；失败时无 data</td></tr>
+<tr><td>Topaz ReadBlock (0x12)</td><td><code>data 8B</code></td><td>Topaz 块固定 8B</td></tr>
+<tr><td>Halt / AuthM1 / AuthWriteBlockM1 / WriteBlockM0 / AuthIncrement / AuthDecrement / AuthTransfer / AuthRestore / Topaz Write（其余）</td><td>无</td><td>仅 result，无 data</td></tr>
+</table>
+
+<h3>9.3 分片与参数约束</h3>
+<div class="warn">
+<div class="warn-title">约束</div>
+<ul>
+<li>所有子命令 <code>total=1</code>（单包），保留分片头仅为与 15693 对齐。</li>
+<li><strong>AuthM1 (0x02)</strong>：<code>data = 13B</code>（subCmd + uid4 + mode1 + key6 + addr1），<code>dataLen-1 = 12</code>，不符则 <code>RFID_PARAM_ERR</code>。</li>
+<li><strong>AuthReadBlockM1 (0x30)</strong>：<code>dataLen-1 = 12</code>（blk + mode + key6 + uid4），强制 AuthM1、统一长度。uid 字段始终在帧，全 0 内部 GetUid，非 0 用下发 uid。无 authMode=0 免认证路径。</li>
+<li><strong>AuthWriteBlockM1 (0x31)</strong>：<code>dataLen-1 = 28</code>（blk1 + mode1 + key6 + uid4 + data16），强制 AuthM1；Classic 0xA0 写 16B 块。</li>
+<li><strong>WriteBlockM0 (0x20)</strong>：<code>dataLen-1 = 5</code>（blk1 + data4）；Ultralight 0xA2 写 4B 页，无认证（设备内部激活）。</li>
+<li><strong>ReadBlockM0 (0x21)</strong>：<code>dataLen-1 = 1</code>（blk1）；Ultralight 0x30 读 16B（4 页连读），无认证。</li>
+<li><strong>Topaz ReadBlock (0x12) / Topaz WriteBlock (0x13)</strong>：<code>dataLen-1 = 1 / 9</code>（addr1 / addr1+data8）。</li>
+<li><strong>AuthIncrement (0x32) / AuthDecrement (0x33) / AuthRestore (0x35)</strong>：<code>dataLen-1 = 17</code>（valueAddr1 + transAddr1 + mode1 + key6 + uid4 + value4），强制 AuthM1（认证 valueAddr 所在扇区）；Inc/Dec/Restore 后自动 Transfer 到 transAddr。Restore 的 value 字段卡端忽略，建议发 <code>00 00 00 00</code>。</li>
+<li><strong>AuthTransfer (0x34)</strong>：<code>dataLen-1 = 12</code>（transAddr1 + mode1 + key6 + uid4），强制 AuthM1（认证 transAddr 所在扇区）；裸 0xB0，依赖前序 Inc/Dec/Restore 已装入缓冲。</li>
+<li><strong>TransAPDU (0x11)</strong>：APDU 长度 1..64B（<code>dataLen-1</code>），无独立 len 字节，超界 <code>RFID_PARAM_ERR</code>。</li>
+<li>设备端作业队列 <code>RFID_A_JOB_QUEUE_LEN = 4</code>，满则回 <code>RFID_BUSY (0x0C)</code>。</li>
+<li>协议/射频由 <code>FC_RFID_CTRL (0x16)</code> 显式控制（见 §10），卡操作不再自动切换；主机须先 INIT+OPEN 再发卡操作。</li>
+</ul>
+</div>
+
+<h3>9.4 报文示例</h3>
+<pre>GetUid(0x00):
+  请求: 53 77 01 00 06 00 14 00 [CRC32 4B]
+  响应: 53 77 01 00 12 00 EB 00 00 01 00 01 00 04 04 [uid 4B] [sak] [CRC32 4B]
+                       └subCmd └seq └total └result └count=1 └uidType=0x0004(MF1_S50) └uidLen=4
+                       └─ func = 0x14 ^ 0xFF = 0xEB, length=0x12=18 (1+13+4)
+AuthReadBlockM1 一键(uid 空=00 00 00 00, 内部 GetUid, KeyA, blockAddr=0x04):
+  请求: 53 77 01 00 12 00 14 30 04 60 [key 6B] 00 00 00 00 [CRC32 4B]   ← dataLen-1=12, uid 全 0
+  响应: 53 77 01 00 14 00 EB 30 00 01 00 [data 16B] [CRC32 4B]
+AuthReadBlockM1 一键(带 uid, KeyA, blockAddr=0x04):
+  请求: 53 77 01 00 12 00 14 30 04 60 [key 6B] [uid 4B] [CRC32 4B]   ← dataLen-1=12, uid 非全 0 直接认证
+  响应: 53 77 01 00 14 00 EB 30 00 01 00 [data 16B] [CRC32 4B]
+AuthWriteBlockM1 一键(uid 空, KeyA, blockAddr=0x04, data 16B) — Classic 写数据块 (0xA0):
+  请求: 53 77 01 00 20 00 14 31 04 60 [key 6B] 00 00 00 00 [data 16B] [CRC32 4B]   ← dataLen-1=28
+  响应: 53 77 01 00 08 00 EB 31 00 01 00 [CRC32 4B]   ← result=RFID_OK
+WriteBlockM0 (blockAddr=0x04, data 4B) — Ultralight 写 4B 页 (0xA2), 无认证:
+  请求: 53 77 01 00 0B 00 14 20 04 [data 4B] [CRC32 4B]   ← dataLen-1=5, 设备内部激活
+  响应: 53 77 01 00 08 00 EB 20 00 01 00 [CRC32 4B]
+ReadBlockM0 (blockAddr=0x04) — Ultralight 读 16B (0x30, 4 页连读), 无认证:
+  请求: 53 77 01 00 07 00 14 21 04 [CRC32 4B]   ← dataLen-1=1
+  响应: 53 77 01 00 14 00 EB 21 00 01 00 [data 16B] [CRC32 4B]
+AuthIncrement 一键(valueAddr=0x08, transAddr=0x09, KeyA, value=0x00000001):
+  请求: 53 77 01 00 15 00 14 32 08 09 60 [key 6B] 00 00 00 00 01 00 00 00 [CRC32 4B]   ← dataLen-1=17, Inc+自动Transfer
+  响应: 53 77 01 00 08 00 EB 32 00 01 00 [CRC32 4B]
+AuthDecrement 一键(valueAddr=0x08, transAddr=0x09, KeyA, value=0x00000001):
+  请求: 53 77 01 00 15 00 14 33 08 09 60 [key 6B] 00 00 00 00 01 00 00 00 [CRC32 4B]   ← dataLen-1=17, Dec+自动Transfer
+  响应: 53 77 01 00 08 00 EB 33 00 01 00 [CRC32 4B]
+AuthTransfer 一键(transAddr=0x09, KeyA):
+  请求: 53 77 01 00 12 00 14 34 09 60 [key 6B] 00 00 00 00 [CRC32 4B]   ← dataLen-1=12, 裸 0xB0
+  响应: 53 77 01 00 08 00 EB 34 00 01 00 [CRC32 4B]
+AuthRestore 一键(valueAddr=0x08, transAddr=0x09, KeyA) — 值块复制 (0xC2+自动Transfer):
+  请求: 53 77 01 00 15 00 14 35 08 09 60 [key 6B] 00 00 00 00 00 00 00 00 [CRC32 4B]   ← dataLen-1=17, value=00000000(卡端忽略)
+  响应: 53 77 01 00 08 00 EB 35 00 01 00 [CRC32 4B]
+AuthM1(0x02, KeyA, blockAddr=0x04):
+  请求: 53 77 01 00 12 00 14 02 [uid 4B] 60 [key 6B] 04 [CRC32 4B]
+  响应: 53 77 01 00 08 00 EB 02 00 01 00 [CRC32 4B]   ← result=RFID_OK
+  失败: 53 77 01 00 08 00 EB 02 00 01 0D [CRC32 4B]   ← result=RFID14443_AUTH_ERR(0x0D)
+TransAPDU(0x11, apdu=00A40400...):
+  请求: 53 77 01 00 0C 00 14 11 [apdu 5B] [CRC32 4B]   ← length 由帧给出, 无 len 字节
+  响应: 53 77 01 00 .. 00 EB 11 00 01 00 [R-APDU..] [CRC32 4B]</pre>
+<div class="tip">
+<div class="tip-title">典型流程</div>
+<p>典型 Mifare Classic 读块流程：先 <code>0x00 GetUid</code> → <code>0x02 AuthM1</code>(同一卡 uid + 对应扇区密钥) → <code>0x30 AuthReadBlockM1</code>。认证只对当前会话有效，换扇区需重新 Auth。<strong>一键模式</strong>（强制 AuthM1、统一 uid 字段）：Auth 前缀命令帧中固定带 <code>mode + key + uid 4B</code>（uid 空时由设备内部盘点），单条命令完成「盘点→认证→操作」。<strong>值块</strong>：用 <code>0x32/0x33</code> 增减、<code>0x35</code> 恢复（均含自动转），<code>0x34</code> 裸提交。</p>
+</div>
+</div>
+
+<!-- FC_RFID_CTRL -->
+<h2>10. FC_RFID_CTRL (0x16) — 射频控制原语</h2>
+<div class="phase">
+<p>本命令把射频底层的 4 个控制原语暴露给上位机，由主机自行编排时序（取代旧版设备内自动 RF cycle）。<code>data</code> 区<strong>首字节为子命令码 <code>subCmd</code></strong>，其后为参数。</p>
+<p>所有响应<strong>同步</strong>（收到即执行并立即回包，不入作业队列），格式 <code>[subCmd][0][1][result]</code>。卡操作命令（FC=0x14/0x15）<strong>不再自动切换协议或控制射频</strong>——主机须先用本命令把射频置好，再发卡操作，否则 SDK 因 RF 关闭返回 <code>RFID_TIMEOUT/NO_TAG</code>。</p>
+
+<h3>10.1 子命令总览</h3>
+<table>
+<tr><th>子码</th><th>名称</th><th>Host → Device (data)</th><th>设备动作</th><th>Device → Host (data)</th></tr>
+<tr><td><code>0x00</code></td><td>INIT 协议初始化</td><td><code>[0x00][proto]</code></td><td>清 Crypto1On 残留 + 协议 Init + 置 <code>curProto</code></td><td><code>[0x00][0][1][result]</code></td></tr>
+<tr><td><code>0x01</code></td><td>CLOSE 关射频</td><td><code>[0x01]</code></td><td>关闭天线</td><td><code>[0x01][0][1][result]</code></td></tr>
+<tr><td><code>0x02</code></td><td>OPEN 开射频</td><td><code>[0x02]</code></td><td>打开天线</td><td><code>[0x02][0][1][result]</code></td></tr>
+<tr><td><code>0x03</code></td><td>DELAY 延时</td><td><code>[0x03][ms u8]</code>（0..255ms）</td><td>阻塞延时（阻塞主循环）</td><td><code>[0x03][0][1][result]</code></td></tr>
+</table>
+<p><strong>proto</strong>（0x00）：<code>0x01</code>=ISO15693 / <code>0x02</code>=ISO14443A。INIT 内部先清 <code>CRYPTO1ON</code> 位（清掉 14443A Mifare 认证后的流密码残留）再调对应协议 Init，属于"初始化为干净状态"的内部步骤。</p>
+
+<h3>10.2 典型时序（复刻旧自动 RfCycle）</h3>
+<pre>切到 14443A 并读卡 (等价旧 RfCycle):
+  ① CLOSE   53 77 01 00 06 00 16 01 [CRC32 4B]   → func=0xE9 data=01 00 01 00
+  ② INIT    53 77 01 00 07 00 16 00 02 [CRC32 4B]  ← proto=0x02(14443A)
+            → func=0xE9 data=00 00 01 00
+  ③ DELAY   53 77 01 00 07 00 16 03 06 [CRC32 4B]  ← 6ms 稳定
+            → func=0xE9 data=03 00 01 00
+  ④ OPEN    53 77 01 00 06 00 16 02 [CRC32 4B]
+            → func=0xE9 data=02 00 01 00
+  ⑤ GetUid  53 77 01 00 06 00 14 00 [CRC32 4B]    ← FC=0x14 卡操作
+            → func=0xEB data=00 00 01 00 01 [uidType 2B][uidLen][uid][sak]</pre>
+<p>同协议内连续卡操作无需重复 INIT/OPEN（curProto 已置）；切协议（14443A↔15693）才需重走 ①~④。</p>
+
+<h3>10.3 约束</h3>
+<div class="warn">
+<div class="warn-title">约束</div>
+<ul>
+<li><strong>同步阻塞</strong>：DELAY 会阻塞主循环指定毫秒，期间到达的 USB 帧缓存在解析器，DELAY 结束后下一轮处理。建议 ≤ 255ms（单次上限）。</li>
+<li><strong>开机默认关射频</strong>：上电后 RF 关闭，主机须显式 OPEN 后才能读卡；不发控制命令直接发卡操作 → <code>RFID_TIMEOUT(0x05)</code>。</li>
+<li><strong>INIT 无失败码</strong>：协议 Init 始终成功（仅配寄存器），故 INIT 成功恒回 <code>RFID_OK</code>；仅 proto 非法时回 <code>RFID_PARAM_ERR</code>。</li>
+<li>非法 subCmd → <code>RFID_SUBCMD_ERR(0x01)</code>；缺 subCmd/参数 → <code>RFID_PARAM_ERR(0x02)</code>。</li>
+</ul>
+</div>
+</div>
+
+<!-- 错误码 -->
+<h2>11. 错误码</h2>
+<div class="phase">
+<table>
+<tr><th>FC</th><th>码</th><th>宏</th><th>含义</th></tr>
+<tr><td>(所有)</td><td><code>0</code></td><td><code>RESULT_OK</code></td><td>成功</td></tr>
+<tr><td><code>0x02</code></td><td><code>2</code></td><td><code>ENTER_BOOT_PARAM_ERR</code></td><td>Flash 参数保存失败</td></tr>
+<tr><td><code>0x08</code></td><td><code>1</code></td><td><code>RESET_PARAM_ERR</code></td><td>RESET data 非空（必须为空参数）</td></tr>
+<tr><td colspan="4"><em>以下 FC=0x15 RFID 结果码：</em></td></tr>
+<tr><td><code>0x15</code></td><td><code>0x00</code></td><td><code>RFID_OK</code></td><td>成功</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x01</code></td><td><code>RFID_SUBCMD_ERR</code></td><td>未知子命令码</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x02</code></td><td><code>RFID_PARAM_ERR</code></td><td>参数错误（dataLen/count/mode/op 非法）</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x03</code></td><td><code>RFID_NO_TAG</code></td><td>无卡 / 盘点失败</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x04</code></td><td><code>RFID_UID_ERR</code></td><td>UID 错误（长度不足 / 全 0）</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x05</code></td><td><code>RFID_TIMEOUT</code></td><td>超时</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x06</code></td><td><code>RFID_COLLISION</code></td><td>碰撞错误</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x07</code></td><td><code>RFID_CRC_ERR</code></td><td>CRC 错误</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x08</code></td><td><code>RFID_COMM_ERR</code></td><td>通信/协议错误</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x09</code></td><td><code>RFID_WRITE_ERR</code></td><td>写/锁失败</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x0A</code></td><td><code>RFID_NOT_INIT</code></td><td>射频未初始化</td></tr>
+<tr><td><code>0x15</code></td><td><code>0x0B</code></td><td><code>RFID_FRAG_ERR</code></td><td>分片错误</td></tr>
+<tr><td><code>0x14/0x15</code></td><td><code>0x0C</code></td><td><code>RFID_BUSY</code></td><td>作业队列满（设备端调度器过载）</td></tr>
+<tr><td colspan="4"><em>以下 FC=0x14 RFID 专属结果码：</em></td></tr>
+<tr><td><code>0x14</code></td><td><code>0x0D</code></td><td><code>RFID14443_AUTH_ERR</code></td><td>Mifare Classic 密钥认证失败</td></tr>
+<tr><td colspan="4"><em>FC=0x16 (FC_RFID_CTRL) 复用 RFID 结果码：</em></td></tr>
+<tr><td><code>0x16</code></td><td><code>0x00</code></td><td><code>RFID_OK</code></td><td>原语执行成功</td></tr>
+<tr><td><code>0x16</code></td><td><code>0x01</code></td><td><code>RFID_SUBCMD_ERR</code></td><td>未知控制子命令码</td></tr>
+<tr><td><code>0x16</code></td><td><code>0x02</code></td><td><code>RFID_PARAM_ERR</code></td><td>缺参数 / proto 非法</td></tr>
+<tr><td colspan="4"><em>以下 Boot 返回的码，在 App 端不出现（详见 Boot_Protocol.html）：</em></td></tr>
+<tr><td><code>0x03</code></td><td><code>1,2</code></td><td><code>UPG_NO_SPACE</code> / <code>UPG_ERASE_FAIL</code></td><td>固件过大 / Flash 擦除失败</td></tr>
+<tr><td><code>0x04</code></td><td><code>2,3</code></td><td><code>DATA_FLASH_FAIL</code> / <code>DATA_ADDR_ERR</code></td><td>写失败 / 地址越界</td></tr>
+<tr><td><code>0x05</code></td><td><code>1,2,3,4</code></td><td><code>VERIFY_CRC_MISMATCH</code> / <code>VERIFY_SIZE_MISMATCH</code> / <code>VERIFY_VECTOR_INVALID</code> / <code>VERIFY_BIND_FAIL</code></td><td>CRC / Size / 向量 / 绑定校验失败</td></tr>
+</table>
+</div>
+
+<!-- 主机接入样板 -->
+<h2>12. 主机接入样板</h2>
+<div class="phase">
+<h3>12.1 打开设备</h3>
+<pre>// hidapi
+handle = hid_open(0x5377, 0x5378, NULL);
+// 报告 ID = 0x02, 包长 64
+unsigned char report[64];             // 读写都先放 64B 缓冲</pre>
+<h3>12.2 发请求</h3>
+<pre>// 例: FC_HANDSHAKE
+uint8_t frame[12];
+frame[0] = 0x53; frame[1] = 0x77;            // header "Sw"
+frame[2] = 0x01;                              // devAddr
+frame[3] = 0x00;                              // reserved (必须 0x00)
+frame[4] = 5; frame[5] = 0;                   // length LE
+frame[6] = 0x01;                              // FC_HANDSHAKE
+// frame[7..10] = CRC32 覆盖前 7B
+uint32_t crc = crc32_mpeg2(frame, 7);         // MPEG-2, 无反射, 无最终 XOR
+memcpy(frame + 7, &crc, 4);                   // CRC32 LE
+hid_write(handle, frame, 12);</pre>
+<h3>12.3 收响应</h3>
+<pre>int n = hid_read(handle, report, 64);
+if (n >= 64 && report[0] == 0x02) {
+    // 报告 ID 剥除后, 剩余 63B 是协议帧
+    parse_frame(report + 1, n - 1);
+    // response func = request func ^ 0xFF
+}</pre>
+</div>
+
+<!-- 附录 -->
+<h2>附录 A. 元数据与常量</h2>
+<div class="phase">
+<pre>// 协议常量
+PROTO_HEADER              = 0x7753           // "Sw" LE
+PROTO_VERSION             = 2
+DEFAULT_DEV_ADDR          = 0x01
+BROADCAST_DEV_ADDR        = 0xFF
+CRC32_POLY                = 0x04C11DB7 (MPEG-2, 无反射, 无最终 XOR)
+
+// 状态枚举
+PARAM_STATUS_IDLE         = 0
+PARAM_STATUS_RUN          = 1
+PARAM_STATUS_UPG          = 2   // 触发进入 Boot 升级
+PARAM_STATUS_FAULT        = 3
+
+// FC 码
+FC_HANDSHAKE              = 0x01
+FC_ENTER_BOOT             = 0x02
+FC_UPGRADE_START          = 0x03   // Boot
+FC_FW_DATA                = 0x04   // Boot
+FC_UPGRADE_VERIFY         = 0x05   // Boot
+FC_UPGRADE_EXEC           = 0x06   // Boot
+FC_DEVICE_INFO            = 0x07
+FC_RESET                  = 0x08
+FC_EXIT_BOOT              = 0x09   // 退出升级 (Boot 处理)
+FC_RFID_14443A            = 0x14   // ISO14443A 射频卡操作
+FC_RFID_15693             = 0x15   // ISO15693 射频卡操作
+FC_RFID_CTRL              = 0x16   // 射频控制原语
+
+// FC=0x15 子命令码
+RFID_SUB_INVENTORY        = 0x00   // 盘点 UID
+RFID_SUB_READ_BLOCK       = 0x01   // 读块 (可分片)
+RFID_SUB_WRITE_BLOCK      = 0x02   // 写块 (count<=8)
+RFID_SUB_DSFID            = 0x03   // DSFID 读写 (mode)
+RFID_SUB_EAS              = 0x04   // EAS 操作 (op)
+RFID_SUB_LOCK_BLOCK       = 0x05   // 锁块
+RFID_SUB_STAY_QUIET       = 0x06   // 静默
+RFID_SUB_WRITE_AFI        = 0x07   // 写 AFI
+RFID_SUB_LOCK_AFI         = 0x08   // 锁 AFI
+
+// FC=0x16 子命令码 (FC_RFID_CTRL)
+RFID_CTRL_SUB_INIT       = 0x00   // 初始化协议 [proto]
+RFID_CTRL_SUB_CLOSE      = 0x01   // 关射频
+RFID_CTRL_SUB_OPEN       = 0x02   // 开射频
+RFID_CTRL_SUB_DELAY      = 0x03   // 延时 [ms u8]
+RFID_CTRL_PROTO_15693    = 0x01   // INIT 的 proto 参数
+RFID_CTRL_PROTO_14443A   = 0x02   // INIT 的 proto 参数
+
+// FC=0x14 子命令码 (ISO14443A)
+RFID_A_SUB_GETUID              = 0x00   // 读 UID + SAK
+RFID_A_SUB_HALT                = 0x01   // 静默卡
+RFID_A_SUB_AUTHM1              = 0x02   // Mifare Classic 认证
+RFID_A_SUB_RATS                = 0x10   // ISO14443A-4 入口
+RFID_A_SUB_TRANS_APDU         = 0x11   // ISO14443A-4 透传
+RFID_A_SUB_TOPAZ_READ          = 0x12   // Topaz 读块 8B
+RFID_A_SUB_TOPAZ_WRITE         = 0x13   // Topaz 写块 8B
+RFID_A_SUB_WRITE_BLOCK_M0      = 0x20   // Ultralight 写 4B 页 (0xA2, 无认证)
+RFID_A_SUB_READ_BLOCK_M0       = 0x21   // Ultralight 读 16B (0x30, 4页连读, 无认证)
+RFID_A_SUB_AUTH_READ_BLOCK_M1  = 0x30   // M1 读块 16B (强制 AuthM1)
+RFID_A_SUB_AUTH_WRITE_BLOCK_M1 = 0x31   // M1 写 16B (强制 AuthM1, 0xA0)
+RFID_A_SUB_AUTH_INCREMENT      = 0x32   // M1 值块加 (0xC1+自动Transfer)
+RFID_A_SUB_AUTH_DECREMENT      = 0x33   // M1 值块减 (0xC0+自动Transfer)
+RFID_A_SUB_AUTH_TRANSFER       = 0x34   // M1 值块裸提交 (0xB0)
+RFID_A_SUB_AUTH_RESTORE        = 0x35   // M1 值块恢复 (0xC2+自动Transfer)
+RFID_A_AUTH_KEYA          = 0x60   // AuthM1 KeyA
+RFID_A_AUTH_KEYB          = 0x61   // AuthM1 KeyB
+RFID14443_AUTH_ERR        = 0x0D   // 14443A 专属: 密钥认证失败
+
+// 块大小固定 4B; 单包 data<=56B; 分片 payload<=53B
+RFID_BLK_SIZE             = 4
+RFID_SINGLE_PKT_MAX       = 56
+RFID_FRAG_PAYLOAD_MAX     = 53</pre>
+</div>
+
+<div class="foot">App USB Protocol · 版本 2 · Round 018 蓝白改版 + 协议一致性修正 · 2026-07-26</div>
+
+</div>
+</body>
+</html>

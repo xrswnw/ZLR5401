@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 空白工程改造执行报告 (Report)</title>
+<style>
+  :root{--bg:#f5f6f8;--card:#fff;--ink:#1f2733;--muted:#5a6b7a;--line:#e3e8ee;
+    --green:#1f8a4c;--red:#c0392b;--amber:#b9770e;--blue:#1c6fd6}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+    font:15px/1.7 -apple-system,"PingFang SC","Microsoft YaHei",Segoe UI,sans-serif}
+  .wrap{max-width:1080px;margin:0 auto;padding:32px 24px 80px}
+  h1{font-size:26px;margin:0 0 4px}
+  h2{font-size:20px;margin:40px 0 12px;padding-bottom:8px;border-bottom:2px solid var(--line)}
+  h3{font-size:16px;margin:20px 0 8px}
+  .sub{color:var(--muted)}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin:14px 0 20px}
+  .meta span{background:#eef2f7;border:1px solid var(--line);border-radius:20px;padding:3px 12px;font-size:12.5px;color:var(--muted)}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px 20px;margin:14px 0}
+  table{width:100%;border-collapse:collapse;background:var(--card);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:13.5px}
+  th,td{border:1px solid var(--line);padding:8px 10px;text-align:left;vertical-align:top}
+  th{background:#f0f3f7;font-weight:600;white-space:nowrap}
+  code{background:#eef1f5;border-radius:4px;padding:1px 5px;font:12.5px ui-monospace,Menlo,monospace}
+  pre{background:#10151c;color:#d8e2ee;border-radius:8px;padding:14px 16px;overflow:auto;font:12.5px ui-monospace,Menlo,monospace;line-height:1.6}
+  ul,ol{margin:8px 0;padding-left:22px}
+  li{margin:4px 0}
+  .pill{display:inline-block;border-radius:5px;padding:1px 8px;font-size:12px;font-weight:600;white-space:nowrap}
+  .p-done{background:#e3f3e8;color:var(--green)}
+  .p-keep{background:#e8ecf3;color:var(--blue)}
+  .p-warn{background:#fff3d6;color:var(--amber)}
+  .ok{border-left:4px solid var(--green);background:#f2faf5;border-radius:6px;padding:12px 14px;margin:14px 0}
+  .warn{border-left:4px solid var(--amber);background:#fffbf0;border-radius:6px;padding:12px 14px;margin:14px 0}
+  .footnote{color:var(--muted);font-size:12.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ZLR5401 空白工程改造 · 执行报告</h1>
+<div class="sub">Agent / Round_001 · 依据《Plan.html》执行完成</div>
+<div class="meta">
+  <span>执行时间 2026-08-04</span>
+  <span>状态：完成</span>
+  <span>编译：通过</span>
+</div>
+
+<div class="ok">
+<b>总览</b>：按方案全部执行完成。已清理旧工程引用、剥离 RFID/旧应用层、还原工程名为 ZLR5401，App+Boot 均编译通过，固件产物已生成。所有移除项均按规则用 <code>mv</code> 存入 TrashCan，未做任何不可恢复删除。
+</div>
+
+<h2>0. 备份</h2>
+<div class="card">
+<ul>
+<li><code>backup.sh</code> 的 <code>PROJECT_NAME</code> 由 <code>Sccd</code> 修正为 <code>ZLR5401</code>（含头部注释）。</li>
+<li>执行全量快照 <code>./backup.sh "Round 001: 初始化空白工程快照"</code>：
+  <ul>
+    <li>快照：<code>/Volumes/Record/Person Code/BackupArea/ZLR5401/Round_001_20260804_211033</code></li>
+    <li>文件计数一致（166）；快照大小 46.75M（&lt;500M）。</li>
+    <li>变更日志已追加至 <code>…/ZLR5401/ChangeLog/Changelog.log</code>。</li>
+  </ul>
+</li>
+</ul>
+</div>
+
+<h2>1. 工程名还原 Sccd → ZLR5401</h2>
+<div class="card">
+<table>
+<tr><th>文件</th><th>修改</th><th>状态</th></tr>
+<tr><td>CMakeLists.txt</td><td><code>project(Sccd)</code> → <code>project(ZLR5401)</code></td><td class="pill p-done">完成</td></tr>
+<tr><td>gen_firmware.sh</td><td><code>Sccd_*.hex</code> → <code>ZLR5401_*.hex</code>（函数 rename <code>merge_sccd→merge_firmware</code>，注释）</td><td class="pill p-done">完成</td></tr>
+<tr><td>flash_all.sh</td><td>查找 <code>Sccd_*.hex</code> → <code>ZLR5401_*.hex</code></td><td class="pill p-done">完成</td></tr>
+<tr><td>build_all.sh</td><td>注释同步为 ZLR5401</td><td class="pill p-done">完成</td></tr>
+<tr><td>App_Config.h</td><td><code>DEV_SW_VERSION "SCCD_V1.0"</code> → <code>"ZLR5401_V1.0"</code>；GD32 注释中性化</td><td class="pill p-done">完成</td></tr>
+</table>
+<div class="warn">
+<b>增量（Round_002，用户确认后清除 Sccd 字样）</b>：上轮保留的两项已按新需求清除，全部改为 ZLR5401。
+<ul>
+<li><code>Boot_Config.h DEV_SW_VERSION "SCCD_V1.0"</code> → <code>"ZLR5401_V1.0"</code>。</li>
+<li><code>PARAM_MAGIC 0x64636453 ("Sccd")</code> → <code>0x35524C5A ("ZLR5")</code>（App_Param.h 与 Boot_Param.h 两端同步，保持 App/Boot 协同一致）。</li>
+<li>执行前已做 Round_002 全量快照备份。</li>
+</ul>
+<b>注意（兼容性提示）</b>：PARAM_MAGIC 是 flash 参数区校验魔数，改动后<b>现存设备上的旧参数区（magic="Sccd"）会因校验失败而被复位为默认值并重新写入</b>。对量产设备需一并重刷固件使 App/Boot 两端新魔数生效；对本开发板烧录新固件即自动生效。
+</div>
+</div>
+
+<h2>2. 剥离 RFID / 旧应用层（保留 USB + 协议 + 握手复位）</h2>
+<h3>2.1 移入 TrashCan</h3>
+<div class="card">
+<b><code>TrashCan/Round001_RFID_app_layer/</code></b>（20 个）：
+<pre>App_Device.c/.h   App_Fm17660.c/.h        App_Fm17660_14443A.c/.h
+App_Fm17660_14443B.c/.h  App_Fm17660_15693.c/.h  App_Fm17660_HL.c/.h
+App_Rfid.c/.h     App_RfidCtrl.c/.h        App_Rfid14443A.c/.h
+App_Rfid15693.c/.h</pre>
+<b><code>TrashCan/Round001_old_app_extras/</code></b>（4 个）：
+<pre>App_Des.c/.h (DES stub)   App_Buzzer_HL.c/.h (蜂鸣器)</pre>
+</div>
+
+<h3>2.2 构建与源码精简</h3>
+<div class="card">
+<table>
+<tr><th>文件</th><th>修改</th></tr>
+<tr><td>Application/CMakeLists.txt</td><td>从 SOURCES 移除全部 14 个 RFID/DES/Buzzer 源文件</td></tr>
+<tr><td>main.c</td><td>移除 Fm17660 自检 + FatalHandler、蜂鸣器初始化/关闭、<code>App_RfidPoll()</code> 轮询及相关 include</td></tr>
+<tr><td>App_Dispatch.c</td><td>移除 <code>FC_RFID_14443A/15693/CTRL</code> 三个 case 及 RFID/Fm17660 初始化；保留 <code>HANDSHAKE / ENTER_BOOT / DEVICE_INFO / RESET</code></td></tr>
+<tr><td>App_CustomProtocol.h</td><td>移除孤儿 RFID 命令/结果码宏（FC_RFID_*、RFID_CTRL_*、RFID_* 错误码）</td></tr>
+<tr><td>App_Config.h</td><td>移除 BUZZER / FM17660 / SPI2 引脚与时钟宏；RCC 集合精简为 USB + TIM3</td></tr>
+<tr><td>System_PeriphClk.c</td><td>同步移除 <code>RCC_AHBPeriphClockCmd(DMA1)</code> 调用</td></tr>
+</table>
+</div>
+
+<h2>3. 保留的最小 App 骨架</h2>
+<div class="card">
+<pre>main loop:  Proto_Poll() -> IwdgHl_Feed() -> App_Usb_Poll() -> AppLedProcess()
+System_Init: Clock -> PeriphClk -> VTOR -> SysTick -> IWDG -> LED
+             -> USB(HID) -> Param -> Protocol+USB Transport -> 开全局中断
+协议保留:   HANDSHAKE / ENTER_BOOT / DEVICE_INFO / RESET   (握手复位 + 升级入口)</pre>
+</div>
+
+<h2>4. 编译验证</h2>
+<div class="card">
+<b><code>./build_all.sh</code> 通过</b>。产物：
+<pre>Build/app.elf    text=10304  data=232  bss=9096   (FLASH 23.44%/40K)
+Build/boot.elf   text=12084  data=232  bss=11176  (FLASH 44.71%/22K, 清理前 50.25%)
+Build/Firmware/ZLR5401_202608042119.hex   (Boot+App 合并, 64K)</pre>
+<ul>
+<li>Boot 的 USB 库存在与 App 相同的 <code>usb_regs.h</code> 括号 <code>-Wparentheses</code> 警告（既有，非本轮引入，未影响链接）。</li>
+<li>随工程改名，<code>Build/</code> 旧缓存与悬空 <code>compile_commands.json</code> 符号链接已移至 TrashCan 后重建。</li>
+<li>Round_003 Boot 冗余清理后，Boot FLASH 占用由 <b>50.25% → 44.71%</b>（约 5.5% / 1.2KB），升级路径保持零改动。</li>
+</ul>
+</div>
+
+<h2>5. Bootloader 冗余清理（Round_003，激进）</h2>
+<div class="card">
+<b>目标</b>：清理 Boot 中与官方 USB HID 升级无关的冗余，同时<b>确保升级功能零改动</b>。
+<pre>移除 UART 兜底通道 (HOST USART2 + DBG USART1):
+  - Boot_Uart.c / Boot_Uart.h      -> TrashCan/Round003_Boot_UART_DBG/
+  - Boot_Dispatch.c: Proto_RegisterTransport(UART) 注册移除 (仅保留 HID USB 传输)
+  - main.c: Uart_Init()/USART2+DMA 复位清理移除
+  - Boot_Config.h: HOST_UART / DBG_UART 配置块移除, RCC 归并
+  - System_PeriphClk.c / Boot_Led_HL.c: 相关注释清理
+  - stm32f10x_it.c: 重写, 移除 ST 模板冗余, 保留 8 个升级处理器 IRQ</pre>
+<b>升级功能保留验证</b>：
+<pre>协议处理器 (全部 8 个, 零改动):
+  HANDSHAKE / UPGRADE_START / FW_DATA / UPGRADE_VERIFY /
+  UPGRADE_EXEC / DEVICE_INFO / EXIT_BOOT / RESET
+USB HID 传输 + Param 主/影子区 + IWDG + JumpToApp: 原样保留</pre>
+移除理由：Boot UART 通道的 IRQ 处理器从未在 <code>stm32f10x_it.c</code> 注册（运行时即失效），属死配置，安全删除。
+</div>
+
+<h2>5.5 遗留旧注释清理（Round_004，空白工程收尾）</h2>
+<div class="card">
+<b>目标</b>：移除全部旧产品（Fm17660 RFID 子板、UART/历史说明）残留注释，得到仅含 USB 升级的空白工程。
+<pre>清理点 (App + Boot):
+  - App_Config.h:     类型别名注释去掉 "Fm17660 协议栈" 字样; IWDG 说明去掉 RFID 阻塞条目
+  - App_Stdlib.h:     "Fm17660 协议栈使用" -> 通用说明
+  - App_Usb_Transport.c: "Start DMA TX" -> "Start USB TX"; 丢包示例去掉 RFID 字样
+  - Application/stm32f10x_it.c: 删除 USART2/DMA1 历史移除注释段
+  - Bootloader/inc/Boot_Config.h: IWDG 说明去掉 App RFID 阻塞条目
+验证: grep 全工程源码(Application+Bootloader src/inc) 无 Fm17660 / RFID / R321 /
+      AnyID / Sccd / 子板 / UART 历史 等旧说明残留 (system_stm32f10x.c(官方模板)除外)。
+      <code>./build_all.sh</code> 通过, 固件正常生成。</pre>
+</div>
+
+<h2>6. 清理验证（需求 3/4）</h2>
+<div class="card">
+<table>
+<tr><th>检查</th><th>结果</th></tr>
+<tr><td>AnyID / R321 命中（Application + Bootloader）</td><td><b>0 处</b> <span class="pill p-done">已清理</span></td></tr>
+<tr><td>脚本中 <code>Sccd_</code> 残留</td><td><b>0 处</b> <span class="pill p-done">已清理</span></td></tr>
+<tr><td>src 中 App_Rfid / App_Fm17660 / App_Device / Buzzer / Des 引用</td><td><b>0 处</b> <span class="pill p-done">已清理</span></td></tr>
+<tr><td>协议头孤儿 RFID 宏</td><td>已移除 <span class="pill p-done">完成</span></td></tr>
+<tr><td>Sccd / SCCD 残留（全工程源码）</td><td><b>0 处</b>（含 PARAM_MAGIC 与 Boot 版本串，Round_002）<span class="pill p-done">已清理</span></td></tr>
+</table>
+</div>
+
+<h2>7. 后续建议（新项目开发起点）</h2>
+<div class="card">
+<ul>
+<li>工程内 Sccd 字样已全部清除（含参数区魔数），可直接作为 ZLR5401 新项目起点。</li>
+<li>新项目应用层（业务功能）可从 <code>App_Dispatch.c</code> 的 switch 扩充分派，USB 通道/协议层已就绪。</li>
+<li>Bootloader 未作业务改动（本身即升级 + 握手复位所需，自包含）；仅参数区魔数随 App 同步更新。</li>
+</ul>
+</div>
+
+<div class="footnote">生成于 2026-08-04 · Agent/Round_001 · 执行报告 v3（含 Round_002 改名 + Round_003 Boot 清理 + Round_004 App/Boot 注释收尾）· 备份快照 Round_001 可回滚</div>
+
+</div>
+</body>
+</html>

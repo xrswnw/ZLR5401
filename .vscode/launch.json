@@ -1,0 +1,59 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "J-Link: Debug Bootloader",
+      "type": "cortex-debug",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/Build/boot.elf",
+      "device": "GD32F303RCT6",
+      "gdbPath": "arm-none-eabi-gdb",
+      "interface": "swd",
+      "servertype": "jlink",
+      "serverPath": "/usr/local/bin/JLinkGDBServerCL",
+      "serverArgs": [
+        "-select",
+        "USB",
+        "device=GD32F303RCT6",
+        "-endian",
+        "little",
+        "-if",
+        "SWD",
+        "-speed",
+        "4000",
+        "-noir"
+      ],
+      "preLaunchTask": "Build Bootloader",
+      "showDevDebugOutput": "raw",
+      "runToEntryPoint": "main"
+    },
+    {
+      "name": "J-Link: Debug Application",
+      "type": "cortex-debug",
+      "request": "launch",
+      "cwd": "${workspaceFolder}",
+      "executable": "${workspaceFolder}/Build/app.elf",
+      "device": "GD32F303RCT6",
+      "gdbPath": "arm-none-eabi-gdb",
+      "interface": "swd",
+      "servertype": "jlink",
+      "serverPath": "/usr/local/bin/JLinkGDBServerCL",
+      "serverArgs": [
+        "-select",
+        "USB",
+        "device=GD32F303RCT6",
+        "-endian",
+        "little",
+        "-if",
+        "SWD",
+        "-speed",
+        "4000",
+        "-noir"
+      ],
+      "preLaunchTask": "Build Application",
+      "showDevDebugOutput": "raw",
+      "runToEntryPoint": "main"
+    }
+  ]
+}

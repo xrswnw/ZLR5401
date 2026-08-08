@@ -1,0 +1,31 @@
+{
+  "configurations": [
+    {
+      "cStandard": "gnu11",
+      "compilerArgs": [
+        "-ffreestanding",
+        "-mcpu=cortex-m3",
+        "-mthumb"
+      ],
+      "compilerPath": "/opt/homebrew/bin/arm-none-eabi-gcc",
+      "defines": [
+        "STM32F10X_MD",
+        "USE_STDPERIPH_DRIVER",
+        "HSE_VALUE=8000000",
+        "USE_DEBUG_LOG"
+      ],
+      "includePath": [
+        "${workspaceFolder}/Sdk/STM32F10x_StdPeriph_Lib_V3.6.0/Libraries/CMSIS/CM3/CoreSupport",
+        "${workspaceFolder}/Sdk/STM32F10x_StdPeriph_Lib_V3.6.0/Libraries/CMSIS/CM3/DeviceSupport/ST/STM32F10x",
+        "${workspaceFolder}/Sdk/STM32F10x_StdPeriph_Lib_V3.6.0/Libraries/STM32F10x_StdPeriph_Driver/inc",
+        "${workspaceFolder}/Application/inc",
+        "${workspaceFolder}/Application/src",
+        "${workspaceFolder}/Bootloader/inc",
+        "${workspaceFolder}/Bootloader/src"
+      ],
+      "intelliSenseMode": "gcc-arm",
+      "name": "STM32F10x"
+    }
+  ],
+  "version": 4
+}
