@@ -190,3 +190,110 @@ int RAMCODE ParamSave(const DeviceParam_t *p) {
     FlashHl_SaveFinish();
     return 0;
 }
+
+/* ---------- UHF 配置持久化 (userParam 区) ---------- */
+void UhfParam_Default(UHFUserCfg_t *cfg)
+{
+    if (!cfg) return;
+    cfg->powerDbm   = 20u;
+    cfg->antenna    = 0u;
+    cfg->checksumEn = 1u;
+    cfg->session    = 0u;
+    cfg->target     = 0u;
+    cfg->q          = 0u;
+}
+
+int UhfParam_Load(UHFUserCfg_t *cfg)
+{
+    extern DeviceParam_t g_sParam;   /* App_Dispatch.c */
+    const uint8_t *u = g_sParam.userParam;
+    if (u[1] == UHF_PARM_MAGIC_HI && u[0] == UHF_PARM_MAGIC_LO &&
+        (u[2] & 0x0F) == (UHF_PARM_VERSION & 0x0F)) {
+        if (!cfg) return 0;
+        cfg->powerDbm   = u[3];
+        cfg->antenna    = u[4];
+        cfg->checksumEn = u[5];
+        cfg->session    = u[6];
+        cfg->target     = u[7];
+        cfg->q          = u[8];
+        return 0;
+    }
+    return -1;
+}
+
+int UhfParam_Save(const UHFUserCfg_t *cfg)
+{
+    if (!cfg) return -1;
+    extern DeviceParam_t g_sParam;   /* App_Dispatch.c */
+    uint8_t *u = g_sParam.userParam;
+    u[0] = UHF_PARM_MAGIC_LO;
+    u[1] = UHF_PARM_MAGIC_HI;
+    u[2] = UHF_PARM_VERSION;
+    u[3] = cfg->powerDbm;
+    u[4] = cfg->antenna;
+    u[5] = cfg->checksumEn;
+    u[6] = cfg->session;
+    u[7] = cfg->target;
+    u[8] = cfg->q;
+    return ParamSave(&g_sParam);
+}
+
+/* ---------- AM 解码器配置持久化 (userParam 区, 偏移 16) ---------- */
+void AmParam_Default(AMUserCfg_t *cfg)
+{
+    if (!cfg) return;
+    cfg->threshold   = 5u;
+    cfg->hitCount    = 6u;
+    cfg->freqRange   = 1u;
+    cfg->recvDelay   = 0u;
+    cfg->recvLength  = 0u;
+    cfg->phaseInvert = 0u;
+    cfg->phaseSync   = 0u;
+    cfg->decodeVolt  = 1u;
+    cfg->mode        = 0u;
+}
+
+int AmParam_Load(AMUserCfg_t *cfg)
+{
+    extern DeviceParam_t g_sParam;   /* App_Dispatch.c */
+    const uint8_t *u = g_sParam.userParam + AM_PARM_OFFSET;
+    if (u[1] == AM_PARM_MAGIC_HI && u[0] == AM_PARM_MAGIC_LO &&
+        u[2] == AM_PARM_VERSION) {
+        if (!cfg) return 0;
+        cfg->threshold   = (uint16_t)(((uint16_t)u[3] << 8) | u[4]);
+        cfg->hitCount    = (uint16_t)(((uint16_t)u[5] << 8) | u[6]);
+        cfg->freqRange   = u[7];
+        cfg->recvDelay   = (uint16_t)(((uint16_t)u[8] << 8) | u[9]);
+        cfg->recvLength  = u[10];
+        cfg->phaseInvert = u[11];
+        cfg->phaseSync   = (uint16_t)(((uint16_t)u[12] << 8) | u[13]);
+        cfg->decodeVolt  = u[14];
+        cfg->mode        = u[15];
+        return 0;
+    }
+    return -1;
+}
+
+int AmParam_Save(const AMUserCfg_t *cfg)
+{
+    if (!cfg) return -1;
+    extern DeviceParam_t g_sParam;   /* App_Dispatch.c */
+    uint8_t *u = g_sParam.userParam + AM_PARM_OFFSET;
+    u[0]  = AM_PARM_MAGIC_LO;
+    u[1]  = AM_PARM_MAGIC_HI;
+    u[2]  = AM_PARM_VERSION;
+    u[3]  = (uint8_t)((cfg->threshold >> 8) & 0xFF);
+    u[4]  = (uint8_t)(cfg->threshold & 0xFF);
+    u[5]  = (uint8_t)((cfg->hitCount >> 8) & 0xFF);
+    u[6]  = (uint8_t)(cfg->hitCount & 0xFF);
+    u[7]  = cfg->freqRange;
+    u[8]  = (uint8_t)((cfg->recvDelay >> 8) & 0xFF);
+    u[9]  = (uint8_t)(cfg->recvDelay & 0xFF);
+    u[10] = cfg->recvLength;
+    u[11] = cfg->phaseInvert;
+    u[12] = (uint8_t)((cfg->phaseSync >> 8) & 0xFF);
+    u[13] = (uint8_t)(cfg->phaseSync & 0xFF);
+    u[14] = cfg->decodeVolt;
+    u[15] = cfg->mode;
+    return ParamSave(&g_sParam);
+}

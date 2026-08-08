@@ -36,6 +36,58 @@
 #define FC_DEVICE_INFO      0x07
 #define FC_RESET            0x08   /* 软件复位 (空参数, 回 OK 后 NVIC_SystemReset;)*/
 #define FC_EXIT_BOOT        0x09   /* 退出升级 (Boot 处理): 校验 App 完好则清 UPG->RUN + 复位跳 App*/
+#define FC_MOTOR_CTRL       0x0A   /* 步进电机 DRV8434S 控制 (子命令编码, 见下)*/
+#define FC_UHF_CTRL         0x0B   /* UHF 超高频 SIM7500 模块控制 (子命令编码, 见下)*/
+#define FC_AM_CTRL          0x0C   /* AM 解码器控制 (子命令编码, 见下)*/
+
+/* ---- FC_MOTOR_CTRL (0x0A) 子命令编码 (data[0]) ----
+ * data: [0]=cmd, 后续参数随 cmd 而定. 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd. */
+#define MOTOR_CMD_MOVE      0x01   /* data: [cmd,dir,stepsL,stepsM,stepsH]  dir=0/1, steps=24bit. 启动运动 */
+#define MOTOR_CMD_STOP      0x02   /* 停止并关断输出 */
+#define MOTOR_CMD_SPEED     0x03   /* data: [cmd,hzL,hzH]  设定微步/秒 (1~2000) */
+#define MOTOR_CMD_TORQUE    0x04   /* data: [cmd,pct]  转矩百分比 (6~100) */
+#define MOTOR_CMD_QUERY     0x05   /* 查询: 状态/故障/步数 */
+#define MOTOR_CMD_CLEAR     0x06   /* 清除故障 */
+/* 运行错误码 */
+#define MOTOR_ERR_OK            0
+#define MOTOR_ERR_PARAM         1
+#define MOTOR_ERR_FAULT         2
+
+/* ---- FC_UHF_CTRL (0x0B) 子命令编码 (data[0]) ----
+ * data: [0]=cmd, 后续参数随 cmd 而定. 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd. */
+#define UHF_SUB_OPEN           0x01   /* data: [cmd]  上电 + 配置下发, 进入 READY */
+#define UHF_SUB_CLOSE          0x02   /* data: [cmd]  停止并下电 */
+#define UHF_SUB_INVENTORY      0x03   /* data: [cmd]  发起一次盘点 */
+#define UHF_SUB_READ_TAG       0x04   /* data: [cmd,epcLen,epc..,bank,addr,cnt]  读标签 */
+#define UHF_SUB_WRITE_TAG      0x05   /* data: [cmd,epcLen,epc..,bank,addr,len,data..]  写标签 */
+#define UHF_SUB_STOP           0x06   /* data: [cmd]  停止当前操作 */
+#define UHF_SUB_QUERY          0x07   /* data: [cmd]  查询链路/状态 */
+#define UHF_SUB_GET_CONFIG     0x08   /* data: [cmd]  读取当前配置 */
+#define UHF_SUB_SET_CONFIG     0x09   /* data: [cmd,powerDbm,antenna,checksumEn,session,target,q]  设置配置 */
+#define UHF_SUB_GET_TAGS       0x0A   /* data: [cmd,(count)]  count=0 取全部; >0 取前 count 条 */
+/* 运行错误码 (data[1]) */
+#define UHF_ERR_OK             0
+#define UHF_ERR_PARAM          1
+#define UHF_ERR_BUSY           2
+#define UHF_ERR_NOT_READY      3
+#define UHF_ERR_LINK           4
+#define UHF_ERR_NO_TAG         5
+#define UHF_ERR_TIMEOUT        6
+
+/* ---- FC_AM_CTRL (0x0C) 子命令编码 (data[0]) ----
+ * AM 解码器经 USART2 (2A A2 帧) 通信. 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd.
+ * 值用 16bit (高字节在后) 表示: (dataH<<8)|dataL. */
+#define AM_SUB_GET_CONFIG   0x01   /* data: [cmd]  读取当前配置 */
+#define AM_SUB_SET_CONFIG   0x02   /* data: [cmd, thrH,thrL, hitH,hitL, freq, delayH,delayL,
+                                               len, invert, syncH,syncL, volt, mode]  设置配置 */
+#define AM_SUB_GET_PARAM    0x03   /* data: [cmd, amCmd]  读单个参数 (amCmd 为 AM 命令字) */
+#define AM_SUB_SET_PARAM    0x04   /* data: [cmd, amCmd, valH, valL]  写单个参数 */
+#define AM_SUB_QUERY        0x05   /* data: [cmd]  总查询, 探测链路 */
+/* 运行错误码 (data[1]) */
+#define AM_ERR_OK           0
+#define AM_ERR_PARAM        1
+#define AM_ERR_LINK         4
+#define AM_ERR_TIMEOUT      6
 
 /* Response FC = req_FC ^ 0xFF*/
 #define FC_RSP(x)           ((x) ^ 0xFF)

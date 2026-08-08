@@ -58,25 +58,71 @@ typedef unsigned char BOOL;
 #define RAM_ORIGIN          0x20000000U
 #define RAM_SIZE            (20U * 1024U)
 
+/* ===================== 步进电机 DRV8434S (SPI2 自选引脚, 见 Drv_Stepper_HL) =====================
+ * DRV8434S 16-bit SPI 控制 (Mode1: CPOL=0, CPHA=1), SPI_STEP/SPI_DIR 走 SPI, 无需 STEP/DIR 引脚。
+ * 引脚自选(避开 USB PA1/PA11/PA12、LED PB4/PB5、SWD PA13~15):
+ *   SCK=PB13, MISO=PB14, MOSI=PB15, NSS=PB12(手动 GPIO 片选, 帧间高电平>=500ns)
+ *   nFAULT 输入 = PB6 (1=正常, 0=故障)    nSLEEP 输出 = PB7 (1=运行, 0=睡眠)
+ * 需 RCC_APB1Periph_SPI2 + GPIOB。*/
+#define MOTOR_SPI               SPI2
+#define MOTOR_SPI_SCK_PIN       GPIO_Pin_13
+#define MOTOR_SPI_MISO_PIN      GPIO_Pin_14
+#define MOTOR_SPI_MOSI_PIN      GPIO_Pin_15
+#define MOTOR_SPI_CS_PIN        GPIO_Pin_12
+#define MOTOR_SPI_GPIO_PORT     GPIOB
+#define MOTOR_NFAULT_PIN        GPIO_Pin_6
+#define MOTOR_NSLEEP_PIN        GPIO_Pin_7
+#define MOTOR_CTRL_GPIO_PORT    GPIOB
+
 /* ===================== LED (单灯: 绿灯 PB4, 高电平点亮) =====================*/
 #define LED_G_GPIO_PORT    GPIOB
 #define LED_G_GPIO_PIN    GPIO_Pin_4
 
 /* ===================== USB_EN =====================*/
+
+/* ===================== UHF 模块 SIM7500 (USART1, 自选引脚) =====================
+ * 接口: USART1 (PA9=TX / PA10=RX), 115200-8-N-1 (TTL)
+ * 控制: UHF_EN=PA8 (高电平上电), UHF_ANT=PC13 (0=ANT1 / 1=ANT2)
+ * 引脚自选避开: USB PA1/PA11/PA12、LED PB4/PB5、SWD PA13~15、SPI2 PB12~15。*/
+#define UHF_USART               USART1
+#define UHF_BAUD                115200U
+#define UHF_TX_GPIO_PORT        GPIOA
+#define UHF_TX_GPIO_PIN         GPIO_Pin_9
+#define UHF_RX_GPIO_PORT        GPIOA
+#define UHF_RX_GPIO_PIN         GPIO_Pin_10
+#define UHF_EN_GPIO_PORT        GPIOA
+#define UHF_EN_GPIO_PIN         GPIO_Pin_8
+#define UHF_ANT_GPIO_PORT       GPIOC
+#define UHF_ANT_GPIO_PIN        GPIO_Pin_13
 /* 需求: USB_EN=PA1, 拉高才启用 USB (D+ 上拉)。
  * 依据: D3232GZ 工作参考工程的 USB_ENABLE_PORT = {GPIOA, GPIO_Pin_1}。
  * 硬件实测: 用 PB3(高电平) 固件设备不枚举; PA1 才是激活主机可见 D+ 上拉的脚。*/
 #define USB_EN_GPIO_PORT   GPIOA
 #define USB_EN_GPIO_PIN    GPIO_Pin_1
 
+/* ===================== AM 解码器 (USART2, 自选引脚) =====================
+ * 接口: USART2 (PA2=TX / PA3=RX), 115200-8-N-1 (TTL)
+ * 协议: 2A A2 帧, 校验 = 命令+包数+包次+包长+数据 & 0xFF
+ * 引脚自选避开: USB PA1/PA11/PA12、LED PB4/PB5、SWD PA13~15、UHF PA9/10、
+ *                SPI2 PB12~15。USART2 位于 APB1 (36MHz)。*/
+#define AM_USART                USART2
+#define AM_BAUD                 115200U
+#define AM_TX_GPIO_PORT         GPIOA
+#define AM_TX_GPIO_PIN          GPIO_Pin_2
+#define AM_RX_GPIO_PORT         GPIOA
+#define AM_RX_GPIO_PIN          GPIO_Pin_3
+
 /* ===================== 外设 RCC 时钟集合 (统一在 System_PeriphClkInit 开启) =====================*/
 /* 一次性开启, 替代各 HL 层分散调用 RCC_APBxPeriphClockCmd / RCC_AHBPeriphClockCmd。
  * DISABLE 仍由各 HL 的 DeInit 自行处理 (单外设回收)。
  * 当前仅保留: LED(TIM3_CH1 PWM, PB4) + USB(HID)。 */
 #define APP_RCC_APB2_PERIPH    (RCC_APB2Periph_GPIOA  | RCC_APB2Periph_GPIOB | \
-                                RCC_APB2Periph_AFIO)
+                                RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO   | \
+                                RCC_APB2Periph_USART1)
 #define APP_RCC_APB1_PERIPH    (RCC_APB1Periph_USB | \
-                                RCC_APB1Periph_TIM3)  /* USB HID; TIM3_CH1 LED 呼吸 PWM (PB4)*/
+                                RCC_APB1Periph_TIM3 | \
+                                RCC_APB1Periph_SPI2 | \
+                                RCC_APB1Periph_USART2) /* USB HID; TIM3_CH1 LED 呼吸 PWM (PB4); SPI2 步进电机; USART2 AM 解码器*/
 
 /* ===================== Boot Timeout =====================*/
 #define BOOT_TIMEOUT_MS     500U

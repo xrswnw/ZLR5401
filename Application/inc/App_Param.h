@@ -78,6 +78,51 @@ uint32_t  Crc32CalcUid(void);
 uint32_t  Crc32CalcReflect(const uint8_t *data, uint32_t len, const uint8_t *suffix, uint32_t suffixLen);
 void      VerStrCpy(char *dst, const char *src, uint32_t maxLen);
 
+/* ---- UHF 配置持久化 (userParam 区: 偏移 0) ----
+ * 布局: [ver(1)][magic(2)][power(1)][antenna(1)][checksum(1)][session(1)][target(1)][q(1)][rsv(1)]
+ * magic = 0x5548 ('UH'), ver = 1。未检测到 magic 时返回默认值。 */
+#define UHF_PARM_MAGIC_HI     0x55U
+#define UHF_PARM_MAGIC_LO     0x48U
+#define UHF_PARM_VERSION      1U
+
+typedef struct {
+    uint8_t  powerDbm;
+    uint8_t  antenna;
+    uint8_t  checksumEn;
+    uint8_t  session;
+    uint8_t  target;
+    uint8_t  q;
+} UHFUserCfg_t;
+
+int  UhfParam_Load(UHFUserCfg_t *cfg);   /* 0=OK (<0 无有效记录, 返回默认) */
+int  UhfParam_Save(const UHFUserCfg_t *cfg); /* 0=OK */
+void UhfParam_Default(UHFUserCfg_t *cfg);
+
+/* ---- AM 解码器配置持久化 (userParam 区: 偏移 16, 避开 UHF) ----
+ * 布局: [magic(2)][ver(1)][thrH,thrL(2)][hitH,hitL(2)][freq(1)][delayH,delayL(2)]
+ *       [len(1)][inv(1)][syncH,syncL(2)][volt(1)][mode(1)] = 16 字节
+ * magic = 0x4D41 ('AM'), ver = 1。 */
+#define AM_PARM_MAGIC_HI     0x4Du    /* 'M' */
+#define AM_PARM_MAGIC_LO     0x41u    /* 'A' */
+#define AM_PARM_VERSION      1U
+#define AM_PARM_OFFSET       16U
+
+typedef struct {
+    uint16_t threshold;    /* 接收阀值 0-30 */
+    uint16_t hitCount;     /* 命中次数 3-8 */
+    uint8_t  freqRange;    /* 频率范围 0宽/1中/2窄 */
+    uint16_t recvDelay;    /* 接收延迟 */
+    uint8_t  recvLength;   /* 接收长短 0长/1短 */
+    uint8_t  phaseInvert;  /* 零火翻转 */
+    uint16_t phaseSync;    /* 相位同步 0-2000 */
+    uint8_t  decodeVolt;   /* 解码电压 0低/1中/2高 */
+    uint8_t  mode;         /* 工作模式 0检测解码/1检测/2待机 */
+} AMUserCfg_t;
+
+int  AmParam_Load(AMUserCfg_t *cfg);   /* 0=OK (<0 无有效记录) */
+int  AmParam_Save(const AMUserCfg_t *cfg); /* 0=OK */
+void AmParam_Default(AMUserCfg_t *cfg);
+
 /* Flash 控制器原语见 App_Param_HL.h */
 
 #endif /* __PARAM_H */

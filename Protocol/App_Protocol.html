@@ -100,7 +100,7 @@ li { margin: 3px 0; }
 <!-- 命令总览 -->
 <h2>3. 命令总览</h2>
 <div class="phase">
-<p>App 实现 7 个命令。其余命令（FC=0x03/0x04/0x05/0x06/0x09）由 Bootloader 处理（详见 Boot_Protocol.html）。</p>
+<p>App 实现 8 个命令。其余命令（FC=0x03/0x04/0x05/0x06/0x09）由 Bootloader 处理（详见 Boot_Protocol.html）。</p>
 <table>
 <tr><th>FC</th><th>名称</th><th>Host → Device</th><th>Device → Host</th><th>用途</th></tr>
 <tr><td><code>0x01</code></td><td>FC_HANDSHAKE</td><td>—</td><td>28B: result/protoVer/status/UID/uidHash/layer/upgradeCount/baudRate</td><td>发现/存活探测</td></tr>
@@ -108,6 +108,8 @@ li { margin: 3px 0; }
 <tr><td><code>0x07</code></td><td>FC_DEVICE_INFO</td><td>—</td><td>34B: result/addr/hwVersion/version (App层=swVersion)</td><td>查询版本 / 设备地址</td></tr>
 <tr><td><code>0x08</code></td><td>FC_RESET</td><td>—</td><td>1B: result</td><td>软件复位 (空参数, 回 OK 后延时 20ms 再复位)</td></tr>
 <tr><td><code>0x09</code></td><td>FC_EXIT_BOOT</td><td>—</td><td>1B: result</td><td>退出升级 (Boot 处理); App 忽略</td></tr>
+<tr><td><code>0x0A</code></td><td>FC_MOTOR_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 格式见 §8 (subCmd 0x01~0x06)</td><td>步进电机 DRV8434S 控制</td></tr>
+<tr><td><code>0x0B</code></td><td>FC_UHF_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 格式见 §14 (subCmd 0x01~0x0A)</td><td>UHF 超高频 SIM7500 模块控制</td></tr>
 <tr><td><code>0x14</code></td><td>FC_RFID_14443A</td><td>data 首字节为子命令码</td><td>异步响应, 格式见 §8 (subCmd 0x00~0x02/0x10~0x13/0x20~0x21/0x30~0x35)</td><td>ISO14443A 射频卡操作</td></tr>
 <tr><td><code>0x15</code></td><td>FC_RFID_15693</td><td>data 首字节为子命令码</td><td>分片格式见 §7</td><td>ISO15693 射频卡操作</td></tr>
 <tr><td><code>0x16</code></td><td>FC_RFID_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 格式见 §9 (subCmd 0x00~0x03)</td><td>射频控制原语 (INIT/关/开/延时)</td></tr>
@@ -463,6 +465,94 @@ if (n >= 64 && report[0] == 0x02) {
 }</pre>
 </div>
 
+<!-- FC_MOTOR_CTRL -->
+<h2>13. FC_MOTOR_CTRL (0x0A) — 步进电机 DRV8434S 控制</h2>
+<div class="phase">
+<p>本命令把步进电机（TI DRV8434S 双极步进驱动，SPI2 控制）暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x06），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。通信引脚自选：SCK=PB13 / MISO=PB14 / MOSI=PB15 / NSS=PB12，nFAULT=PB6，nSLEEP=PB7。步进走 SPI（SPI_STEP/SPI_DIR），无需 STEP/DIR 引脚。</p>
+
+<h3>13.1 子命令总览</h3>
+<table>
+<tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
+<tr><td><code>0x01</code></td><td>MOVE</td><td><code>[cmd, dir, stepsL, stepsM, stepsH]</code></td><td><code>[cmd, err]</code></td><td>启动运动: <code>dir</code>=0(CW)/1(CCW), <code>steps</code>=24bit 微步数, <code>0</code>=持续运行</td></tr>
+<tr><td><code>0x02</code></td><td>STOP</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>停止并关断输出</td></tr>
+<tr><td><code>0x03</code></td><td>SPEED</td><td><code>[cmd, hzL, hzH]</code></td><td><code>[cmd, err]</code></td><td>设定微步/秒 (1~2000)</td></tr>
+<tr><td><code>0x04</code></td><td>TORQUE</td><td><code>[cmd, pct]</code></td><td><code>[cmd, err]</code></td><td>转矩百分比 (6~100)</td></tr>
+<tr><td><code>0x05</code></td><td>QUERY</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, fault, diag1, diag2, stepsDoneL, stepsDoneH]</code></td><td>查询状态/故障/已走微步数</td></tr>
+<tr><td><code>0x06</code></td><td>CLEAR</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>清除故障并回到 IDLE</td></tr>
+</table>
+
+<h3>13.2 QUERY 响应字段</h3>
+<table>
+<tr><th>字段</th><th>说明</th></tr>
+<tr><td><code>err</code></td><td>0=OK</td></tr>
+<tr><td><code>state</code></td><td>0=IDLE(停止) / 1=RUN / 2=FAULT</td></tr>
+<tr><td><code>fault</code></td><td>DRV8434S FAULT 寄存器原始值 (bit7=FAULT, bit5=UVLO, bit4=CPUV, bit3=OCP, bit2=STALL, bit1=过温)</td></tr>
+<tr><td><code>diag1</code></td><td>诊断寄存器1 (OCP 位置)</td></tr>
+<tr><td><code>diag2</code></td><td>诊断寄存器2 (OTW/OTS/STALL/OL)</td></tr>
+<tr><td><code>stepsDone</code></td><td>本次运动已完成的微步数 (16bit, 溢出截断; 持续运行意会)</td></tr>
+</table>
+
+<div class="note">
+<div class="note-title">错误码 (data[1])</div>
+<code>0</code>=OK, <code>1</code>=参数错误, <code>2</code>=器件处于故障状态。
+</div>
+</div>
+
+
+<!-- FC_UHF_CTRL -->
+<h2>14. FC_UHF_CTRL (0x0B) — UHF 超高频 SIM7500 模块控制</h2>
+<div class="phase">
+<p>本命令把超高频（UHF）RFID 读写模块 <strong>SIM7500</strong>（芯联创展 / Silion，基于 Impinj E710 平台，EPC Class 1 Gen2 / ISO 18000-6C）暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x0A），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。通信接口自选：<strong>USART1</strong>（PA9=TX / PA10=RX，115200-8-N-1，TTL）。模块控制引脚：UHF_EN=PA8（高电平上电）、UHF_ANT=PC13（0=ANT1 / 1=ANT2）。模块侧采用 UHF RFID 通用 <code>0xBB</code> 帧族（头 + len + cmd + data + CRC16）。</p>
+
+<p>控制面 / 数据面解耦：状态机（IDLE/READY/INVENTORY/READ/WRITE/ERROR）由设备内部管理，盘点/读写的标签结果缓存在设备标签缓冲，主机经 <code>GET_TAGS</code> 取走。主机仅下发操作与配置，不参与标签搬运。</p>
+
+<h3>14.1 子命令总览</h3>
+<table>
+<tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
+<tr><td><code>0x01</code></td><td>OPEN</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>上电 + 下发配置，进入 READY（模块使能）</td></tr>
+<tr><td><code>0x02</code></td><td>CLOSE</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>停止并下电</td></tr>
+<tr><td><code>0x03</code></td><td>INVENTORY</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>发起一次盘点（异步，标签入缓冲）</td></tr>
+<tr><td><code>0x04</code></td><td>READ_TAG</td><td><code>[cmd, epcLen, epc.., bank, addr, cnt]</code></td><td><code>[cmd, err]</code></td><td>读标签：按 EPC 定位，读 <code>bank</code>/<code>addr</code> 起 <code>cnt</code> 个字</td></tr>
+<tr><td><code>0x05</code></td><td>WRITE_TAG</td><td><code>[cmd, epcLen, epc.., bank, addr, len, data..]</code></td><td><code>[cmd, err]</code></td><td>写标签：按 EPC 定位，写 <code>len</code> 字节到 <code>bank</code>/<code>addr</code></td></tr>
+<tr><td><code>0x06</code></td><td>STOP</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>停止当前操作</td></tr>
+<tr><td><code>0x07</code></td><td>QUERY</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, link, totalTags]</code></td><td>查询状态/链路/累计标签数</td></tr>
+<tr><td><code>0x08</code></td><td>GET_CONFIG</td><td><code>[cmd]</code></td><td><code>[cmd, err, powerDbm, antenna, checksumEn, session, target, q]</code></td><td>读取当前配置（功率/天线/校验等）</td></tr>
+<tr><td><code>0x09</code></td><td>SET_CONFIG</td><td><code>[cmd, powerDbm, antenna, checksumEn, session, target, q]</code></td><td><code>[cmd, err]</code></td><td>设置配置并持久化（重启保留）</td></tr>
+<tr><td><code>0x0A</code></td><td>GET_TAGS</td><td><code>[cmd, count]</code></td><td><code>[cmd, err, total L, total H, (epcLen, rssi, epc..)...]</code></td><td>取标签缓冲；<code>count</code>=0 取全部，>0 取前 <code>count</code> 条</td></tr>
+</table>
+
+<h3>14.2 配置字段 (SET_CONFIG / GET_CONFIG)</h3>
+<table>
+<tr><th>字段</th><th>范围</th><th>说明</th></tr>
+<tr><td><code>powerDbm</code></td><td>5~30</td><td>发射功率 (dBm)，SIM7500 可调范围 5~30 dBm</td></tr>
+<tr><td><code>antenna</code></td><td>0~1</td><td>天线: 0=ANT1 / 1=ANT2</td></tr>
+<tr><td><code>checksumEn</code></td><td>0~1</td><td>1=启用模块帧 CRC16 校验; 0=关闭</td></tr>
+<tr><td><code>session</code></td><td>0~3</td><td>Gen2 session S0~S3</td></tr>
+<tr><td><code>target</code></td><td>0~1</td><td>Gen2 target: 0=A / 1=B</td></tr>
+<tr><td><code>q</code></td><td>0~15</td><td>Gen2 Q 值; 0=模块默认</td></tr>
+</table>
+
+<h3>14.3 QUERY 响应字段</h3>
+<table>
+<tr><th>字段</th><th>说明</th></tr>
+<tr><td><code>err</code></td><td>0=OK</td></tr>
+<tr><td><code>state</code></td><td>0=IDLE / 1=READY / 2=INVENTORY / 3=READ / 4=WRITE / 5=ERROR</td></tr>
+<tr><td><code>link</code></td><td>0=链路正常 / 1=超时 / 2=CRC 错误</td></tr>
+<tr><td><code>totalTags</code></td><td>累计盘点到标签总数（8bit 截断）</td></tr>
+</table>
+
+<div class="note">
+<div class="note-title">错误码 (data[1])</div>
+<code>0</code>=OK, <code>1</code>=参数错误, <code>2</code>=忙（已有操作进行中）, <code>3</code>=未就绪, <code>4</code>=链路错误, <code>5</code>=未读到标签, <code>6</code>=超时。
+</div>
+
+<div class="note">
+<div class="note-title">存储与持久化</div>
+SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0），断电重启自动加载最后配置（magic <code>0x5548</code>）。上位机可用 GET_CONFIG 校验。
+</div>
+</div>
+
+
 <!-- 附录 -->
 <h2>附录 A. 元数据与常量</h2>
 <div class="phase">
@@ -489,6 +579,48 @@ FC_UPGRADE_EXEC           = 0x06   // Boot
 FC_DEVICE_INFO            = 0x07
 FC_RESET                  = 0x08
 FC_EXIT_BOOT              = 0x09   // 退出升级 (Boot 处理)
+FC_MOTOR_CTRL             = 0x0A   // 步进电机 DRV8434S 控制
+
+// FC=0x0A 子命令码 (FC_MOTOR_CTRL)
+MOTOR_SUB_MOVE            = 0x01   // 启动运动 [dir, steps 24bit]
+MOTOR_SUB_STOP            = 0x02   // 停止并关断输出
+MOTOR_SUB_SPEED           = 0x03   // 微步/秒 [hz 16bit]
+MOTOR_SUB_TORQUE          = 0x04   // 转矩百分比 [pct u8]
+MOTOR_SUB_QUERY           = 0x05   // 查询状态/故障/步数
+MOTOR_SUB_CLEAR           = 0x06   // 清故障
+MOTOR_ERR_OK              = 0
+MOTOR_ERR_PARAM           = 1
+MOTOR_ERR_FAULT           = 2
+MOTOR_STATE_IDLE          = 0
+MOTOR_STATE_RUN           = 1
+MOTOR_STATE_FAULT         = 2
+FC_UHF_CTRL               = 0x0B   // UHF 超高频 SIM7500 模块控制
+
+// FC=0x0B 子命令码 (FC_UHF_CTRL)
+UHF_SUB_OPEN              = 0x01   // 上电 + 下发配置 -> READY
+UHF_SUB_CLOSE             = 0x02   // 停止并下电
+UHF_SUB_INVENTORY         = 0x03   // 发起盘点 (异步)
+UHF_SUB_READ_TAG          = 0x04   // 读标签 [epcLen, epc.., bank, addr, cnt]
+UHF_SUB_WRITE_TAG         = 0x05   // 写标签 [epcLen, epc.., bank, addr, len, data..]
+UHF_SUB_STOP              = 0x06   // 停止当前操作
+UHF_SUB_QUERY             = 0x07   // 查询 [state, link, totalTags]
+UHF_SUB_GET_CONFIG        = 0x08   // 读配置 [power, antenna, checksum, session, target, q]
+UHF_SUB_SET_CONFIG        = 0x09   // 写配置并持久化
+UHF_SUB_GET_TAGS          = 0x0A   // 取标签缓冲 [count]
+UHF_ERR_OK                = 0
+UHF_ERR_PARAM             = 1
+UHF_ERR_BUSY              = 2
+UHF_ERR_NOT_READY         = 3
+UHF_ERR_LINK              = 4
+UHF_ERR_NO_TAG            = 5
+UHF_ERR_TIMEOUT           = 6
+UHF_STATE_IDLE            = 0
+UHF_STATE_READY           = 1
+UHF_STATE_INVENTORY       = 2
+UHF_STATE_READ            = 3
+UHF_STATE_WRITE           = 4
+UHF_STATE_ERROR           = 5
+UHF_PARM_MAGIC            = 0x5548  // userParam UHF 配置魔数
 FC_RFID_14443A            = 0x14   // ISO14443A 射频卡操作
 FC_RFID_15693             = 0x15   // ISO15693 射频卡操作
 FC_RFID_CTRL              = 0x16   // 射频控制原语

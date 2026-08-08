@@ -11,6 +11,9 @@
 #include "System_PeriphClk.h"
 #include "App_Dispatch.h"
 #include "App_CustomProtocol.h"
+#include "App_Stepper.h"
+#include "App_UHF.h"
+#include "App_AM.h"
 
 void System_Init(void)
 {
@@ -77,6 +80,48 @@ void System_Init(void)
     AppDispatchInit();
     Proto_RegisterTransport(PROTO_CH_USB, App_Usb_GetTransport());
 
+    /* 8.6 步进电机初始化 (SPI2+GPIO 已由 System_PeriphClkInit 使能时钟;
+     * DRV8434S 上电配置 + 停转, IDLE 无输出) */
+    App_Stepper_Init();
+
+    /* 8.7 UHF 模块初始化 (USART1 驱动 + 状态机, 不主动上电;
+     * 配置由 上位机 SET_CONFIG 下发或在 打开时按持久化配置应用) */
+    App_UHF_Init();
+    {
+        /* 加载上次持久化的 UHF 配置 (功率/天线/校验等) 到状态机,
+         * 使断电重启后仍保留上位机最后一次下发值 */
+        UHFUserCfg_t pc;
+        if (UhfParam_Load(&pc) == 0) {
+            AppUHFConfig_t c;
+            App_UHF_GetConfig(&c);
+            c.powerDbm = pc.powerDbm; c.antenna = pc.antenna;
+            c.checksumEn = pc.checksumEn; c.session = pc.session;
+            c.target = pc.target; c.q = pc.q;
+            (void)App_UHF_SetConfig(&c, 0);
+        }
+    }
+
+    /* 8.8 AM 解码器初始化 (USART2 驱动 + 配置, 不主动下发;
+     * 配置由 上位机 SET_CONFIG 下发或在 本机启动时按持久化配置复位) */
+    App_AM_Init();
+    {
+        /* 加载上次持久化的 AM 配置到状态机, 使断电重启后保留上位机最后一次下发值 */
+        AMUserCfg_t pc;
+        if (AmParam_Load(&pc) == 0) {
+            AppAMConfig_t c;
+            c.threshold   = pc.threshold;
+            c.hitCount    = pc.hitCount;
+            c.freqRange   = pc.freqRange;
+            c.recvDelay   = pc.recvDelay;
+            c.recvLength  = pc.recvLength;
+            c.phaseInvert = pc.phaseInvert;
+            c.phaseSync   = pc.phaseSync;
+            c.decodeVolt  = pc.decodeVolt;
+            c.mode        = pc.mode;
+            (void)App_AM_SetConfig(&c, 0);
+        }
+    }
+
     /* 9. 开全局中断 (最后一步 Sys_EnableInt, USB 准备就绪后才开)*/
     __asm volatile ("cpsie i");
 }
@@ -95,6 +140,15 @@ int main(void)
 
         /* USB HL 轮询 (当前中断驱动, 保留)*/
         App_Usb_Poll();
+
+        /* 步进电机状态机推进 (步进 + 故障监测)*/
+        App_Stepper_Process();
+
+        /* UHF 状态机推进 (标签流采集 + 空闲结束检测)*/
+        App_UHF_Process();
+
+        /* AM 解码器状态机推进 (链路/心跳监测)*/
+        App_AM_Process();
 
         /* 绿灯心跳 (500ms)*/
         AppLedProcess();

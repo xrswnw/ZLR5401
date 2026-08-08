@@ -6,6 +6,8 @@ set(SDK_SRC
   ${CMAKE_SOURCE_DIR}/Sdk/STM32F10x_StdPeriph_Lib_V3.6.0/Libraries/STM32F10x_StdPeriph_Driver/src/stm32f10x_rcc.c
   ${CMAKE_SOURCE_DIR}/Sdk/STM32F10x_StdPeriph_Lib_V3.6.0/Libraries/STM32F10x_StdPeriph_Driver/src/stm32f10x_flash.c
   ${CMAKE_SOURCE_DIR}/Sdk/STM32F10x_StdPeriph_Lib_V3.6.0/Libraries/STM32F10x_StdPeriph_Driver/src/stm32f10x_tim.c
+  ${CMAKE_SOURCE_DIR}/Sdk/STM32F10x_StdPeriph_Lib_V3.6.0/Libraries/STM32F10x_StdPeriph_Driver/src/stm32f10x_spi.c
+  ${CMAKE_SOURCE_DIR}/Sdk/STM32F10x_StdPeriph_Lib_V3.6.0/Libraries/STM32F10x_StdPeriph_Driver/src/stm32f10x_usart.c
   ${CMAKE_SOURCE_DIR}/Sdk/arm-none-eabi/arm-none-eabi/c/string.c
   ${CMAKE_SOURCE_DIR}/Sdk/arm-none-eabi/arm-none-eabi/c/stdlib.c
 )
@@ -43,6 +45,13 @@ set(SOURCES
   src/App_Usb_HL.c
   src/App_Usb_Transport.c
   src/System_PeriphClk.c
+  src/App_Motor_HL.c
+  src/App_Stepper.c
+  src/App_UHF.c
+  src/App_UHF_HL.c
+  src/App_AM.c
+  src/App_AM_HL.c
+  Drv8434S/drv8434s.c
   App_startup_md.s
   ${SDK_SRC}
   ${STM32_USB_SRC}
@@ -54,6 +63,7 @@ set(SDK_INC
   ${CMAKE_SOURCE_DIR}/Sdk/STM32F10x_StdPeriph_Lib_V3.6.0/Libraries/STM32F10x_StdPeriph_Driver/inc
   ${CMAKE_SOURCE_DIR}/Sdk/arm-none-eabi/arm-none-eabi/c
   inc
+  ${CMAKE_CURRENT_SOURCE_DIR}/Drv8434S
   ${CMAKE_CURRENT_SOURCE_DIR}/STM32_USB/inc
 )
 
