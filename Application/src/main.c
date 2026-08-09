@@ -14,6 +14,7 @@
 #include "App_Stepper.h"
 #include "App_UHF.h"
 #include "App_AM.h"
+#include "App_Locker.h"
 
 void System_Init(void)
 {
@@ -122,6 +123,9 @@ void System_Init(void)
         }
     }
 
+    /* 8.9 开锁器业务编排层初始化 (IDLE, 默认锁定)*/
+    App_Locker_Init();
+
     /* 9. 开全局中断 (最后一步 Sys_EnableInt, USB 准备就绪后才开)*/
     __asm volatile ("cpsie i");
 }
@@ -143,6 +147,9 @@ int main(void)
 
         /* 步进电机状态机推进 (步进 + 故障监测)*/
         App_Stepper_Process();
+
+        /* 开锁器业务状态机推进 (硬标签EPC比对/软标解码编排)*/
+        App_Locker_Process();
 
         /* UHF 状态机推进 (标签流采集 + 空闲结束检测)*/
         App_UHF_Process();

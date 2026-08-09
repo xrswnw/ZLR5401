@@ -39,6 +39,25 @@
 #define FC_MOTOR_CTRL       0x0A   /* 步进电机 DRV8434S 控制 (子命令编码, 见下)*/
 #define FC_UHF_CTRL         0x0B   /* UHF 超高频 SIM7500 模块控制 (子命令编码, 见下)*/
 #define FC_AM_CTRL          0x0C   /* AM 解码器控制 (子命令编码, 见下)*/
+#define FC_LOCKER_CTRL      0x0D   /* 开锁器业务编排 (子命令编码, 见下)*/
+
+/* ---- FC_LOCKER_CTRL (0x0D) 子命令编码 (data[0]) ----
+ * 开锁器业务编排状态机 (依《约束/Link.txt》).
+ * 所有响应同步: data[0]=cmd, data[1]=err(0=OK). err 值见 LOCKER_ERR_*.
+ * 注: 一帧装不下的多硬标签, 可先 LOCKER_SUB_ADD 逐条追加再 START. */
+#define LOCKER_SUB_CONFIGURE  0x01   /* data: [cmd,hardCountL,hardCountH,softCountL,softCountH]
+                                        (v1 精简: 经 ADD 建清单, 此处仅设软标数/清零) */
+#define LOCKER_SUB_ADD        0x02   /* data: [cmd,epcLen,epc..]  追加一条硬标签 EPC */
+#define LOCKER_SUB_START      0x03   /* data: [cmd]  上电UHF+开扫, 进入可开锁 */
+#define LOCKER_SUB_CANCEL     0x04   /* data: [cmd]  取消, 磁块回降回 IDLE */
+#define LOCKER_SUB_QUERY      0x05   /* data: [cmd]  查询状态/计数: [cmd,err,state,hm,sc,su] */
+#define LOCKER_SUB_CONSUME_SOFT 0x06 /* data: [cmd]  v1 软标: 上位机上报已解码一次 */
+#define LOCKER_SUB_GET_EVENT  0x07   /* data: [cmd]  取一条上报事件 (见 AppLockerEvent_t) */
+/* 逻辑错误码 (data[1]) */
+#define LOCKER_ERR_OK         0
+#define LOCKER_ERR_BUSY       1     /* 非空闲, 需先取消 */
+#define LOCKER_ERR_PARAM      2     /* 参数非法/超上限 */
+#define LOCKER_ERR_NO_EVENT   3     /* 无待取事件 */
 
 /* ---- FC_MOTOR_CTRL (0x0A) 子命令编码 (data[0]) ----
  * data: [0]=cmd, 后续参数随 cmd 而定. 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd. */

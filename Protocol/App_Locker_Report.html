@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 开锁器 · 初版功能设计报告</title>
+<style>
+  :root {
+    --blue-900:#0a2540; --blue-700:#0d3b66; --blue-600:#1273b8;
+    --blue-500:#1a86d8; --blue-300:#5dace0; --blue-100:#e8f1fa;
+    --blue-50:#f4f9fe;  --ink:#12324f;      --ink-soft:#3c5a75;
+    --line:#cfe0f0;     --white:#ffffff;    --teal:#0d7a74;
+    --amber:#b45309;    --red:#c0392b;      --green:#1e7d32;
+    --mono:"SF Mono",Menlo,Consolas,monospace;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; background:linear-gradient(180deg,#eef6fd 0%,#ddecf8 100%);
+    color:var(--ink); font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    line-height:1.75; font-size:15px;
+  }
+  .wrap { max-width:1020px; margin:0 auto; padding:36px 22px 80px; }
+  .hero{
+    background:linear-gradient(120deg,var(--blue-900),var(--blue-600));
+    color:#fff; border-radius:14px; padding:30px 32px; margin-bottom:26px;
+    box-shadow:0 8px 24px rgba(13,59,102,.25);
+  }
+  .hero h1 { margin:0 0 6px; font-size:26px; color:#fff; }
+  .hero .sub { color:#cfe5f7; font-size:14px; }
+  .hero .meta { display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; font-size:12px; }
+  .hero .meta span {
+    background:rgba(255,255,255,.14); border:1px solid rgba(255,255,255,.28);
+    padding:3px 10px; border-radius:12px;
+  }
+  h2 {
+    font-size:20px; margin:34px 0 14px; padding:8px 14px; color:#fff;
+    background:linear-gradient(90deg,var(--blue-700),var(--blue-500));
+    border-radius:8px;
+  }
+  h3 { font-size:16px; margin:22px 0 8px; color:var(--blue-900); border-left:4px solid var(--blue-500); padding-left:10px;}
+  p  { margin:8px 0; }
+  .card {
+    background:var(--white); border:1px solid var(--line); border-radius:10px;
+    padding:16px 20px; margin:12px 0; box-shadow:0 2px 6px rgba(18,115,184,.06);
+  }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media(max-width:760px){ .grid2{ grid-template-columns:1fr; } }
+  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13.5px; background:#fff; }
+  th,td { border:1px solid var(--line); padding:8px 10px; text-align:left; }
+  th { background:var(--blue-100); color:var(--blue-900); font-weight:700; }
+  td:first-child { color:var(--blue-700); font-weight:600; white-space:nowrap;}
+  code {
+    background:var(--blue-100); padding:1px 6px; border-radius:4px;
+    font-family:var(--mono); font-size:12.5px; color:var(--blue-700);
+  }
+  .plain { background:var(--blue-50); }
+  .tag { display:inline-block; font-size:11px; padding:1px 8px; border-radius:10px; margin-left:6px; vertical-align:middle; }
+  .tag-ok  { background:#e6f4ea; color:var(--green); }
+  .tag-warn{ background:#fdf1e3; color:var(--amber); }
+  .tag-rdy { background:var(--blue-100); color:var(--blue-700); }
+  .state { text-align:center; font-weight:700; }
+  .st0{background:#eef2f6;color:#5a6b7a;} .st1{background:var(--blue-100);color:var(--blue-700);}
+  .st2{background:#e5f6ee;color:var(--green);} .st3{background:#fdf3e0;color:var(--amber);}
+  .st4{background:var(--blue-100);color:var(--blue-700);} .st5{background:#fdecec;color:var(--red);}
+  .mermaid-bg {
+    background:#fff; border:1px solid var(--line); border-radius:10px;
+    padding:18px; margin:12px 0; text-align:center;
+  }
+  .legend { font-size:12px; color:var(--ink-soft); margin-top:8px; }
+  .legend b { font-size:12px; }
+  .note {
+    border-left:4px solid var(--blue-500); background:var(--blue-50);
+    padding:12px 14px; margin:12px 0; border-radius:0 6px 6px 0;
+  }
+  .sum {
+    background:var(--blue-900); color:#e8f1fa; border-radius:10px; padding:18px 20px; margin:14px 0;
+  }
+  .sum b{ color:#fff; }
+  hr { border:none; border-top:1px solid var(--line); margin:30px 0; }
+  .flow { font-family:var(--mono); font-size:12.5px; color:var(--ink); }
+  .k { color:var(--blue-700); font-weight:700; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+<div class="hero">
+  <h1>ZLR5401 · 智能开锁器 — 初版功能设计报告</h1>
+  <div class="sub">根据《约束/Link.txt》运行逻辑，结合已实现模块（UHF 硬标签读卡 / AM 软标解码器 / 步进电机升降 / LED）完成的功能设计</div>
+  <div class="meta">
+    <span>主控：GD32F103C8T6 (Cortex-M3)</span>
+    <span>工程：ZLR5401</span>
+    <span>命令：FC_LOCKER_CTRL (0x0D)</span>
+    <span>状态：初版功能已实现 · 编译通过</span>
+    <span>日期：2026-08-08</span>
+  </div>
+</div>
+
+<!-- ================= 一、需求与映射 ================= -->
+<h2>一、约束 → 功能设计映射</h2>
+<p>《约束/Link.txt》定义了开锁器完整运行逻辑。本设计将其拆分为一个可执行的状态机，逐条落到对已实现底层模块的调用：</p>
+<table>
+<tr><th>#</th><th>约束原文（Link.txt）</th><th>实现落点</th><th>模块</th></tr>
+<tr><td>1</td><td>客户付款</td><td>上位机侧；设备收到「结账任务」即开始</td><td>协议层</td></tr>
+<tr><td>2</td><td>上位机把结账标签的 EPC 传给开锁器</td><td><code>LOCKER_SUB_ADD</code> 逐条下发硬标签 EPC + <code>LOCKER_SUB_CONFIGURE</code> 设软标数量</td><td>App_Locker</td></tr>
+<tr><td>3</td><td>开锁器接收硬标签 EPC 和软标数量</td><td>清单缓存于 <code>AppLockerCtx_t</code></td><td>App_Locker</td></tr>
+<tr><td>4</td><td>客户把标签放到开锁器上，光电触发</td><td>UHF 盘点到放置标签（数据面环形缓冲）</td><td>App_UHF</td></tr>
+<tr><td>5</td><td>比对 EPC：一致亮绿灯升起开锁；不一致红灯闪烁不升起；结果回传上位机</td><td><code>LockMatch</code> 分支 → <code>rise_lock()</code> + 事件 <code>MATCH_OK / MISMATCH</code> 入上报缓冲</td><td>App_Locker + LED + Stepper</td></tr>
+<tr><td>6</td><td>硬标签预留 2 分钟，每多一个标签 +30s</td><td>保持窗口 <code>2min + (m-1)×30s</code>，超时回落并上报 <code>TIMEOUT</code></td><td>App_Locker</td></tr>
+<tr><td>7</td><td>读到不同 EPC 且解锁数量 n 达硬标签数 m，进软标阶段</td><td><code>hardMatched==hardCount</code> → <code>HARD_DONE</code> → <code>SOFT_DECODE</code></td><td>App_Locker</td></tr>
+<tr><td>8</td><td>每个软标对应一次解码数量，次数用尽结账完成</td><td><code>LOCKER_SUB_CONSUME_SOFT</code> 消耗一次；<code>softUsed==softCount</code> → <code>DONE</code></td><td>App_Locker + App_AM</td></tr>
+</table>
+
+<!-- ================= 二、模块复用 ================= -->
+<h2>二、已实现模块的复用（不重复造轮子）</h2>
+<div class="grid2">
+  <div class="card">
+    <h3 style="margin-top:0">硬标签 — UHF 读卡 <span class="tag tag-rdy">已提供</span></h3>
+    <p><code>App_UHF</code> 控制面/数据面解耦：<code>App_UHF_Inventory()</code> 发起盘点，标签结果经 <code>App_UHF_TagTake()</code> 一条条取出（含 EPC + RSSI）。配置/上电由 <code>App_UHF_Open()</code> 完成并持久化。</p>
+    <p>开锁器业务仅需在 <code>LockConfigured</code> 态轮询数据面，把取到的 EPC 与清单比对——无需触碰 USART1/0xBB 帧底层。</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">软标 — AM 解码器 <span class="tag tag-rdy">已提供</span></h3>
+    <p><code>App_AM</code> 提供解码器配置（阈值/命中次数/频率范围/模式）+ 逐命令同步读写的控制面。软标「按次数解码」由业务层按 1 次/软标 的计数驱动。</p>
+    <p>初版以 <code>LOCKER_SUB_CONSUME_SOFT</code> 显式上报「解码一次」完成计数；后续可改为调用 <code>App_AM_Query()</code> 自动判定解码成功。</p>
+  </div>
+</div>
+<div class="grid2">
+  <div class="card">
+    <h3 style="margin-top:0">升降开锁 — 步进电机 <span class="tag tag-rdy">已提供</span></h3>
+    <p><code>App_Stepper</code> 提供 <code>App_Stepper_Move()</code>（方向 + 目标微步数）驱动 DRV8434S。本设计以「升起/下降」两个定步数动作封装 <code>rise_lock() / lower_lock()</code>，步数可配置。</p>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">状态指示 — LED <span class="tag tag-rdy">已提供</span></h3>
+    <p><span class="tag tag-warn">约束说明</span> 当前硬件为<b>单绿灯（PB4, PW-limb 呼吸）</b>，无独立红灯。本设计阶段以 <code>LedHl_GOn()</code> 指示就绪/匹配，<b>红灯闪烁</b>语义在报告中标注为「待硬件确认/红灯 GPIO」待扩展项，逻辑分支已预留（<code>MISMATCH</code> 事件已上报，点灯可后续接入）。</p>
+  </div>
+</div>
+
+<!-- ================= 三、状态机 ================= -->
+<h2>三、业务状态机（App_Locker）</h2>
+<div class="mermaid-bg">
+<div class="mermaid">
+stateDiagram-v2
+    [*] --> IDLE
+    IDLE --> CONFIGURED: ADD/CONFIGURE 建立任务
+    CONFIGURED --> CONFIGURED: 匹配→升起+灯, 上报MATCH_OK
+    CONFIGURED --> CONFIGURED: 非清单→不升起, 上报MISMATCH
+    CONFIGURED --> SOFT_DECODE: hardMatched==hardCount (HARD_DONE)
+    CONFIGURED --> IDLE: TIMEOUT / CANCEL
+    SOFT_DECODE --> SOFT_DECODE: 消耗一次软标 (SOFT_USED)
+    SOFT_DECODE --> DONE: softUsed==softCount (DONE)
+    SOFT_DECODE --> IDLE: TIMEOUT / CANCEL
+    DONE --> IDLE: 停留后回落
+    IDLE --> FAULT: 电机/链路故障
+    FAULT --> IDLE: 清障
+</div>
+</div>
+<div class="legend">
+  <b>状态语义</b>：IDLE=空闲锁定 · CONFIGURED=可开锁（硬标比对中） · SOFT_DECODE=硬标已全部解锁，软标计数中 · DONE=结账完成 · FAULT=故障。
+</div>
+
+<h3>状态定义</h3>
+<table>
+<tr><th>状态</th><th>值</th><th>进入条件</th><th>行为 / 退出</th></tr>
+<tr><td class="st0 state">IDLE</td><td>0</td><td>上电 / 取消 / 完成</td><td>默认锁定（磁块回落）；<code>CONFIGURE/ADD</code> → CONFIGURED</td></tr>
+<tr><td class="st1 state">CONFIGURED</td><td>1</td><td>建立结账任务</td><td>轮询 UHF 比对 EPC；匹配点亮绿灯升起；全匹配 → SOFT_DECODE；超时/取消 → IDLE</td></tr>
+<tr><td class="st2 state">SOFT_DECODE</td><td>3</td><td>硬标签 m==n</td><td>每次 <code>CONSUME_SOFT</code> 消耗一次；次数尽 → DONE</td></tr>
+<tr><td class="st3 state">DONE</td><td>4</td><td>软标次数用尽</td><td>停留 5s 后回落 → IDLE</td></tr>
+<tr><td class="st4 state">FAULT</td><td>5</td><td>UHF 链路/电机故障</td><td>回落锁定；清障 → IDLE</td></tr>
+</table>
+
+<h3>时间窗计算（约束 #6）</h3>
+<div class="card flow">
+  开锁保持窗口 <span class="k">= 2min + (hardCount − 1) × 30s</span>，匹配任一硬标签即刷新该窗口；
+  窗口内允许重复开锁/取放，超时则磁块回落并上报 <code>LOCKER_EVT_TIMEOUT</code>。
+</div>
+
+<!-- ================= 四、协议 ================= -->
+<h2>四、协议扩展 — FC_LOCKER_CTRL (0x0D)</h2>
+<p>在既有 <code>Sw</code> 帧（CRC32 / HID 报告 ID 0x02）之上新增命令，遵循已有 <code>data[0]=子命令, data[1]=err</code> 风格，响应 <code>func = 0x0D ^ 0xFF = 0xF2</code>。</p>
+<table>
+<tr><th>子命令</th><th>Host→Device</th><th>说明</th></tr>
+<tr><td>CONFIGURE 0x01</td><td><code>[cmd, hardL,hardH, softL,softH]</code></td><td>清空清单，设软标数量；hardCount 上限预检</td></tr>
+<tr><td>ADD 0x02</td><td><code>[cmd, epcLen, epc…]</code></td><td>追加一条硬标签 EPC（可连续发，条数 ≤16）</td></tr>
+<tr><td>START 0x03</td><td><code>[cmd]</code></td><td>UHF 上电 + 开扫，进入可开锁</td></tr>
+<tr><td>CANCEL 0x04</td><td><code>[cmd]</code></td><td>取消任务，磁块回落回 IDLE</td></tr>
+<tr><td>QUERY 0x05</td><td><code>[cmd]</code></td><td><code>[cmd,err,state,hm, sc,su]</code> 查询状态/计数</td></tr>
+<tr><td>CONSUME_SOFT 0x06</td><td><code>[cmd]</code></td><td>软标解码 1 次（进 SOFT 后使用）</td></tr>
+<tr><td>GET_EVENT 0x07</td><td><code>[cmd]</code></td><td>取一条上报事件（结果/异常回传上位机）</td></tr>
+</table>
+
+<h3>上报事件（GET_EVENT 返回）</h3>
+<table>
+<tr><th>事件码</th><th>含义</th><th>触发</th></tr>
+<tr><td>MATCH_OK 0</td><td>硬标签匹配，亮绿灯升起</td><td>比对一致</td></tr>
+<tr><td>MISMATCH 1</td><td>非清单 EPC，不升起</td><td>比对不一致</td></tr>
+<tr><td>HARD_DONE 2</td><td>硬标签全部解锁</td><td>m==n</td></tr>
+<tr><td>SOFT_USED 3</td><td>消耗一次软标解码</td><td>CONSUME_SOFT</td></tr>
+<tr><td>TIMEOUT 4</td><td>开锁窗口超时</td><td>超时回落</td></tr>
+<tr><td>DONE 5</td><td>结账完成</td><td>软标次数用尽</td></tr>
+<tr><td>FAULT 6</td><td>故障</td><td>链路/电机异常</td></tr>
+</table>
+
+<!-- ================= 五、文件清单 ================= -->
+<h2>五、变更文件</h2>
+<table>
+<tr><th>文件</th><th>变更</th></tr>
+<tr><td>Application/inc/App_Locker.h</td><td>新增：状态机/清单/事件定义 + API</td></tr>
+<tr><td>Application/src/App_Locker.c</td><td>新增：业务状态机实现</td></tr>
+<tr><td>Application/inc/App_CustomProtocol.h</td><td>新增 <code>FC_LOCKER_CTRL(0x0D)</code> 及子命令/错误码</td></tr>
+<tr><td>Application/src/App_Dispatch.c</td><td>新增 <code>case FC_LOCKER_CTRL</code> 分派</td></tr>
+<tr><td>Application/src/main.c</td><td>初始化 + 主循环推进 <code>App_Locker_Process</code></td></tr>
+<tr><td>Application/CMakeLists.txt</td><td>加入 <code>App_Locker.c</code> 源文件</td></tr>
+</table>
+<div class="sum">
+  <b>资源占用</b>：text 19,680B（≤40K）/ RAM 10,564B（≤20K），编译零警告，固件生成成功（ZLR5401_202608082137.hex）。
+</div>
+
+<!-- ================= 六、待确认 & 后续 ================= -->
+<h2>六、待确认 / 后续优化</h2>
+<div class="grid2">
+  <div class="card">
+    <h3 style="margin-top:0">初版简化（已明确）</h3>
+    <ul>
+      <li>硬标签清单用「ADD 逐条」构建，未做单帧批量，避免 HID 56B 限制。</li>
+      <li>软标阶段 v1 依赖上位机显式上报「已解码一次」，未自动判定解码成功。</li>
+      <li>光电触发未接独立红外输入，以 UHF 数据面轮询替代（预留 <code>NotifyTag</code>）。</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h3 style="margin-top:0">待硬件/需求确认</h3>
+    <ul>
+      <li><b>红灯</b>：当前仅单绿灯；红灯闪烁需确认是否加第二次 GPIO / 驱动。</li>
+      <li>磁块升降步数 <code>APP_LOCKER_STEP_RISE/LOWER</code> 需按实测行程标定。</li>
+      <li>软标自动判定：接入 AM 解码成功回执后可由设备自动计数（替代 host 上报）。</li>
+      <li>清单持久化 / 事件审计日志（掉电不丢）可加 EEPROM。</li>
+    </ul>
+  </div>
+</div>
+
+<hr>
+<div class="note"><b>说明</b>：本报告为初版功能设计；已实现并可编译通过，红色语义与软标自动判定为明确的待确认/后续项。设计基于《约束/Link.txt》与既有模块实际能力，非规划中的高阶需求。</div>
+
+</div>
+<script>mermaid.initialize({startOnLoad:true,theme:'base',themeVariables:{
+  primaryColor:'#e8f1fa', primaryTextColor:'#0d3b66', primaryBorderColor:'#5dace0',
+  lineColor:'#1273b8', secondaryColor:'#f6fafe', tertiaryColor:'#ffffff'
+}});</script>
+</body>
+</html>

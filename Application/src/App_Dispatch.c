@@ -7,6 +7,7 @@
 #include "App_UHF.h"
 #include "App_AM.h"
 #include "App_AM_HL.h"
+#include "App_Locker.h"
 #include "stm32f10x.h"
 #include "App_Config.h"
 
@@ -439,6 +440,124 @@ void AppDispatch(ProtoFrame_t *f) {
             {
                 uint8_t r[2] = { sub, AM_ERR_PARAM };
                 Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
+            }
+            break;
+        }
+        break;
+    }
+
+    case FC_LOCKER_CTRL: {
+        /* 开锁器业务编排. data[0]=子命令. 响应 data[0]=cmd, data[1]=err, 其余随 cmd. */
+        uint8_t sub = (f->dataLen >= 1u) ? f->data[0] : 0u;
+
+        switch (sub) {
+        case LOCKER_SUB_CONFIGURE: {
+            /* [cmd, hardCountL, hardCountH, softCountL, softCountH]
+             * v1 精简: 清空清单, 仅设软标数 (hardCount 由随后 ADD 累积).
+             * host 下发的 hardCount 仅用于预检上限, 不实际写入. */
+            uint16_t softCnt = 0u;
+            if (f->dataLen >= 5u) {
+                if (((uint16_t)f->data[1] | ((uint16_t)f->data[2] << 8)) > APP_LOCKER_MAX_HARD) {
+                    uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
+                    Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+                    break;
+                }
+                softCnt = (uint16_t)(f->data[3] | ((uint16_t)f->data[4] << 8));
+            } else if (f->dataLen >= 3u) {
+                softCnt = (uint16_t)(f->data[1] | ((uint16_t)f->data[2] << 8));
+            }
+            AppLockerItem_t none[1] = { { {0u}, 0u, 0u } };
+            int e = App_Locker_Configure(none, 0u, softCnt);
+            uint8_t r[2] = { sub, LOCKER_ERR_OK };
+            if (e == -1)        r[1] = LOCKER_ERR_BUSY;
+            else if (e == -2)   r[1] = LOCKER_ERR_PARAM;
+            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+            break;
+        }
+        case LOCKER_SUB_ADD: {
+            /* [cmd, epcLen, epc..] */
+            if (f->dataLen < 2u) {
+                uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+                break;
+            }
+            uint8_t epcLen = f->data[1];
+            if ((uint16_t)2u + epcLen > f->dataLen && epcLen > APP_LOCKER_MAX_EPC) {
+                uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+                break;
+            }
+            AppLockerItem_t it;
+            it.epcLen = (epcLen > APP_LOCKER_MAX_EPC) ? APP_LOCKER_MAX_EPC : epcLen;
+            it.matched = 0;
+            for (uint8_t i = 0; i < it.epcLen; i++) it.epc[i] = f->data[2 + i];
+            int e = App_Locker_AddTag(&it);
+            uint8_t r[2] = { sub, LOCKER_ERR_OK };
+            if (e == -1) r[1] = LOCKER_ERR_BUSY;
+            else if (e == -2) r[1] = LOCKER_ERR_PARAM;
+            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+            break;
+        }
+        case LOCKER_SUB_START: {
+            int e = App_Locker_Start();
+            uint8_t r[2] = { sub, LOCKER_ERR_OK };
+            if (e == -2) r[1] = LOCKER_ERR_PARAM;
+            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+            break;
+        }
+        case LOCKER_SUB_CANCEL:
+            App_Locker_Cancel();
+            {
+                uint8_t r[2] = { sub, LOCKER_ERR_OK };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+            }
+            break;
+        case LOCKER_SUB_QUERY: {
+            AppLockerCtx_t c;
+            App_Locker_GetCtx(&c);
+            uint8_t r[1 + 1 + 1 + 2 + 2 + 2] = {
+                sub, LOCKER_ERR_OK,
+                (uint8_t)c.state,
+                (uint8_t)(c.hardMatched & 0xFF), (uint8_t)((c.hardMatched >> 8) & 0xFF),
+                (uint8_t)(c.softCount  & 0xFF),  (uint8_t)((c.softCount >> 8) & 0xFF),
+                (uint8_t)(c.softUsed   & 0xFF),  (uint8_t)((c.softUsed >> 8) & 0xFF)
+            };
+            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, sizeof(r));
+            break;
+        }
+        case LOCKER_SUB_CONSUME_SOFT: {
+            int e = App_Locker_StopDecode();
+            uint8_t r[2] = { sub, LOCKER_ERR_OK };
+            if (e == -1) r[1] = LOCKER_ERR_BUSY;
+            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+            break;
+        }
+        case LOCKER_SUB_GET_EVENT: {
+            uint8_t code, epc[APP_LOCKER_MAX_EPC], elen;
+            uint16_t hm, su, sc, hc;
+            int rv = App_Locker_PopEvent(&code, epc, &elen, &hm, &su, &sc, &hc);
+            uint8_t r[1 + 1 + 1 + APP_LOCKER_MAX_EPC + 1 + 2 + 2 + 2 + 2];
+            uint16_t pos = 0;
+            r[pos++] = sub; r[pos++] = LOCKER_ERR_OK;
+            if (rv != 0) {
+                r[1] = LOCKER_ERR_NO_EVENT;
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
+                break;
+            }
+            r[pos++] = code;
+            r[pos++] = elen;
+            for (uint8_t i = 0; i < elen; i++) r[pos++] = epc[i];
+            r[pos++] = (uint8_t)(hm & 0xFF); r[pos++] = (uint8_t)((hm >> 8) & 0xFF);
+            r[pos++] = (uint8_t)(su & 0xFF); r[pos++] = (uint8_t)((su >> 8) & 0xFF);
+            r[pos++] = (uint8_t)(sc & 0xFF); r[pos++] = (uint8_t)((sc >> 8) & 0xFF);
+            r[pos++] = (uint8_t)(hc & 0xFF); r[pos++] = (uint8_t)((hc >> 8) & 0xFF);
+            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
+            break;
+        }
+        default:
+            {
+                uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
             }
             break;
         }
