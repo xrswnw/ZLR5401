@@ -52,6 +52,8 @@ set(SOURCES
   src/App_AM.c
   src/App_AM_HL.c
   src/App_Locker.c
+  src/App_NewPeriph_HL.c
+  src/App_BootSelfTest.c
   Drv8434S/drv8434s.c
   App_startup_md.s
   ${SDK_SRC}

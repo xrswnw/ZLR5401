@@ -5,9 +5,10 @@
 
 /* =====================================================================
  * UHF 超高频模块硬件抽象层 (SIM7500 / Silion Impinj E710 平台)
- *  - 自选接口: USART1 (PA9=TX, PA10=RX), 115200-8-N-1 (TTL 电平)
- *  - UHF_EN 输出 = 模块电源使能 (高电平上电)
- *  - ANT 输出   = 天线选择 (低=ANT1, 高=ANT2; 单天线接默认为低)
+ *  - 接口: USART3 (PB10=TX, PB11=RX), 115200-8-N-1 (TTL 电平)
+ *  - UHF_EN = PB12 (模块电源使能, 高电平上电)
+ *  - 模块 IO: OUT2=PB13, IN1=PB14, IN2=PB15, NRST=PC6, OUT1=PC7
+ *  - 板上无 MCU 天线切换脚 (SIM7500 ANT 在模块上), 天线经模块命令
  *  - 模块采用 UHF RFID 通用 0xBB 帧族:
  *      | 0xBB | len | cmd | data... | crc16_lo | crc16_hi |
  *      len = cmd+data 字节数 (不含 0xBB), CRC16 = CCITT (poly 0x1021)
@@ -38,12 +39,12 @@
 #define UHF_HL_LINK_BAD_CRC    2u
 
 /* ---- 接口 (硬件层) ---- */
-void     UHF_HL_Init(void);                         /* USART1 + 引脚初始化 */
+void     UHF_HL_Init(void);                         /* USART3 + 引脚初始化 */
 void     UHF_HL_DeInit(void);
 
 /* 电源 / 天线 硬件控制 */
 void     UHF_HL_SetPowerEn(uint8_t en);             /* 1=上电 */
-void     UHF_HL_SetAntenna(uint8_t idx);            /* 0=ANT1, 1=ANT2 */
+void     UHF_HL_SetAntenna(uint8_t idx);            /* 无天线脚, 经模块命令 (保留接口为无操作) */
 
 /* 模块帧传输 */
 void     UHF_HL_SendFrame(uint8_t cmd, const uint8_t *data, uint16_t len);

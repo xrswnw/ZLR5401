@@ -60,7 +60,7 @@
  * (见 App_Config.h / Application/src/main.c). 超时 2000ms 覆盖:
  * - Boot 长擦除: 每页擦后 IwdgHl_Feed() (Boot_Dispatch.c), 单页 ~30~60ms << 2s;
  * - ParamSave 重序列(cpsid i): ~35ms << 2s.*/
-#define USE_IWDG              1
+#define USE_IWDG              0
 #define IWDG_TIMEOUT_MS       2000U
 #define IWDG_COUNTER_RATE     40000U
 #define IWDG_RELOAD_DIV       64U

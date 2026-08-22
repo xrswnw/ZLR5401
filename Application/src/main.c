@@ -15,6 +15,8 @@
 #include "App_UHF.h"
 #include "App_AM.h"
 #include "App_Locker.h"
+#include "App_NewPeriph_HL.h"
+#include "App_BootSelfTest.h"
 
 void System_Init(void)
 {
@@ -44,6 +46,9 @@ void System_Init(void)
 
     /* 6. LED*/
     LedHl_Init();
+
+    /* 6.5 新增外设: 光电/行程开关/蜂鸣器 GPIO + 调试串口 (骨架)*/
+    App_NewPeriph_Init();
 
     /* 7. USB HID (USB_EN=PA1 使能, AF_PP 配置 PA11/12 + GPIO_SetBits USB_EN)*/
     App_Usb_Init();
@@ -85,7 +90,7 @@ void System_Init(void)
      * DRV8434S 上电配置 + 停转, IDLE 无输出) */
     App_Stepper_Init();
 
-    /* 8.7 UHF 模块初始化 (USART1 驱动 + 状态机, 不主动上电;
+    /* 8.7 UHF 模块初始化 (USART3 驱动 + 状态机, 不主动上电;
      * 配置由 上位机 SET_CONFIG 下发或在 打开时按持久化配置应用) */
     App_UHF_Init();
     {
@@ -102,7 +107,7 @@ void System_Init(void)
         }
     }
 
-    /* 8.8 AM 解码器初始化 (USART2 驱动 + 配置, 不主动下发;
+    /* 8.8 AM 解码器初始化 (RS485/USART1 驱动 + 配置, 不主动下发;
      * 配置由 上位机 SET_CONFIG 下发或在 本机启动时按持久化配置复位) */
     App_AM_Init();
     {
@@ -128,6 +133,11 @@ void System_Init(void)
 
     /* 9. 开全局中断 (最后一步 Sys_EnableInt, USB 准备就绪后才开)*/
     __asm volatile ("cpsie i");
+
+    /* 9.5 上电自检 (POST): 蜂鸣器 500ms + 外设链路监控经调试串口打印.
+     * 需在开全局中断后调用 (UHF/AM 帧回依赖 USART 收中断). 阻塞期间喂狗.
+     * 呼吸灯由主循环 AppLedProcess 持续运行 (Task 2 常驻). */
+    App_BootSelfTest_Run();
 }
 
 int main(void)

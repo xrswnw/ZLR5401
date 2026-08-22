@@ -57,6 +57,13 @@ void App_Stepper_Init(void)
         s_fault = drv8434s_get_fault_status(&g_hMotor);
         return;
     }
+    /* 切换为 GPIO STEP/DIR 控制: 清 CTRL3 的 SPI_STEP/SPI_DIR, 保留微步模式,
+     * 此后步进/方向走硬件 STEP/DIR 引脚 (SPI 仅做寄存器配置). */
+    {
+        uint8_t ctrl3 = drv8434s_read_reg(&g_hMotor, DRV8434S_REG_CTRL3);
+        ctrl3 &= (uint8_t)~(DRV8434S_CTRL3_SPI_STEP | DRV8434S_CTRL3_SPI_DIR);
+        drv8434s_write_reg(&g_hMotor, DRV8434S_REG_CTRL3, ctrl3);
+    }
     /* 默认转矩 50%: 直接写 CTRL1 TRQ_DAC (整数, 避免链接浮点软库) */
     stepper_set_trq(STEPPER_PCT_DEFAULT);
     stepper_disable_output();
@@ -113,8 +120,9 @@ void App_Stepper_Process(void)
     s_acc += 1000u;                       /* 1ms 基准 */
     while (s_acc >= s_intervalUs) {
         s_acc -= s_intervalUs;
-        (void)drv8434s_set_dir(&g_hMotor, (drv8434s_dir_t)s_dir);
-        (void)drv8434s_spi_step(&g_hMotor);
+        /* GPIO 控制: 先设方向 (DIR 引脚), 再发 STEP 微步脉冲 (SPI 仅管寄存器配置) */
+        drv8434s_hal_set_pin(&g_hMotor, DRV8434S_PIN_DIR, s_dir);
+        drv8434s_pin_step_pulse(&g_hMotor);
         s_stepsDone++;
         /* 限步: 持续运行(stepsReq==0)不受限 */
         if (s_stepsReq != 0u && s_stepsDone >= s_stepsReq) {
@@ -131,7 +139,7 @@ int App_Stepper_Move(AppStepperMove_t *mv)
     /* 复位本段: 停止已有运动并清计数 */
     s_stepsDone = 0; s_acc = 0; s_dir = (mv->dir) ? 1u : 0u;
     s_stepsReq = mv->steps;
-    (void)drv8434s_set_dir(&g_hMotor, (drv8434s_dir_t)s_dir);
+    drv8434s_hal_set_pin(&g_hMotor, DRV8434S_PIN_DIR, s_dir);   /* GPIO 方向脚 */
     /* 清残留故障再使能输出 */
     if (s_fault & DRV8434S_FLT_FAULT) {
         (void)drv8434s_clear_fault(&g_hMotor);

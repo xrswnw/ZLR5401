@@ -7,20 +7,27 @@
 #include "stm32f10x_usart.h"
 
 /* =====================================================================
- * UHF 模块硬件抽象层 — USART1 驱动 + 电源/天线控制 + 0xBB 帧收发
+ * UHF 模块硬件抽象层 — USART3 驱动 + 电源/IO 控制 + 0xBB 帧收发
  *
- * 引脚 (自选, 避开 USB PA11/12、LED PB4/PB5、SWD、SPI2 PB12~15):
- *   USART1_TX = PA9, USART1_RX = PA10  (AF_PP)
- *   UHF_EN     = PA8  (输出, 高电平上电)
- *   UHF_ANT    = PC13 (输出, 低=ANT1 / 高=ANT2)
- * 时钟: USART1 在 APB2 (72MHz), 需 RCC_APB2Periph_USART1 + GPIOA + GPIOC。
+ * 引脚 (见原理图):
+ *   USART3_TX = PB10, USART3_RX = PB11  (AF_PP)
+ *   UHF_EN     = PB12 (输出, 高电平上电)
+ *   UHF_OUT2   = PB13, UHF_IN1 = PB14, UHF_IN2 = PB15 (模块 IO, 推挽输出)
+ *   UHF_NRST   = PC6 (输出, 低=复位), UHF_OUT1 = PC7 (输出)
+ * 时钟: USART3 在 APB1 (36MHz), GPIOB + GPIOC 由 System_PeriphClkInit 统一开启。
  * ===================================================================== */
 
-/* ---------- 引脚 (可按硬件调整) ---------- */
-#define UHF_HL_EN_PORT      GPIOA
-#define UHF_HL_EN_PIN       GPIO_Pin_8
-#define UHF_HL_ANT_PORT     GPIOC
-#define UHF_HL_ANT_PIN      GPIO_Pin_13
+/* ---------- 引脚 (按 App_Config.h / 原理图) ---------- */
+#define UHF_HL_EN_PORT      UHF_EN_GPIO_PORT      /* GPIOB */
+#define UHF_HL_EN_PIN       UHF_EN_GPIO_PIN       /* PB12 */
+#define UHF_HL_REG_PORT     UHF_REG_GPIO_PORT     /* GPIOB */
+#define UHF_HL_OUT2_PIN     UHF_REG_OUT2_PIN      /* PB13 */
+#define UHF_HL_IN1_PIN      UHF_REG_IN1_PIN       /* PB14 */
+#define UHF_HL_IN2_PIN      UHF_REG_IN2_PIN       /* PB15 */
+#define UHF_HL_NRST_PORT    UHF_NRST_GPIO_PORT    /* GPIOC */
+#define UHF_HL_NRST_PIN     UHF_NRST_GPIO_PIN     /* PC6 */
+#define UHF_HL_OUT1_PORT    UHF_OUT1_GPIO_PORT    /* GPIOC */
+#define UHF_HL_OUT1_PIN     UHF_OUT1_GPIO_PIN     /* PC7 */
 
 #define UHF_HL_BAUD         115200u
 
@@ -40,9 +47,9 @@ void UHF_HL_Init(void)
     GPIO_InitTypeDef gpio;
     USART_InitTypeDef usart;
 
-    /* 时钟: GPIOA(GPIOB 已由全局使能)、GPIOC、USART1(APB2) */
-    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOC | RCC_APB2Periph_USART1 |
-                           RCC_APB2Periph_GPIOA, ENABLE);
+    /* 时钟: GPIOB + GPIOC (APB2), USART3 (APB1) */
+    RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, ENABLE);
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
 
     /* UHF_EN: 推挽输出, 默认低 (模块不上电) */
     GPIO_StructInit(&gpio);
@@ -52,25 +59,33 @@ void UHF_HL_Init(void)
     GPIO_Init(UHF_HL_EN_PORT, &gpio);
     GPIO_ResetBits(UHF_HL_EN_PORT, UHF_HL_EN_PIN);
 
-    /* UHF_ANT: 推挽输出, 默认低 (ANT1) */
-    GPIO_StructInit(&gpio);
-    gpio.GPIO_Pin   = UHF_HL_ANT_PIN;
+    /* 模块 IO: OUT2/IN1/IN2 (GPIOB) + NRST/OUT1 (EPIOC), 推挽输出.
+     * NRST 默认高 (非复位), 其余默认低。 */
+    gpio.GPIO_Pin = UHF_HL_OUT2_PIN | UHF_HL_IN1_PIN | UHF_HL_IN2_PIN;
     gpio.GPIO_Mode  = GPIO_Mode_Out_PP;
     gpio.GPIO_Speed = GPIO_Speed_2MHz;
-    GPIO_Init(UHF_HL_ANT_PORT, &gpio);
-    GPIO_ResetBits(UHF_HL_ANT_PORT, UHF_HL_ANT_PIN);
+    GPIO_Init(UHF_HL_REG_PORT, &gpio);
+    GPIO_ResetBits(UHF_HL_REG_PORT, UHF_HL_OUT2_PIN | UHF_HL_IN1_PIN | UHF_HL_IN2_PIN);
 
-    /* USART1 TX=PA9 (AF_PP), RX=PA10 (输入浮空) */
     GPIO_StructInit(&gpio);
-    gpio.GPIO_Pin   = GPIO_Pin_9;
+    gpio.GPIO_Pin   = UHF_HL_NRST_PIN | UHF_HL_OUT1_PIN;
+    gpio.GPIO_Mode  = GPIO_Mode_Out_PP;
+    gpio.GPIO_Speed = GPIO_Speed_2MHz;
+    GPIO_Init(UHF_HL_NRST_PORT, &gpio);
+    GPIO_SetBits(UHF_HL_NRST_PORT, UHF_HL_NRST_PIN);     /* NRST 高=运行 */
+    GPIO_ResetBits(UHF_HL_NRST_PORT, UHF_HL_OUT1_PIN);
+
+    /* USART3 TX=PB10 (AF_PP), RX=PB11 (输入浮空) */
+    GPIO_StructInit(&gpio);
+    gpio.GPIO_Pin   = GPIO_Pin_10;
     gpio.GPIO_Mode  = GPIO_Mode_AF_PP;
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOA, &gpio);
+    GPIO_Init(GPIOB, &gpio);
 
     GPIO_StructInit(&gpio);
-    gpio.GPIO_Pin  = GPIO_Pin_10;
+    gpio.GPIO_Pin  = GPIO_Pin_11;
     gpio.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-    GPIO_Init(GPIOA, &gpio);
+    GPIO_Init(GPIOB, &gpio);
 
     USART_StructInit(&usart);
     usart.USART_BaudRate            = UHF_HL_BAUD;
@@ -79,40 +94,40 @@ void UHF_HL_Init(void)
     usart.USART_Parity              = USART_Parity_No;
     usart.USART_Mode                = USART_Mode_Rx | USART_Mode_Tx;
     usart.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-    USART_Init(USART1, &usart);
+    USART_Init(USART3, &usart);
 
     /* 收中断: 每字节进中断写入环形缓冲 */
-    USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
-    NVIC_SetPriority(USART1_IRQn, 3);
-    NVIC_EnableIRQ(USART1_IRQn);
+    USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
+    NVIC_SetPriority(USART3_IRQn, 3);
+    NVIC_EnableIRQ(USART3_IRQn);
 
-    USART_Cmd(USART1, ENABLE);
+    USART_Cmd(USART3, ENABLE);
 
     s_rxHead = 0; s_rxTail = 0; s_txBusy = 0;
 }
 
 void UHF_HL_DeInit(void)
 {
-    USART_Cmd(USART1, DISABLE);
-    NVIC_DisableIRQ(USART1_IRQn);
-    USART_DeInit(USART1);
+    USART_Cmd(USART3, DISABLE);
+    NVIC_DisableIRQ(USART3_IRQn);
+    USART_DeInit(USART3);
     GPIO_ResetBits(UHF_HL_EN_PORT, UHF_HL_EN_PIN);
 }
 
-/* USART1 接收中断: RXNE -> 环形缓冲 (覆盖旧数据, 无阻塞) */
-void USART1_IRQHandler(void)
+/* USART3 接收中断: RXNE -> 环形缓冲 (覆盖旧数据, 无阻塞) */
+void USART3_IRQHandler(void)
 {
-    if (USART_GetITStatus(USART1, USART_IT_RXNE) != RESET) {
-        uint8_t b = (uint8_t)(USART1->DR & 0xFF);
+    if (USART_GetITStatus(USART3, USART_IT_RXNE) != RESET) {
+        uint8_t b = (uint8_t)(USART3->DR & 0xFF);
         uint16_t next = (uint16_t)((s_rxHead + 1) % UHF_HL_RX_BUF_SIZE);
         if (next != s_rxTail) {                 /* 非满才写入 */
             s_rxBuf[s_rxHead] = b;
             s_rxHead = next;
         }
     }
-    if (USART_GetITStatus(USART1, USART_IT_TXE) != RESET) {
+    if (USART_GetITStatus(USART3, USART_IT_TXE) != RESET) {
         /* TXE 中断未使能; 仅为清理状态位 */
-        USART_ClearITPendingBit(USART1, USART_IT_TXE);
+        USART_ClearITPendingBit(USART3, USART_IT_TXE);
     }
 }
 
@@ -124,18 +139,19 @@ void UHF_HL_SetPowerEn(uint8_t en)
 
 void UHF_HL_SetAntenna(uint8_t idx)
 {
-    if (idx) GPIO_SetBits(UHF_HL_ANT_PORT, UHF_HL_ANT_PIN);
-    else     GPIO_ResetBits(UHF_HL_ANT_PORT, UHF_HL_ANT_PIN);
+    /* 板上无 MCU 天线切换脚 (SIM7500 ANT 在模块上); 天线选择经模块命令。
+     * 保留接口为无操作, 上层调用不受影响。 */
+    (void)idx;
 }
 
 /* ---------- 1 字节带超时阻塞发送 ---------- */
 static int uart_send_byte(uint8_t b, uint32_t timeoutMs)
 {
     uint32_t t0 = SysTickHl_GetMs();
-    while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET) {
+    while (USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET) {
         if ((SysTickHl_GetMs() - t0) >= timeoutMs) return -1;
     }
-    USART_SendData(USART1, b);
+    USART_SendData(USART3, b);
     return 0;
 }
 
@@ -156,7 +172,7 @@ void UHF_HL_SendFrame(uint8_t cmd, const uint8_t *data, uint16_t len)
     (void)uart_send_byte((uint8_t)(crc & 0xFF), 50);
     (void)uart_send_byte((uint8_t)(crc >> 8), 50);
     /* 等待 TDR 完全移位送出 (TC), 再清发送忙 */
-    while (USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET) {
+    while (USART_GetFlagStatus(USART3, USART_FLAG_TC) == RESET) {
         if ((SysTickHl_GetMs() - t0) >= 100u) break;
     }
     s_txBusy = 0;

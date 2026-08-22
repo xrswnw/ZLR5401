@@ -23,7 +23,7 @@ void AppLedInit(void) {
     s_u32LastStep = 0;
     s_u16Step = 0;
     LedHl_Init();
-    LedHl_GSetBrightness(0);
+    LedHl_RunSetBrightness(0);
 }
 
 /* 呼吸: 主循环调用, 软件伽马²斜坡驱动硬件 PWM 占空比*/
@@ -45,6 +45,6 @@ void AppLedProcess(void) {
         phase = (uint32_t)(BREATH_STEPS - s_u16Step); /* 下降: 250..1*/
     }
     uint32_t brightness = (phase * phase * BREATH_MAX) / BREATH_HALF_SQ;
-    LedHl_GSetBrightness((uint16_t)brightness);
+    LedHl_RunSetBrightness((uint16_t)brightness);
 }
 

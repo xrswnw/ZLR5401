@@ -152,7 +152,7 @@ int App_Locker_Start(void)
                    (uint32_t)(s_ctx.hardCount > 0u ? s_ctx.hardCount - 1u : 0u)
                    * APP_LOCKER_EXTRA_PER_TAG_MS;
     s_ctx.holdDeadlineMs = SysTickHl_GetMs() + win;
-    LedHl_GOn();               /* 绿灯: 可开始 */
+    LedHl_EOff();               /* 就绪: ERR 默认灭 */
     set_state(LOCKER_CONFIGURED);
     return 0;
 }
@@ -161,7 +161,7 @@ int App_Locker_Cancel(void)
 {
     (void)App_UHF_Stop();
     lower_lock();
-    LedHl_GOff();
+    LedHl_EOff();
     set_state(LOCKER_IDLE);
     return 0;
 }
@@ -211,7 +211,7 @@ static void locker_process_configured(void)
         s_ctx.hardMatched++;
         s_ctx.holdTagIndex = (uint16_t)idx;
         evr_push(LOCKER_EVT_MATCH_OK, tag.epc, tag.epcLen);
-        LedHl_GOn();
+        LedHl_EOff();
         /* 刷新保持截止: 匹配即升起, 窗口内保持 */
         uint32_t win = APP_LOCKER_BASE_HOLD_MS +
                        (s_ctx.hardCount > 0u ? s_ctx.hardCount - 1u : 0u)
@@ -232,10 +232,10 @@ static void locker_process_configured(void)
             }
         }
     } else {
-        /* 非清单 EPC: 红灯闪烁, 不升起, 上报 */
+        /* 非清单 EPC: ERR 闪烁, 不升起, 上报 */
         evr_push(LOCKER_EVT_MISMATCH, tag.epc, tag.epcLen);
         s_lastRed = !s_lastRed;
-        LedHl_GSetBrightness(s_lastRed ? 999u : 0u);
+        if (s_lastRed) LedHl_EOn(); else LedHl_EOff();
     }
 
     /* 开锁窗口超时: 回降并结束 */
@@ -249,8 +249,8 @@ static void locker_process_configured(void)
 static void locker_process_soft(void)
 {
     /* 软标阶段: v1 依赖上位机 LOCKER_SUB_CONSUME_SOFT 触发消耗。
-     * 此处仅维持绿灯表示可继续使用解码器。 */
-    LedHl_GOn();
+     * 此处仅维持 ERR 熄灭表示可继续使用解码器。 */
+    LedHl_EOff();
     if (s_ctx.holdDeadlineMs != 0u &&
         (SysTickHl_GetMs() >= s_ctx.holdDeadlineMs)) {
         evr_push(LOCKER_EVT_TIMEOUT, (const uint8_t *)0, 0u);
@@ -260,7 +260,7 @@ static void locker_process_soft(void)
 
 static void locker_process_done(void)
 {
-    LedHl_GOn();
+    LedHl_EOff();
     if (s_ctx.holdDeadlineMs != 0u &&
         (SysTickHl_GetMs() >= s_ctx.holdDeadlineMs)) {
         App_Locker_Cancel();   /* 结账完成后回 IDLE */
@@ -270,7 +270,7 @@ static void locker_process_done(void)
 static void locker_process_fault(void)
 {
     lower_lock();
-    LedHl_GOn();               /* 故障: 常亮指示 (无独立红灯, 用绿灯全亮区分)*/
+    LedHl_EOn();               /* 故障: ERR 常亮指示 */
 }
 
 void App_Locker_Process(void)

@@ -58,59 +58,100 @@ typedef unsigned char BOOL;
 #define RAM_ORIGIN          0x20000000U
 #define RAM_SIZE            (20U * 1024U)
 
-/* ===================== 步进电机 DRV8434S (SPI2 自选引脚, 见 Drv_Stepper_HL) =====================
- * DRV8434S 16-bit SPI 控制 (Mode1: CPOL=0, CPHA=1), SPI_STEP/SPI_DIR 走 SPI, 无需 STEP/DIR 引脚。
- * 引脚自选(避开 USB PA1/PA11/PA12、LED PB4/PB5、SWD PA13~15):
- *   SCK=PB13, MISO=PB14, MOSI=PB15, NSS=PB12(手动 GPIO 片选, 帧间高电平>=500ns)
- *   nFAULT 输入 = PB6 (1=正常, 0=故障)    nSLEEP 输出 = PB7 (1=运行, 0=睡眠)
- * 需 RCC_APB1Periph_SPI2 + GPIOB。*/
-#define MOTOR_SPI               SPI2
-#define MOTOR_SPI_SCK_PIN       GPIO_Pin_13
-#define MOTOR_SPI_MISO_PIN      GPIO_Pin_14
-#define MOTOR_SPI_MOSI_PIN      GPIO_Pin_15
-#define MOTOR_SPI_CS_PIN        GPIO_Pin_12
+/* ===================== 步进电机 DRV8434S (SPI3 + GPIO, 见原理图) =====================
+ * DRV8434S 16-bit SPI 配置寄存器 (Mode1: CPOL=0, CPHA=1) + 硬件 STEP/DIR 引脚控制。
+ * 引脚(见原理图):
+ *   SCLK=PB3(SPI3_SCK), SDI=PB5(SPI3_MOSI→DRV SDI), SDO=PB4(SPI3_MISO←DRV SDO)
+ *   NSCS=PC0(手动 GPIO 片选, 帧间高电平>=500ns), STEP=PB6, DIR=PB7
+ *   NSLEEP=PB8(1=运行,0=睡眠), ENABLE=PB9(1=使能)
+ *   nFAULT 在板上接故障指示灯, 未连 MCU; 故障状态经 SPI 读取。
+ * 需 RCC_APB1Periph_SPI3 + GPIOB + GPIOC。*/
+#define MOTOR_SPI               SPI3
+#define MOTOR_SPI_SCK_PIN       GPIO_Pin_3
+#define MOTOR_SPI_MISO_PIN      GPIO_Pin_4
+#define MOTOR_SPI_MOSI_PIN      GPIO_Pin_5
 #define MOTOR_SPI_GPIO_PORT     GPIOB
-#define MOTOR_NFAULT_PIN        GPIO_Pin_6
-#define MOTOR_NSLEEP_PIN        GPIO_Pin_7
+#define MOTOR_NSCS_PORT         GPIOC
+#define MOTOR_NSCS_PIN          GPIO_Pin_0
+#define MOTOR_STEP_PIN          GPIO_Pin_6
+#define MOTOR_DIR_PIN           GPIO_Pin_7
+#define MOTOR_NSLEEP_PIN        GPIO_Pin_8
+#define MOTOR_ENABLE_PIN        GPIO_Pin_9
 #define MOTOR_CTRL_GPIO_PORT    GPIOB
 
-/* ===================== LED (单灯: 绿灯 PB4, 高电平点亮) =====================*/
-#define LED_G_GPIO_PORT    GPIOB
-#define LED_G_GPIO_PIN    GPIO_Pin_4
+/* ===================== LED (RUN 呼吸灯 PA2 + ERR 故障灯 PA3, 高电平点亮) =====================
+ * RUN=PA2: 呼吸用软件 PWM (TIM3 时基 + 中断翻转), AppLedProcess 持续驱动。
+ * ERR=PA3: 故障/状态指示, 默认灭; 无定时器通道, 直接 GPIO 开关。*/
+#define LED_RUN_GPIO_PORT    GPIOA
+#define LED_RUN_GPIO_PIN     GPIO_Pin_2
+#define LED_ERR_GPIO_PORT    GPIOA
+#define LED_ERR_GPIO_PIN     GPIO_Pin_3
 
 /* ===================== USB_EN =====================*/
 
-/* ===================== UHF 模块 SIM7500 (USART1, 自选引脚) =====================
- * 接口: USART1 (PA9=TX / PA10=RX), 115200-8-N-1 (TTL)
- * 控制: UHF_EN=PA8 (高电平上电), UHF_ANT=PC13 (0=ANT1 / 1=ANT2)
- * 引脚自选避开: USB PA1/PA11/PA12、LED PB4/PB5、SWD PA13~15、SPI2 PB12~15。*/
-#define UHF_USART               USART1
+/* ===================== UHF 模块 SIM7500 (USART3, 见原理图) =====================
+ * 接口: USART3 (PB10=TX / PB11=RX), 115200-8-N-1 (TTL)
+ * 引脚(见原理图): USART3_TX=PB10, USART3_RX=PB11  (AF_PP)
+ *   UHF_EN=PB12 (高电平上电), UHF_OUT2=PB13, UHF_IN1=PB14, UHF_IN2=PB15,
+ *   UHF_NRST=PC6, UHF_OUT1=PC7
+ * 板上无 MCU 天线切换脚 (SIM7500 ANT 在模块上, 天线选择经模块命令), 故无 UHF_ANT。*/
+#define UHF_USART               USART3
 #define UHF_BAUD                115200U
-#define UHF_TX_GPIO_PORT        GPIOA
-#define UHF_TX_GPIO_PIN         GPIO_Pin_9
-#define UHF_RX_GPIO_PORT        GPIOA
-#define UHF_RX_GPIO_PIN         GPIO_Pin_10
-#define UHF_EN_GPIO_PORT        GPIOA
-#define UHF_EN_GPIO_PIN         GPIO_Pin_8
-#define UHF_ANT_GPIO_PORT       GPIOC
-#define UHF_ANT_GPIO_PIN        GPIO_Pin_13
-/* 需求: USB_EN=PA1, 拉高才启用 USB (D+ 上拉)。
- * 依据: D3232GZ 工作参考工程的 USB_ENABLE_PORT = {GPIOA, GPIO_Pin_1}。
- * 硬件实测: 用 PB3(高电平) 固件设备不枚举; PA1 才是激活主机可见 D+ 上拉的脚。*/
-#define USB_EN_GPIO_PORT   GPIOA
-#define USB_EN_GPIO_PIN    GPIO_Pin_1
+#define UHF_TX_GPIO_PORT        GPIOB
+#define UHF_TX_GPIO_PIN         GPIO_Pin_10
+#define UHF_RX_GPIO_PORT        GPIOB
+#define UHF_RX_GPIO_PIN         GPIO_Pin_11
+#define UHF_EN_GPIO_PORT        GPIOB
+#define UHF_EN_GPIO_PIN         GPIO_Pin_12
+#define UHF_REG_GPIO_PORT       GPIOB
+#define UHF_REG_OUT2_PIN        GPIO_Pin_13
+#define UHF_REG_IN1_PIN         GPIO_Pin_14
+#define UHF_REG_IN2_PIN         GPIO_Pin_15
+#define UHF_NRST_GPIO_PORT      GPIOC
+#define UHF_NRST_GPIO_PIN       GPIO_Pin_6
+#define UHF_OUT1_GPIO_PORT      GPIOC
+#define UHF_OUT1_GPIO_PIN       GPIO_Pin_7
+/* 需求: USB_EN=PC10, 拉高才启用 USB (D+ 上拉)。
+ * 原 PA1 在本板不枚举, 改由 PC10 控制 D+ 上拉 (调试串口 UART4/PC10 停用后释放)。
+ * 硬件实测: 用 PB3(高电平)/PA1 固件设备不枚举; PC10 才是激活主机可见 D+ 上拉的脚。*/
+#define USB_EN_GPIO_PORT   GPIOC
+#define USB_EN_GPIO_PIN    GPIO_Pin_10
 
-/* ===================== AM 解码器 (USART2, 自选引脚) =====================
- * 接口: USART2 (PA2=TX / PA3=RX), 115200-8-N-1 (TTL)
+/* ===================== AM 解码器 -> RS485 (USART1 + SP3485, 见原理图) =====================
+ * 接口: USART1 (PA9=TXD / PA10=RXD), 115200-8-N-1 (TTL), 半双工 485。
+ * 方向控制: RS485_CTL1=PA8 (SP3485 DE/RE: 发送=1, 接收=0)
  * 协议: 2A A2 帧, 校验 = 命令+包数+包次+包长+数据 & 0xFF
- * 引脚自选避开: USB PA1/PA11/PA12、LED PB4/PB5、SWD PA13~15、UHF PA9/10、
- *                SPI2 PB12~15。USART2 位于 APB1 (36MHz)。*/
-#define AM_USART                USART2
+ * 注意: AM 数据经 RS485 收发, 发送前须拉高 PA8 方向, 发完拉低回接收态。*/
+#define AM_USART                USART1
 #define AM_BAUD                 115200U
 #define AM_TX_GPIO_PORT         GPIOA
-#define AM_TX_GPIO_PIN          GPIO_Pin_2
+#define AM_TX_GPIO_PIN          GPIO_Pin_9
 #define AM_RX_GPIO_PORT         GPIOA
-#define AM_RX_GPIO_PIN          GPIO_Pin_3
+#define AM_RX_GPIO_PIN          GPIO_Pin_10
+#define AM_DIR_GPIO_PORT        GPIOA
+#define AM_DIR_GPIO_PIN         GPIO_Pin_8
+
+/* ===================== 新增外设 (见原理图, 驱动骨架) =====================
+ * 光电接口 (TLP181): MCU_IR1_DET=PC5 (输入, 检测红外/光电)
+ * 行程开关: MCU_KEY_UP=PC8 (输入), MCU_KEY_DOWN=PC9 (输入)
+ * 蜂鸣器:   MCU_BEEP5V0_CTL=PC12 (输出, 高电平响)
+ * 调试串口: DEBUG_TX=PC10 (UART4_TX), DEBUG_RX=PC11 (UART4_RX)
+ * 注: PC10 已改作 USB_EN (见 USB_EN_GPIO_*), 调试串口默认关闭 (APP_DEBUG_SERIAL_EN=0)。*/
+#define APP_DEBUG_SERIAL_EN     0   /* 1=使能调试串口(UART4/PC10,11), 0=关闭(保留代码)*/
+#define IR_DET_GPIO_PORT        GPIOC
+#define IR_DET_GPIO_PIN         GPIO_Pin_5
+#define KEY_UP_GPIO_PORT        GPIOC
+#define KEY_UP_GPIO_PIN         GPIO_Pin_8
+#define KEY_DOWN_GPIO_PORT      GPIOC
+#define KEY_DOWN_GPIO_PIN       GPIO_Pin_9
+#define BEEP_GPIO_PORT          GPIOC
+#define BEEP_GPIO_PIN           GPIO_Pin_13
+#define DBG_USART               UART4
+#define DBG_BAUD                115200U
+#define DBG_TX_GPIO_PORT        GPIOC
+#define DBG_TX_GPIO_PIN         GPIO_Pin_10
+#define DBG_RX_GPIO_PORT        GPIOC
+#define DBG_RX_GPIO_PIN         GPIO_Pin_11
 
 /* ===================== 外设 RCC 时钟集合 (统一在 System_PeriphClkInit 开启) =====================*/
 /* 一次性开启, 替代各 HL 层分散调用 RCC_APBxPeriphClockCmd / RCC_AHBPeriphClockCmd。
@@ -118,11 +159,18 @@ typedef unsigned char BOOL;
  * 当前仅保留: LED(TIM3_CH1 PWM, PB4) + USB(HID)。 */
 #define APP_RCC_APB2_PERIPH    (RCC_APB2Periph_GPIOA  | RCC_APB2Periph_GPIOB | \
                                 RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO   | \
-                                RCC_APB2Periph_USART1)
+                                RCC_APB2Periph_USART1) /* USART1=RS485(AM) */
+/* 调试串口(UART4)时钟: 默认关闭(APP_DEBUG_SERIAL_EN=0), PC10 已改作 USB_EN*/
+#if APP_DEBUG_SERIAL_EN
+#define APP_RCC_APB1_DEBUG_SERIAL   (RCC_APB1Periph_UART4)
+#else
+#define APP_RCC_APB1_DEBUG_SERIAL   (0)
+#endif
 #define APP_RCC_APB1_PERIPH    (RCC_APB1Periph_USB | \
                                 RCC_APB1Periph_TIM3 | \
-                                RCC_APB1Periph_SPI2 | \
-                                RCC_APB1Periph_USART2) /* USB HID; TIM3_CH1 LED 呼吸 PWM (PB4); SPI2 步进电机; USART2 AM 解码器*/
+                                RCC_APB1Periph_SPI3 | \
+                                RCC_APB1Periph_USART3 | \
+                                APP_RCC_APB1_DEBUG_SERIAL) /* USB HID; TIM3 LED软PWM时基; SPI3 步进电机; USART3 UHF; 调试串口(条件)*/
 
 /* ===================== Boot Timeout =====================*/
 #define BOOT_TIMEOUT_MS     500U
@@ -131,7 +179,7 @@ typedef unsigned char BOOL;
  * Boot 启用 IWDG 后, JumpToApp 为直接跳转(非复位), IWDG 持续到 App,
  * 故 App 必须同步启用并在主循环/故障循环喂狗, 否则跳 App 后约 2s 复位死循环.
  * 超时与 Boot 一致 2000ms, 主循环每次迭代喂狗.*/
-#define USE_IWDG              1
+#define USE_IWDG              0
 #define IWDG_TIMEOUT_MS       2000U
 #define IWDG_COUNTER_RATE     40000U
 #define IWDG_RELOAD_DIV       64U

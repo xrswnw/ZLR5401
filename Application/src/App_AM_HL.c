@@ -7,15 +7,22 @@
 #include "stm32f10x_usart.h"
 
 /* =====================================================================
- * AM 解码器硬件抽象层 — USART2 驱动 + 2A A2 帧收发
+ * AM 解码器硬件抽象层 — RS485(USART1+SP3485) 驱动 + 2A A2 帧收发
  *
- * 引脚 (自选, 避开 USB PA11/12、LED PB4/PB5、SWD、UHF USART1 PA9/10、
- *       SPI2 PB12~15):
- *   USART2_TX = PA2, USART2_RX = PA3  (AF_PP)
- * 时钟: USART2 在 APB1 (36MHz), 115200 波特率。
+ * 引脚 (见原理图 RS485_CTL1/TXD1/RXD1):
+ *   USART1_TX = PA9 (RS485_TXD1), USART1_RX = PA10 (RS485_RXD1)
+ *   方向控制 DE/RE = PA8 (RS485_CTL1): 发送=高, 接收=低 (SP3485 半双工)
+ * 时钟: USART1 在 APB2 (72MHz), 115200 波特率。
  * ===================================================================== */
 
 #define AM_HL_BAUD         115200u
+
+/* 485 方向: 1=发送 (DE/RE=高), 0=接收 (DE/RE=低) */
+static void am_dir_set(uint8_t tx)
+{
+    if (tx) GPIO_SetBits(AM_DIR_GPIO_PORT, AM_DIR_GPIO_PIN);
+    else    GPIO_ResetBits(AM_DIR_GPIO_PORT, AM_DIR_GPIO_PIN);
+}
 
 /* ---------- 接收环形缓冲 ---------- */
 #define AM_HL_RX_BUF_SIZE  256u
@@ -28,15 +35,23 @@ void AM_HL_Init(void)
     GPIO_InitTypeDef gpio;
     USART_InitTypeDef usart;
 
-    /* PA2/PA3 复用 USART2 (AFIO 时钟在 System_PeriphClk 已开) */
+    /* 485 方向控制 PA8: 推挽输出, 默认低 (接收态) */
     GPIO_StructInit(&gpio);
-    gpio.GPIO_Pin   = GPIO_Pin_2;             /* PA2 = USART2_TX (AF_PP) */
+    gpio.GPIO_Pin   = AM_DIR_GPIO_PIN;
+    gpio.GPIO_Mode  = GPIO_Mode_Out_PP;
+    gpio.GPIO_Speed = GPIO_Speed_50MHz;
+    GPIO_Init(AM_DIR_GPIO_PORT, &gpio);
+    GPIO_ResetBits(AM_DIR_GPIO_PORT, AM_DIR_GPIO_PIN);
+
+    /* PA9/PA10 复用 USART1 (RS485 TXD1/RXD1) */
+    GPIO_StructInit(&gpio);
+    gpio.GPIO_Pin   = GPIO_Pin_9;             /* PA9 = USART1_TX (AF_PP) */
     gpio.GPIO_Mode  = GPIO_Mode_AF_PP;
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
     GPIO_Init(GPIOA, &gpio);
 
     GPIO_StructInit(&gpio);
-    gpio.GPIO_Pin  = GPIO_Pin_3;              /* PA3 = USART2_RX (浮空输入) */
+    gpio.GPIO_Pin  = GPIO_Pin_10;             /* PA10 = USART1_RX (浮空输入) */
     gpio.GPIO_Mode = GPIO_Mode_IN_FLOATING;
     GPIO_Init(GPIOA, &gpio);
 
@@ -47,38 +62,39 @@ void AM_HL_Init(void)
     usart.USART_Parity              = USART_Parity_No;
     usart.USART_Mode                = USART_Mode_Rx | USART_Mode_Tx;
     usart.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-    USART_Init(USART2, &usart);
+    USART_Init(USART1, &usart);
 
     /* 收中断: 每字节进环形缓冲 */
-    USART_ITConfig(USART2, USART_IT_RXNE, ENABLE);
-    NVIC_SetPriority(USART2_IRQn, 4);
-    NVIC_EnableIRQ(USART2_IRQn);
+    USART_ITConfig(USART1, USART_IT_RXNE, ENABLE);
+    NVIC_SetPriority(USART1_IRQn, 4);
+    NVIC_EnableIRQ(USART1_IRQn);
 
-    USART_Cmd(USART2, ENABLE);
+    USART_Cmd(USART1, ENABLE);
 
     s_rxHead = 0; s_rxTail = 0;
 }
 
 void AM_HL_DeInit(void)
 {
-    USART_Cmd(USART2, DISABLE);
-    NVIC_DisableIRQ(USART2_IRQn);
-    USART_DeInit(USART2);
+    USART_Cmd(USART1, DISABLE);
+    NVIC_DisableIRQ(USART1_IRQn);
+    USART_DeInit(USART1);
+    am_dir_set(0u);   /* 回到接收态 */
 }
 
-/* USART2 接收中断: RXNE -> 环形缓冲 (非满才写入, 覆盖旧数据) */
-void USART2_IRQHandler(void)
+/* USART1 接收中断: RXNE -> 环形缓冲 (非满才写入, 覆盖旧数据) */
+void USART1_IRQHandler(void)
 {
-    if (USART_GetITStatus(USART2, USART_IT_RXNE) != RESET) {
-        uint8_t b = (uint8_t)(USART2->DR & 0xFF);
+    if (USART_GetITStatus(USART1, USART_IT_RXNE) != RESET) {
+        uint8_t b = (uint8_t)(USART1->DR & 0xFF);
         uint16_t next = (uint16_t)((s_rxHead + 1) % AM_HL_RX_BUF_SIZE);
         if (next != s_rxTail) {
             s_rxBuf[s_rxHead] = b;
             s_rxHead = next;
         }
     }
-    if (USART_GetITStatus(USART2, USART_IT_TXE) != RESET) {
-        USART_ClearITPendingBit(USART2, USART_IT_TXE);
+    if (USART_GetITStatus(USART1, USART_IT_TXE) != RESET) {
+        USART_ClearITPendingBit(USART1, USART_IT_TXE);
     }
 }
 
@@ -86,10 +102,10 @@ void USART2_IRQHandler(void)
 static int am_uart_send_byte(uint8_t b, uint32_t timeoutMs)
 {
     uint32_t t0 = SysTickHl_GetMs();
-    while (USART_GetFlagStatus(USART2, USART_FLAG_TXE) == RESET) {
+    while (USART_GetFlagStatus(USART1, USART_FLAG_TXE) == RESET) {
         if ((SysTickHl_GetMs() - t0) >= timeoutMs) return -1;
     }
-    USART_SendData(USART2, b);
+    USART_SendData(USART1, b);
     return 0;
 }
 
@@ -103,6 +119,9 @@ void AM_HL_SendFrame(uint8_t cmd, const uint8_t *data, uint8_t datalen)
     chk = (uint8_t)(chk + cnt + idx + len);
     for (uint8_t i = 0; i < datalen; i++) chk = (uint8_t)(chk + data[i]);
 
+    /* 485 半双工: 发送前切到发送方向 (DE/RE=高) */
+    am_dir_set(1u);
+
     (void)am_uart_send_byte(AM_HL_FRAME_HDR1, 50);
     (void)am_uart_send_byte(AM_HL_FRAME_HDR2, 50);
     (void)am_uart_send_byte(cmd, 50);
@@ -112,6 +131,15 @@ void AM_HL_SendFrame(uint8_t cmd, const uint8_t *data, uint8_t datalen)
     for (uint8_t i = 0; i < datalen; i++)
         (void)am_uart_send_byte(data[i], 50);
     (void)am_uart_send_byte(chk, 50);
+
+    /* 等最后一字节完全移位送出 (TC) 后再切回接收方向, 否则会截掉总线尾部 */
+    {
+        uint32_t t0 = SysTickHl_GetMs();
+        while (USART_GetFlagStatus(USART1, USART_FLAG_TC) == RESET) {
+            if ((SysTickHl_GetMs() - t0) >= 100u) break;
+        }
+    }
+    am_dir_set(0u);
 }
 
 /* 在接收缓冲中提取一帧; 返回总字节数, 0=无完整帧 */

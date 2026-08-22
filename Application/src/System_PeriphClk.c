@@ -6,8 +6,9 @@
  *  System_PeriphClkInit - 统一开启 APP 所有外设时钟
  *
  *  对应宏定义在 App_Config.h:
- *    APP_RCC_APB2_PERIPH : GPIOA | GPIOB | AFIO
- *    APP_RCC_APB1_PERIPH : USB | TIM3 (LED 呼吸 PWM)
+ *    APP_RCC_APB2_PERIPH : GPIOA | GPIOB | GPIOC | AFIO | USART1 (AM/RS485)
+ *    APP_RCC_APB1_PERIPH : USB | TIM3(LED软PWM时基) | SPI3(步进电机)
+ *                         | USART3(UHF) | UART4(调试串口)
  *
  *  注意:
  *  - RCC_USBCLKConfig (PLL/1.5 选 48M) 由 App_Sys_CfgClock 完成,
