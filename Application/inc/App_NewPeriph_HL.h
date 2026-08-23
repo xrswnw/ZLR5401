@@ -16,12 +16,16 @@
 void App_NewPeriph_Init(void);     /* 初始化全部 GPIO + 调试串口 */
 
 /* ---- 光电 / 行程开关 (输入, 高电平有效) ---- */
-uint8_t App_NewPeriph_ReadIr(void);       /* 1=检测到红外/光电 */
-uint8_t App_NewPeriph_ReadKeyUp(void);    /* 1=上行程触发 */
-uint8_t App_NewPeriph_ReadKeyDown(void);  /* 1=下行程触发 */
+uint8_t App_NewPeriph_ReadIr(void);       /* 1=检测到红外/光电 (PC4) */
+uint8_t App_NewPeriph_ReadKeyUp(void);    /* 1=上行程触发 (PC8) */
+/* 下行程 KEY_DOWN=PC9 已改作 USB_EN, 读取函数暂禁用 */
+/* uint8_t App_NewPeriph_ReadKeyDown(void); */
 
 /* ---- 蜂鸣器 (PC12, 高电平响) ---- */
 void App_NewPeriph_Beep(uint8_t on);
+
+/* ---- IR 检测(PC4, 高=触发) -> 蜂鸣器 100ms 循环响/停 (主循环周期调用) ---- */
+void App_IrBuzzer_Process(void);
 
 /* ---- 调试串口 (UART4, 轮询) ---- */
 void App_NewPeriph_DebugInit(void);

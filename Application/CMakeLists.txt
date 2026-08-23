@@ -39,6 +39,7 @@ set(SOURCES
   src/App_Param.c
   src/App_Iwdg_HL.c
   src/App_Led_HL.c
+  src/App_RgbLed_HL.c
   src/App_Param_HL.c
   src/App_SysTick_HL.c
   src/App_Usb.c
@@ -55,7 +56,7 @@ set(SOURCES
   src/App_NewPeriph_HL.c
   src/App_BootSelfTest.c
   Drv8434S/drv8434s.c
-  App_startup_md.s
+  App_startup_hd.s
   ${SDK_SRC}
   ${STM32_USB_SRC}
 )
@@ -74,14 +75,15 @@ add_executable(${TARGET}.elf ${SOURCES})
 target_include_directories(${TARGET}.elf PRIVATE ${SDK_INC})
 
 target_compile_definitions(${TARGET}.elf PRIVATE
-  STM32F10X_MD
+  STM32F10X_HD
   USE_STDPERIPH_DRIVER
   HSE_VALUE=12000000
   HSE_STARTUP_TIMEOUT=0xFFFF
 )
 
+# 统一不开优化: 同一套 -O0 固件既用于调试(完整局部变量/断点)也用于烧录
 target_compile_options(${TARGET}.elf PRIVATE
-  -g -Os -ffunction-sections -fdata-sections -fno-common
+  -g -O0 -ffunction-sections -fdata-sections -fno-common
 )
 
 target_link_options(${TARGET}.elf PRIVATE

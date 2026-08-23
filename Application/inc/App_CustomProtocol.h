@@ -40,6 +40,14 @@
 #define FC_UHF_CTRL         0x0B   /* UHF 超高频 SIM7500 模块控制 (子命令编码, 见下)*/
 #define FC_AM_CTRL          0x0C   /* AM 解码器控制 (子命令编码, 见下)*/
 #define FC_LOCKER_CTRL      0x0D   /* 开锁器业务编排 (子命令编码, 见下)*/
+#define FC_RGB_CTRL         0x0E   /* RGB 三色灯控制 (见下)*/
+
+/* ---- FC_RGB_CTRL (0x0E) — RGB 三色灯控制 ----
+ * data: [mask, reserved]   mask=颜色位掩码(bit0=G,bit1=R,bit2=B, 其余预留), reserved=预留字节.
+ * 响应: data[0]=mask(回显), data[1]=err(0=OK). err 值见 RGB_ERR_*. */
+#define RGB_CMD_SET          0x01   /* data: [cmd,mask,reserved] */
+#define RGB_ERR_OK           0
+#define RGB_ERR_PARAM        1
 
 /* ---- FC_LOCKER_CTRL (0x0D) 子命令编码 (data[0]) ----
  * 开锁器业务编排状态机 (依《约束/Link.txt》).
@@ -81,9 +89,11 @@
 #define UHF_SUB_WRITE_TAG      0x05   /* data: [cmd,epcLen,epc..,bank,addr,len,data..]  写标签 */
 #define UHF_SUB_STOP           0x06   /* data: [cmd]  停止当前操作 */
 #define UHF_SUB_QUERY          0x07   /* data: [cmd]  查询链路/状态 */
-#define UHF_SUB_GET_CONFIG     0x08   /* data: [cmd]  读取当前配置 */
-#define UHF_SUB_SET_CONFIG     0x09   /* data: [cmd,powerDbm,antenna,checksumEn,session,target,q]  设置配置 */
+#define UHF_SUB_GET_CONFIG     0x08   /* data: [cmd]  读取当前配置 (含 band) */
+#define UHF_SUB_SET_CONFIG     0x09   /* data: [cmd,powerDbm,antenna,checksumEn,session,target,q,(band)]  设置配置 */
 #define UHF_SUB_GET_TAGS       0x0A   /* data: [cmd,(count)]  count=0 取全部; >0 取前 count 条 */
+#define UHF_SUB_GET_STATUS     0x0B   /* data: [cmd]  读取状态/错误监控 */
+#define UHF_SUB_CHECK_ANT      0x0C   /* data: [cmd]  主动触发回波检测 */
 /* 运行错误码 (data[1]) */
 #define UHF_ERR_OK             0
 #define UHF_ERR_PARAM          1

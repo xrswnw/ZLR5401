@@ -270,6 +270,11 @@ typedef enum {
 void drv8434s_hal_delay_ms(uint32_t ms);
 
 /*
+ * 延迟微秒 (非阻塞忙等)。步进脉冲等短时延使用, 不给主循环节拍。
+ */
+void drv8434s_hal_delay_us(uint32_t us);
+
+/*
  * 单次 SPI 16-bit 全双工传输。
  * 返回从 SDO 读到的 16-bit 数据。
  * 注意: nSCS 片选已在内部处理 (低电平有效, 帧间高电平 >= 500ns)。

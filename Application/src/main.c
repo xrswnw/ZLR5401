@@ -5,6 +5,7 @@
 #include "App_Iwdg_HL.h"   /* IwdgHl_Init/Feed (Boot 启动 IWDG 持续到 App)*/
 #include "App_Led_HL.h"
 #include "App_Led.h"
+#include "App_RgbLed_HL.h"
 #include "App_Usb.h"
 #include "App_Usb_HL.h"
 #include "App_Sys_CfgClock.h"
@@ -46,6 +47,7 @@ void System_Init(void)
 
     /* 6. LED*/
     LedHl_Init();
+    RgbLedHl_Init();   /* RGB 三色灯 G=PA4/R=PA5/B=PA6, 默认全灭 */
 
     /* 6.5 新增外设: 光电/行程开关/蜂鸣器 GPIO + 调试串口 (骨架)*/
     App_NewPeriph_Init();
@@ -102,7 +104,7 @@ void System_Init(void)
             App_UHF_GetConfig(&c);
             c.powerDbm = pc.powerDbm; c.antenna = pc.antenna;
             c.checksumEn = pc.checksumEn; c.session = pc.session;
-            c.target = pc.target; c.q = pc.q;
+            c.target = pc.target; c.q = pc.q; c.band = pc.band;
             (void)App_UHF_SetConfig(&c, 0);
         }
     }
@@ -169,5 +171,11 @@ int main(void)
 
         /* 绿灯心跳 (500ms)*/
         AppLedProcess();
+
+        /* 按键诊断闪烁 (行程开关低电平驱动 ERR, 独立于业务)*/
+        AppLed_KeyBlinkProcess();
+
+        /* IR 检测(PC4)高电平 -> 蜂鸣器 100ms 周期循环响/停 */
+        App_IrBuzzer_Process();
     }
 }

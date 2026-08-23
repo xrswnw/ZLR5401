@@ -27,8 +27,9 @@ typedef unsigned char BOOL;
 #endif
 
 /* ===================== MCU =====================*/
-/* 硬件为 GD32F103C8T6 (与 STM32F103 引脚/寄存器兼容, 使用 STM32F10x 标准外设库)*/
-#define MCU_SERIES         STM32F10X_MD
+/* 硬件为 GD32F303RCT6 高密度 (Cortex-M4, 256K flash/48K RAM), 与 STM32F103 引脚/寄存器兼容,
+ * 使用 STM32F10x 标准外设库. HD 使能 UART4/DMA2 等外设中断向量. */
+#define MCU_SERIES         STM32F10X_HD
 #define MCU_PART           "GD32F103C8T6"
 
 /* ===================== Clock =====================*/
@@ -62,17 +63,17 @@ typedef unsigned char BOOL;
  * DRV8434S 16-bit SPI 配置寄存器 (Mode1: CPOL=0, CPHA=1) + 硬件 STEP/DIR 引脚控制。
  * 引脚(见原理图):
  *   SCLK=PB3(SPI3_SCK), SDI=PB5(SPI3_MOSI→DRV SDI), SDO=PB4(SPI3_MISO←DRV SDO)
- *   NSCS=PC0(手动 GPIO 片选, 帧间高电平>=500ns), STEP=PB6, DIR=PB7
+ *   NSCS=PD2(手动 GPIO 片选, 帧间高电平>=500ns), STEP=PB6, DIR=PB7
  *   NSLEEP=PB8(1=运行,0=睡眠), ENABLE=PB9(1=使能)
  *   nFAULT 在板上接故障指示灯, 未连 MCU; 故障状态经 SPI 读取。
- * 需 RCC_APB1Periph_SPI3 + GPIOB + GPIOC。*/
+ * 需 RCC_APB1Periph_SPI3 + GPIOB + GPIOD。*/
 #define MOTOR_SPI               SPI3
 #define MOTOR_SPI_SCK_PIN       GPIO_Pin_3
 #define MOTOR_SPI_MISO_PIN      GPIO_Pin_4
 #define MOTOR_SPI_MOSI_PIN      GPIO_Pin_5
 #define MOTOR_SPI_GPIO_PORT     GPIOB
-#define MOTOR_NSCS_PORT         GPIOC
-#define MOTOR_NSCS_PIN          GPIO_Pin_0
+#define MOTOR_NSCS_PORT         GPIOD
+#define MOTOR_NSCS_PIN          GPIO_Pin_2
 #define MOTOR_STEP_PIN          GPIO_Pin_6
 #define MOTOR_DIR_PIN           GPIO_Pin_7
 #define MOTOR_NSLEEP_PIN        GPIO_Pin_8
@@ -87,19 +88,33 @@ typedef unsigned char BOOL;
 #define LED_ERR_GPIO_PORT    GPIOA
 #define LED_ERR_GPIO_PIN     GPIO_Pin_3
 
+/* ===================== RGB 三色灯 (G=PA4 / R=PA5 / B=PA6, 高电平点亮) =====================
+ * 三色灯直接 GPIO 开关 (无调光), 经 RgbLedHl_Set(掩码) 一次性设置三位.
+ * 颜色位掩码: G=bit0, R=bit1, B=bit2. 协议 RGB 命令按此位序下发 (见 App_Protocol.h).*/
+#define RGB_G_GPIO_PORT     GPIOA
+#define RGB_G_GPIO_PIN      GPIO_Pin_4
+#define RGB_R_GPIO_PORT     GPIOA
+#define RGB_R_GPIO_PIN      GPIO_Pin_5
+#define RGB_B_GPIO_PORT     GPIOA
+#define RGB_B_GPIO_PIN      GPIO_Pin_6
+#define RGB_BIT_G           0x01U   /* 绿 */
+#define RGB_BIT_R           0x02U   /* 红 */
+#define RGB_BIT_B           0x04U   /* 蓝 */
+
 /* ===================== USB_EN =====================*/
 
-/* ===================== UHF 模块 SIM7500 (USART3, 见原理图) =====================
- * 接口: USART3 (PB10=TX / PB11=RX), 115200-8-N-1 (TTL)
- * 引脚(见原理图): USART3_TX=PB10, USART3_RX=PB11  (AF_PP)
+/* ===================== UHF 模块 SIM7500 (UART4, 见原理图) =====================
+ * 接口: UART4 (PC10=TX / PC11=RX), 115200-8-N-1 (TTL)
+ * 注: UHF 原 USART3(PB10/11) 已改为 UART4(PC10/11); 旧调试串口(UART4)功能被注释禁用。
+ * 引脚(见原理图): UART4_TX=PC10, UART4_RX=PC11  (AF_PP)
  *   UHF_EN=PB12 (高电平上电), UHF_OUT2=PB13, UHF_IN1=PB14, UHF_IN2=PB15,
  *   UHF_NRST=PC6, UHF_OUT1=PC7
  * 板上无 MCU 天线切换脚 (SIM7500 ANT 在模块上, 天线选择经模块命令), 故无 UHF_ANT。*/
-#define UHF_USART               USART3
+#define UHF_USART               UART4
 #define UHF_BAUD                115200U
-#define UHF_TX_GPIO_PORT        GPIOB
+#define UHF_TX_GPIO_PORT        GPIOC
 #define UHF_TX_GPIO_PIN         GPIO_Pin_10
-#define UHF_RX_GPIO_PORT        GPIOB
+#define UHF_RX_GPIO_PORT        GPIOC
 #define UHF_RX_GPIO_PIN         GPIO_Pin_11
 #define UHF_EN_GPIO_PORT        GPIOB
 #define UHF_EN_GPIO_PIN         GPIO_Pin_12
@@ -111,11 +126,11 @@ typedef unsigned char BOOL;
 #define UHF_NRST_GPIO_PIN       GPIO_Pin_6
 #define UHF_OUT1_GPIO_PORT      GPIOC
 #define UHF_OUT1_GPIO_PIN       GPIO_Pin_7
-/* 需求: USB_EN=PC10, 拉高才启用 USB (D+ 上拉)。
- * 原 PA1 在本板不枚举, 改由 PC10 控制 D+ 上拉 (调试串口 UART4/PC10 停用后释放)。
- * 硬件实测: 用 PB3(高电平)/PA1 固件设备不枚举; PC10 才是激活主机可见 D+ 上拉的脚。*/
+/* 需求: USB_EN=PC9, 拉高才启用 USB (D+ 上拉)。
+ * 前序: PC10 已实测支持枚举, 后依硬件改由 PC9 (原 KEY_DOWN=PC9 行程开关释放) 控制 D+ 上拉。
+ * 若 PC9 不枚举, 需按实测回退至 PC10。*/
 #define USB_EN_GPIO_PORT   GPIOC
-#define USB_EN_GPIO_PIN    GPIO_Pin_10
+#define USB_EN_GPIO_PIN    GPIO_Pin_9
 
 /* ===================== AM 解码器 -> RS485 (USART1 + SP3485, 见原理图) =====================
  * 接口: USART1 (PA9=TXD / PA10=RXD), 115200-8-N-1 (TTL), 半双工 485。
@@ -132,45 +147,44 @@ typedef unsigned char BOOL;
 #define AM_DIR_GPIO_PIN         GPIO_Pin_8
 
 /* ===================== 新增外设 (见原理图, 驱动骨架) =====================
- * 光电接口 (TLP181): MCU_IR1_DET=PC5 (输入, 检测红外/光电)
- * 行程开关: MCU_KEY_UP=PC8 (输入), MCU_KEY_DOWN=PC9 (输入)
+ * 光电接口 (TLP181): MCU_IR1_DET=PC4 (输入, 检测红外/光电)
+ * 行程开关: MCU_KEY_UP=PC8 (输入), 下行程 KEY_DOWN=PC9 已改作 USB_EN (见 USB_EN_GPIO_*)
  * 蜂鸣器:   MCU_BEEP5V0_CTL=PC12 (输出, 高电平响)
  * 调试串口: DEBUG_TX=PC10 (UART4_TX), DEBUG_RX=PC11 (UART4_RX)
- * 注: PC10 已改作 USB_EN (见 USB_EN_GPIO_*), 调试串口默认关闭 (APP_DEBUG_SERIAL_EN=0)。*/
+ * 注: PC10 已改作 USB_EN, PC9 原 KEY_DOWN 亦改作 USB_EN; 调试串口默认关闭 (APP_DEBUG_SERIAL_EN=0)。*/
 #define APP_DEBUG_SERIAL_EN     0   /* 1=使能调试串口(UART4/PC10,11), 0=关闭(保留代码)*/
 #define IR_DET_GPIO_PORT        GPIOC
-#define IR_DET_GPIO_PIN         GPIO_Pin_5
+#define IR_DET_GPIO_PIN         GPIO_Pin_4
 #define KEY_UP_GPIO_PORT        GPIOC
 #define KEY_UP_GPIO_PIN         GPIO_Pin_8
-#define KEY_DOWN_GPIO_PORT      GPIOC
-#define KEY_DOWN_GPIO_PIN       GPIO_Pin_9
+/* KEY_DOWN(PC9) 引脚已改作 USB_EN: 行程开关旧功能暂禁用 (定义保留引用, 不参与输入配置) */
+/* #define KEY_DOWN_GPIO_PORT      GPIOC */
+/* #define KEY_DOWN_GPIO_PIN       GPIO_Pin_9 */
 #define BEEP_GPIO_PORT          GPIOC
 #define BEEP_GPIO_PIN           GPIO_Pin_13
-#define DBG_USART               UART4
-#define DBG_BAUD                115200U
-#define DBG_TX_GPIO_PORT        GPIOC
-#define DBG_TX_GPIO_PIN         GPIO_Pin_10
-#define DBG_RX_GPIO_PORT        GPIOC
-#define DBG_RX_GPIO_PIN         GPIO_Pin_11
+/* 旧调试串口 UART4(PC10/11): 引脚已被 UHF 占用, 定义注释禁用 (保留代码引用) */
+/* #define DBG_USART               UART4 */
+/* #define DBG_BAUD                115200U */
+/* #define DBG_TX_GPIO_PORT        GPIOC */
+/* #define DBG_TX_GPIO_PIN         GPIO_Pin_10 */
+/* #define DBG_RX_GPIO_PORT        GPIOC */
+/* #define DBG_RX_GPIO_PIN         GPIO_Pin_11 */
 
 /* ===================== 外设 RCC 时钟集合 (统一在 System_PeriphClkInit 开启) =====================*/
 /* 一次性开启, 替代各 HL 层分散调用 RCC_APBxPeriphClockCmd / RCC_AHBPeriphClockCmd。
  * DISABLE 仍由各 HL 的 DeInit 自行处理 (单外设回收)。
  * 当前仅保留: LED(TIM3_CH1 PWM, PB4) + USB(HID)。 */
 #define APP_RCC_APB2_PERIPH    (RCC_APB2Periph_GPIOA  | RCC_APB2Periph_GPIOB | \
-                                RCC_APB2Periph_GPIOC | RCC_APB2Periph_AFIO   | \
+                                RCC_APB2Periph_GPIOC | RCC_APB2Periph_GPIOD | \
+                                RCC_APB2Periph_AFIO   | \
                                 RCC_APB2Periph_USART1) /* USART1=RS485(AM) */
-/* 调试串口(UART4)时钟: 默认关闭(APP_DEBUG_SERIAL_EN=0), PC10 已改作 USB_EN*/
-#if APP_DEBUG_SERIAL_EN
-#define APP_RCC_APB1_DEBUG_SERIAL   (RCC_APB1Periph_UART4)
-#else
-#define APP_RCC_APB1_DEBUG_SERIAL   (0)
-#endif
+/* UART4 已改作 UHF 串口 (UHF_HL_Init 内自行使能 RCC_APB1Periph_UART4);
+ * 旧调试串口(UART4)功能已注释禁用, 不再由宏统一开时钟。*/
+#define APP_DEBUG_SERIAL_EN     0   /* 旧调试串口 UART4 已禁用(引脚被 UHF 占用) */
 #define APP_RCC_APB1_PERIPH    (RCC_APB1Periph_USB | \
                                 RCC_APB1Periph_TIM3 | \
-                                RCC_APB1Periph_SPI3 | \
-                                RCC_APB1Periph_USART3 | \
-                                APP_RCC_APB1_DEBUG_SERIAL) /* USB HID; TIM3 LED软PWM时基; SPI3 步进电机; USART3 UHF; 调试串口(条件)*/
+                                RCC_APB1Periph_SPI3) /* USB HID; TIM3 LED软PWM时基; SPI3 步进电机*/
+                                /* UART4 时钟由 UHF_HL_Init 自行开启 */
 
 /* ===================== Boot Timeout =====================*/
 #define BOOT_TIMEOUT_MS     500U

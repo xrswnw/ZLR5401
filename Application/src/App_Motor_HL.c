@@ -16,7 +16,7 @@
 
 drv8434s_port_t g_hMotor;
 
-/* ---- 手动片选 (NSCS=PC0) ---- */
+/* ---- 手动片选 (NSCS=PD2) ---- */
 static void motor_cs(uint8_t level)
 {
     level ? GPIO_SetBits(MOTOR_NSCS_PORT, MOTOR_NSCS_PIN)
@@ -38,7 +38,7 @@ void Drv8434S_HL_Init(void)
     GPIO_ResetBits(MOTOR_CTRL_GPIO_PORT, MOTOR_STEP_PIN | MOTOR_DIR_PIN | MOTOR_ENABLE_PIN);
     GPIO_SetBits(MOTOR_CTRL_GPIO_PORT, MOTOR_NSLEEP_PIN);
 
-    /* 2) 片选 NSCS=PC0: 推挽输出, 空闲高 (低有效) */
+    /* 2) 片选 NSCS=PD2: 推挽输出, 空闲高 (低有效) */
     GPIO_StructInit(&gpio);
     gpio.GPIO_Mode  = GPIO_Mode_Out_PP;
     gpio.GPIO_Speed = GPIO_Speed_2MHz;
@@ -109,6 +109,15 @@ uint16_t drv8434s_hal_spi_xfer(void *handle, uint16_t word)
 void drv8434s_hal_delay_ms(uint32_t ms)
 {
     SysTickHl_DelayMs(ms);
+}
+
+void drv8434s_hal_delay_us(uint32_t us)
+{
+    /* 72MHz 下约 72 周期/us; 每条 __NOP 约 1~2 周期, 用 ~0.03us/步近似.
+     * 只需满足 STEP 时序 >=970ns, 精度要求宽, 无需精确计时. */
+    volatile uint32_t i;
+    uint32_t n = us * (uint32_t)40u;   /* 经验系数, ~覆盖 1us 量级 */
+    for (i = 0; i < n; i++) __NOP();
 }
 
 uint8_t drv8434s_hal_read_fault(void *handle)

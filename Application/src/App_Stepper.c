@@ -7,7 +7,7 @@
  * 硬件电流档: VREF 按硬件 2.64V 假设, IFS=2A (100%). 如硬件 VREF 不同, 调整此处.
  * 速度: 每微步间隔 = 1/speed; 默认 500 微步/s (Smart Tune Ripple 消磁下可持续). */
 
-#define STEPPER_PCT_DEFAULT  50u    /* 默认转矩 50% (满刻度比例) */
+#define STEPPER_PCT_DEFAULT  100u   /* 默认转矩 100% (满刻度); 协议 TORQUE 可下调 */
 #define STEPPER_DEFAULT_HZ   500u    /* 默认 500 微步/s */
 #define STEPPER_MIN_HZ       1u
 #define STEPPER_MAX_HZ       2000u   /* 上限, 兼顾 SPI 开销与 IWDG 2s 预算 (每 tick 一次 SPI) */

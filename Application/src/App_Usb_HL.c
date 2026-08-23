@@ -54,7 +54,7 @@ static void App_Usb_HL_GpioInit(void)
     /* JTAG 释放 PB3/PB4/PA15, 保留 SWD (Sys_CtrlIOInit)*/
     GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 
-    /* USB_EN: PA1 推挽输出, 下拉关闭 USB (D+ 上拉断开)*/
+    /* USB_EN: PC9 推挽输出, 下拉关闭 USB (D+ 上拉断开)*/
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
     gpio.GPIO_Mode  = GPIO_Mode_Out_PP;
     gpio.GPIO_Pin   = USB_EN_GPIO_PIN;

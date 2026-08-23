@@ -18,7 +18,8 @@ typedef enum {
     APP_UHF_INVENTORY = 2,   /* 盘点中 */
     APP_UHF_READ      = 3,   /* 读操作中 */
     APP_UHF_WRITE     = 4,   /* 写操作中 */
-    APP_UHF_ERROR     = 5    /* 错误/掉线 */
+    APP_UHF_ERROR     = 5,   /* 错误/掉线 */
+    APP_UHF_ANT_CHECK = 6    /* 回波检测中 (Open 内瞬态) */
 } AppUHFState_t;
 
 /* ---- 配置文件 (持久化到 userParam, 并经协议 get/set) ---- */
@@ -28,12 +29,13 @@ typedef struct {
     uint8_t  checksumEn;     /* 1=启用电平校验/CRC 校验 (对模块) */
     uint8_t  session;        /* Gen2 session 0~3 */
     uint8_t  target;         /* Gen2 target 0=A / 1=B */
-    uint8_t  q;              /* Gen2 Q 值 0~15, 0=模块默认 */
-    uint8_t  reserved[2];
+    uint8_t  q;              /* Gen2 Q 值 0~15, 0=模块默认(动态Q) */
+    uint8_t  band;           /* 工作频段 (Region 码: 0x01=北美,0x06=中国1,0x08=CE_LOW,0xFF=全频段) */
+    uint8_t  reserved;
 } AppUHFConfig_t;
 
 /* 默认配置 */
-#define APP_UHF_CONFIG_DEFAULT { 20u, 0u, 1u, 0u, 0u, 0u, {0u,0u} }
+#define APP_UHF_CONFIG_DEFAULT { 20u, 0u, 1u, 0u, 0u, 0u, 0x01u, 0u }
 
 /* ---- 单条标签记录 (数据面) ---- */
 typedef struct {
@@ -42,8 +44,21 @@ typedef struct {
     uint8_t  epcLen;           /* EPC 有效长度 */
 } AppUHFTag_t;
 
-/* 标签缓冲容量 (数据面环形缓冲) */
+/* 真实 EPC 最小字节数. 低于此长度的 0x21/0x28 响应视为边框/损坏伪标签,
+ * 不入缓冲 (模块有时对边际读错误返回 status=0 但 EPC 字段被截断). */
+#define UHF_EPC_MIN_LEN  6u
+
+/* ---- 标签缓冲容量 (数据面环形缓冲) ---- */
 #define APP_UHF_TAG_BUF_SIZE  16u
+
+/* ---- 状态/错误监控 (数据面, 供 GET_STATUS) ---- */
+typedef struct {
+    int      lastErr;         /* 最近一次操作错误 (APP_UHF_ERR_*) */
+    uint16_t antRl;           /* 上次回波 RL 反射损耗 (0.1dB), 0=未检测 */
+    uint16_t antVswr;         /* 上次回波 VSWR 电压驻波比 (×100), 0=未检测 */
+    uint8_t  antennaOk;       /* 1=天线连接正常 (RL>=0.5dB 且 VSWR<=7.00) */
+    uint8_t  powered;         /* 1=已上电 */
+} AppUHFStatus_t;
 
 /* 帧格式版本 (userParam 内配置结构识别) */
 #define APP_UHF_CFG_VERSION   1u
@@ -53,7 +68,7 @@ void     App_UHF_Init(void);              /* HL 初始化 + 状态机置 IDLE */
 void     App_UHF_Process(void);           /* 主循环节拍: 推进状态机 + 标签采集 */
 
 /* ---- 控制面 API (由协议层调用) ---- */
-int      App_UHF_Open(void);              /* 上电 + 等待就绪 (同步) */
+int      App_UHF_Open(void);              /* 上电 + 等待就绪 (同步, 含回波检测) */
 int      App_UHF_Close(void);             /* 停止 + 下电 */
 int      App_UHF_Inventory(void);         /* 发起一次盘点 (状态机接管) */
 int      App_UHF_ReadTag(const uint8_t *epc, uint8_t epcLen, uint8_t bank,
@@ -62,6 +77,10 @@ int      App_UHF_WriteTag(const uint8_t *epc, uint8_t epcLen, uint8_t bank,
                           uint8_t addr, const uint8_t *data, uint8_t len);
 int      App_UHF_Stop(void);              /* 停止当前操作 */
 int      App_UHF_Query(void);             /* 查询模块/链路状态, 更新状态机 */
+
+/* ---- 状态 / 错误监控 ---- */
+int      App_UHF_GetStatus(AppUHFStatus_t *st);   /* 0=OK, 拷贝当前状态 */
+int      App_UHF_CheckAntenna(void);              /* 主动同步触发 0xAA4A 回波检测 */
 
 /* ---- 配置 get / set (功率/天线/校验等) ---- */
 int      App_UHF_GetConfig(AppUHFConfig_t *cfg);   /* 0=OK */

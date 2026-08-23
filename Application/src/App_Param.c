@@ -201,6 +201,7 @@ void UhfParam_Default(UHFUserCfg_t *cfg)
     cfg->session    = 0u;
     cfg->target     = 0u;
     cfg->q          = 0u;
+    cfg->band       = 0x01u;   /* 北美 (默认工作频段) */
 }
 
 int UhfParam_Load(UHFUserCfg_t *cfg)
@@ -216,6 +217,8 @@ int UhfParam_Load(UHFUserCfg_t *cfg)
         cfg->session    = u[6];
         cfg->target     = u[7];
         cfg->q          = u[8];
+        cfg->band       = u[9];   /* 追加字段; 旧记录未写入时为 0xFF, 归一为默认 */
+        if (cfg->band == 0u || cfg->band == 0xFFu) cfg->band = 0x01u;
         return 0;
     }
     return -1;
@@ -235,6 +238,7 @@ int UhfParam_Save(const UHFUserCfg_t *cfg)
     u[6] = cfg->session;
     u[7] = cfg->target;
     u[8] = cfg->q;
+    u[9] = cfg->band;
     return ParamSave(&g_sParam);
 }
 

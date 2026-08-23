@@ -8,6 +8,7 @@
 #include "App_AM.h"
 #include "App_AM_HL.h"
 #include "App_Locker.h"
+#include "App_RgbLed_HL.h"
 #include "stm32f10x.h"
 #include "App_Config.h"
 
@@ -276,13 +277,13 @@ void AppDispatch(ProtoFrame_t *f) {
         case UHF_SUB_GET_CONFIG: {
             AppUHFConfig_t c;
             App_UHF_GetConfig(&c);
-            uint8_t r[1 + 1 + 6] = { sub, UHF_ERR_OK, c.powerDbm, c.antenna,
-                c.checksumEn, c.session, c.target, c.q };
+            uint8_t r[1 + 1 + 7] = { sub, UHF_ERR_OK, c.powerDbm, c.antenna,
+                c.checksumEn, c.session, c.target, c.q, c.band };
             Proto_TxResponse(ch, FC_UHF_CTRL, r, sizeof(r));
             break;
         }
         case UHF_SUB_SET_CONFIG: {
-            /* [sub, powerDbm, antenna, checksumEn, session, target, q] */
+            /* [sub, powerDbm, antenna, checksumEn, session, target, q, (band)] */
             if (f->dataLen < 7u) {
                 uint8_t r[2] = { sub, UHF_ERR_PARAM };
                 Proto_TxResponse(ch, FC_UHF_CTRL, r, 2);
@@ -295,6 +296,7 @@ void AppDispatch(ProtoFrame_t *f) {
             c.session    = f->data[4];
             c.target     = f->data[5];
             c.q          = f->data[6];
+            c.band       = (f->dataLen >= 8u) ? f->data[7] : 0x01u;
             int e = App_UHF_SetConfig(&c, 0);
             uint8_t r[2] = { sub, UHF_ERR_OK };
             if (e == APP_UHF_ERR_PARAM) r[1] = UHF_ERR_PARAM;
@@ -302,7 +304,7 @@ void AppDispatch(ProtoFrame_t *f) {
             else {
                 /* 持久化 */
                 UHFUserCfg_t pc = { c.powerDbm, c.antenna, c.checksumEn,
-                                    c.session, c.target, c.q };
+                                    c.session, c.target, c.q, c.band };
                 (void)UhfParam_Save(&pc);
             }
             Proto_TxResponse(ch, FC_UHF_CTRL, r, 2);
@@ -330,6 +332,37 @@ void AppDispatch(ProtoFrame_t *f) {
                 total--;
             }
             Proto_TxResponse(ch, FC_UHF_CTRL, r, pos);
+            break;
+        }
+        case UHF_SUB_GET_STATUS: {
+            /* [cmd, err, state, link, totalTags(低8), powered, antennaOk,
+               lastErr(低8), antRl(2 高在前), antVswr(2 高在前)] */
+            AppUHFStatus_t st;
+            App_UHF_GetStatus(&st);
+            uint8_t r[12] = {
+                sub, UHF_ERR_OK,
+                (uint8_t)App_UHF_GetState(),
+                (uint8_t)App_UHF_GetLinkStatus(),
+                (uint8_t)(App_UHF_GetTotalTags() > 255u ? 255u : App_UHF_GetTotalTags()),
+                st.powered, st.antennaOk,
+                (uint8_t)(st.lastErr & 0xFF),
+                (uint8_t)(st.antRl >> 8), (uint8_t)(st.antRl & 0xFF),
+                (uint8_t)(st.antVswr >> 8), (uint8_t)(st.antVswr & 0xFF)
+            };
+            Proto_TxResponse(ch, FC_UHF_CTRL, r, sizeof(r));
+            break;
+        }
+        case UHF_SUB_CHECK_ANT: {
+            int e = App_UHF_CheckAntenna();
+            AppUHFStatus_t st;
+            App_UHF_GetStatus(&st);
+            uint8_t r[1 + 1 + 1 + 2 + 2] = {
+                sub, UHF_ERR_OK, st.antennaOk,
+                (uint8_t)(st.antRl >> 8), (uint8_t)(st.antRl & 0xFF),
+                (uint8_t)(st.antVswr >> 8), (uint8_t)(st.antVswr & 0xFF)
+            };
+            if (e == APP_UHF_ERR_NOT_READY) r[1] = UHF_ERR_NOT_READY;
+            Proto_TxResponse(ch, FC_UHF_CTRL, r, sizeof(r));
             break;
         }
         default:
@@ -558,6 +591,33 @@ void AppDispatch(ProtoFrame_t *f) {
             {
                 uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
                 Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+            }
+            break;
+        }
+        break;
+    }
+
+    case FC_RGB_CTRL: {
+        /* RGB 三色灯. data[0]=sub. 响应 data[0]=sub, data[1]=err. */
+        uint8_t sub = (f->dataLen >= 1u) ? f->data[0] : 0u;
+
+        switch (sub) {
+        case RGB_CMD_SET: {
+            /* [sub, mask, reserved] */
+            if (f->dataLen < 3u) {
+                uint8_t r[2] = { sub, RGB_ERR_PARAM };
+                Proto_TxResponse(ch, FC_RGB_CTRL, r, 2);
+                break;
+            }
+            RgbLedHl_Set(f->data[1]);
+            uint8_t r[3] = { sub, RGB_ERR_OK, f->data[1] };
+            Proto_TxResponse(ch, FC_RGB_CTRL, r, sizeof(r));
+            break;
+        }
+        default:
+            {
+                uint8_t r[2] = { sub, RGB_ERR_PARAM };
+                Proto_TxResponse(ch, FC_RGB_CTRL, r, 2);
             }
             break;
         }

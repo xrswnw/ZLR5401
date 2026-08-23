@@ -79,8 +79,9 @@ uint32_t  Crc32CalcReflect(const uint8_t *data, uint32_t len, const uint8_t *suf
 void      VerStrCpy(char *dst, const char *src, uint32_t maxLen);
 
 /* ---- UHF 配置持久化 (userParam 区: 偏移 0) ----
- * 布局: [ver(1)][magic(2)][power(1)][antenna(1)][checksum(1)][session(1)][target(1)][q(1)][rsv(1)]
- * magic = 0x5548 ('UH'), ver = 1。未检测到 magic 时返回默认值。 */
+ * 布局: [ver(1)][magic(2)][power(1)][antenna(1)][checksum(1)][session(1)][target(1)][q(1)][band(1)]
+ * magic = 0x5548 ('UH'), ver = 1。未检测到 magic 时返回默认值。
+ * band 为版本 1 追加字段: 旧记录无该字节, Load 时置默认 0x01 (北美)。 */
 #define UHF_PARM_MAGIC_HI     0x55U
 #define UHF_PARM_MAGIC_LO     0x48U
 #define UHF_PARM_VERSION      1U
@@ -92,6 +93,7 @@ typedef struct {
     uint8_t  session;
     uint8_t  target;
     uint8_t  q;
+    uint8_t  band;
 } UHFUserCfg_t;
 
 int  UhfParam_Load(UHFUserCfg_t *cfg);   /* 0=OK (<0 无有效记录, 返回默认) */

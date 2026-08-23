@@ -52,12 +52,18 @@ static void puthex(uint32_t v)
     App_NewPeriph_DebugPutStr(&buf[i + 1]);
 }
 
-/* ---- 步进电机自检: SPI 读 Rev_ID + 状态/故障 ----
- * 读 Rev_ID 为只读探测: DRV8434S 正常上电且 SPI 通时返回非 0 版本。
- * 返回值实际取回读帧低 4 位 (REV_ID[3:0]); 0 表示无响应 (未上电/SPI 断线). */
+/* ---- 步进电机自检: SPI 读回配置 + 状态/故障 ----
+ * DRV8434S 量产片 REV_ID 默认 = 0000b (数据手册 8.12), 不能以 rev_id 判通信。
+ * 改为读回应用在 drv8434s_init() 中写入的非零配置寄存器来回验证通信:
+ *   - CTRL3 微步模式 (App_Stepper 固定 1/16 => 低 4 位 = 0x6)
+ *   - CTRL7 EN_SSC (init 使能扩频 => bit5=1, 0x20)
+ * 读回值与预期一致 => SPI 已通、配置已落进芯片; 再配合 fault 判健康。
+ * rev_id 仅打印参考, 不参与判定 (量产片即 0)。 */
 static void selftest_motor(void)
 {
-    uint8_t rev = drv8434s_get_rev_id(&g_hMotor);
+    uint8_t ctrl3 = drv8434s_read_reg(&g_hMotor, DRV8434S_REG_CTRL3);
+    uint8_t ctrl7 = drv8434s_read_reg(&g_hMotor, DRV8434S_REG_CTRL7);
+    uint8_t mic   = (uint8_t)(ctrl3 & DRV8434S_CTRL3_MICROSTEP_MASK);
 
     putstr("[POST] Motor DRV8434S  ");
     if (App_Stepper_GetState() == APP_STEPPER_FAULT)
@@ -65,12 +71,17 @@ static void selftest_motor(void)
     else
         putstr("state=IDLE");
     putstr(" fault="); puthex(App_Stepper_GetFault());
-    putstr(" diag1="); puthex(App_Stepper_GetDiag1());
-    putstr(" diag2="); puthex(App_Stepper_GetDiag2());
-    putstr(" rev=");   puthex(rev);
-    /* 未上电/断线时 MISO 高位漂移 => 常读 0xF, 与无应答(0) 一并判未响应 */
-    if (rev != 0u && rev != 0xFu) putstr(" --MOTOR OK\r\n");
-    else                          putstr(" --MOTOR COMM FAIL\r\n");
+    putstr(" ctrl3="); puthex(ctrl3);
+    putstr(" micro="); puthex(mic);
+    putstr(" ctrl7="); puthex(ctrl7);
+    putstr(" rev=");   puthex(drv8434s_get_rev_id(&g_hMotor));
+
+    int comm_ok = (mic == DRV8434S_MICROSTEP_1_16) &&
+                  ((ctrl7 & DRV8434S_CTRL7_EN_SSC) != 0u);
+    int fault   = (App_Stepper_GetFault() & DRV8434S_FLT_FAULT) != 0u;
+
+    if (comm_ok && !fault) putstr(" --MOTOR OK\r\n");
+    else                   putstr(" --MOTOR COMM/CFG FAIL\r\n");
 }
 
 /* ---- UHF 自检: 上电 + Query 只读探测链路 ----
