@@ -50,16 +50,16 @@ void AppLedProcess(void) {
 }
 
 /* =====================================================================
- * 按键诊断闪烁 (长按保持, 独立)
- * 行程开关低电平(按下)时, ERR 灯周期性亮灭:
- *   KEY_UP   按住 -> ERR 100ms 闪烁 (亮100/灭100);  放开 -> 常亮
- *   KEY_DOWN 按住 -> ERR 1000ms 闪烁 (亮1000/灭1000); 放开 -> 常亮
- * 两行程开关均完整接入, 以不同闪烁周期区分按下的是哪个.
+ * 按键诊断闪烁 (仅持续按压期间动作, 不锁存)
+ * 行程开关低电平(按下)时, ERR 灯周期性亮灭; 松开即熄灭恢复正常:
+ *   KEY_UP   按住 -> ERR 100ms 闪烁 (亮100/灭100)
+ *   KEY_DOWN 按住 -> ERR 1000ms 闪烁 (亮1000/灭1000)
+ * 以不同闪烁周期区分按下的是哪个; 仅在持续按下期间闪烁, 松开灭, 不保持.
  * 用活动模式 s_keyMode 区分, 仅在模式切换时重置相位, 避免"按下不亮".
  * ===================================================================== */
 #define KEY_BLINK_UP_MS    100u
 #define KEY_BLINK_DOWN_MS  1000u
-#define KEY_MODE_NONE      0u   /* 无按键 -> ERR 常亮 */
+#define KEY_MODE_NONE      0u   /* 无按键 -> ERR 灭 (正常) */
 #define KEY_MODE_UP        1u   /* 按住 UP -> 100ms 闪 */
 #define KEY_MODE_DOWN      2u   /* 按住 DOWN -> 1000ms 闪 */
 
@@ -78,23 +78,25 @@ void AppLed_KeyBlinkProcess(void)
     /* 判定当前模式: DOWN 优先于 UP (两键同按显示较慢的 1000ms) */
     uint8_t mode = downLow ? KEY_MODE_DOWN : (upLow ? KEY_MODE_UP : KEY_MODE_NONE);
 
-    /* 模式切换: 重置相位与计时基准 (从亮开始), 并立即应用对应状态 */
+    /* 模式切换: 重置相位与计时基准 (从亮开始); 松开回 NONE 时熄灭 */
     if (mode != s_keyMode) {
         s_keyMode = mode;
         s_keyBlinkPhaseMs = 0u;
         s_keyBlinkLast = now;            /* 复位基准, 避免残留时间戳导致首拍跳变 */
-        if (mode != KEY_MODE_NONE) {
+        if (mode == KEY_MODE_NONE) {
+            LedHl_EOff();                /* 松开: 恢复正常(灭) */
+        } else {
             LedHl_EOn();                 /* 进入闪烁: 先亮 */
         }
     }
 
-    /* KEY_MODE_NONE(全放开) -> 常亮 */
+    /* KEY_MODE_NONE(全松开) -> 恢复正常, 灯灭 */
     if (mode == KEY_MODE_NONE) {
-        LedHl_EOn();
+        LedHl_EOff();
         return;
     }
 
-    /* 定时推进相位并按周期翻转. 每 ~10ms 一个 tick. */
+    /* 持续按下: 定时推进相位并按周期翻转. 每 ~10ms 一个 tick. */
     uint32_t dt = now - s_keyBlinkLast;
     if (dt >= 10u) {
         s_keyBlinkLast = now;
