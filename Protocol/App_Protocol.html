@@ -101,7 +101,7 @@ li { margin: 3px 0; }
 <h2>3. 命令总览</h2>
 <div class="phase">
 <p>App 实现 8 个命令。其余命令（FC=0x03/0x04/0x05/0x06/0x09）由 Bootloader 处理（详见 Boot_Protocol.html）。</p>
-<p class="box">命令总览 <b>0x0C / 0x0D</b> 为本轮新增（AM 解码器 / 开锁器）。<b>灯控（LED 呼吸灯）无 USB 命令</b>，由本地硬件 PWM（TIM3_CH1）自走，不对外暴露。</p>
+<p class="box">命令总览 <b>0x0C / 0x0D</b> 为本轮新增（AM 消磁器 / 开锁器）。<b>灯控（LED 呼吸灯）无 USB 命令</b>，由本地硬件 PWM（TIM3_CH1）自走，不对外暴露。</p>
 <table>
 <tr><th>FC</th><th>名称</th><th>Host → Device</th><th>Device → Host</th><th>用途</th></tr>
 <tr><td><code>0x01</code></td><td>FC_HANDSHAKE</td><td>—</td><td>28B: result/protoVer/status/UID/uidHash/layer/upgradeCount/baudRate</td><td>发现/存活探测</td></tr>
@@ -111,7 +111,7 @@ li { margin: 3px 0; }
 <tr><td><code>0x09</code></td><td>FC_EXIT_BOOT</td><td>—</td><td>1B: result</td><td>退出升级 (Boot 处理); App 忽略</td></tr>
 <tr><td><code>0x0A</code></td><td>FC_MOTOR_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §10 (subCmd 0x01~0x06)</td><td>步进电机 DRV8434S 控制</td></tr>
 <tr><td><code>0x0B</code></td><td>FC_UHF_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §11 (subCmd 0x01~0x0A)</td><td>UHF 超高频 SIM7500 模块控制</td></tr>
-<tr><td><code>0x0C</code></td><td>FC_AM_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §12 (subCmd 0x01~0x05)</td><td>AM 解码器控制</td></tr>
+<tr><td><code>0x0C</code></td><td>FC_AM_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §12 (subCmd 0x01~0x07)</td><td>AM 消磁器控制</td></tr>
 <tr><td><code>0x0D</code></td><td>FC_LOCKER_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §13 (subCmd 0x01~0x07)</td><td>开锁器业务编排</td></tr>
 <tr><td><code>0x0E</code></td><td>FC_RGB_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §14 (subCmd 0x01)</td><td>RGB 三色灯 G=PA4/R=PA5/B=PA6 控制</td></tr>
 </table>
@@ -283,6 +283,7 @@ if (n >= 64 && report[0] == 0x02) {
 <tr><td><code>0x04</code></td><td>TORQUE</td><td><code>[cmd, pct]</code></td><td><code>[cmd, err]</code></td><td>转矩百分比 (6~100)</td></tr>
 <tr><td><code>0x05</code></td><td>QUERY</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, fault, diag1, diag2, stepsDoneL, stepsDoneH]</code></td><td>查询状态/故障/已走微步数</td></tr>
 <tr><td><code>0x06</code></td><td>CLEAR</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>清除故障并回到 IDLE</td></tr>
+<tr><td><code>0x07</code></td><td>TEST</td><td><code>[cmd, passes]</code></td><td><code>[cmd, err]</code></td><td>电机行程测试: 最高速正转→触碰行程开关→立即反转→触碰(完成1次往返), 共 <code>passes</code> 次后自动停转. 进行中再下发回 <code>MOTOR_ERR_BUSY</code></td></tr>
 </table>
 
 <h3>10.2 QUERY 响应字段</h3>
@@ -298,7 +299,7 @@ if (n >= 64 && report[0] == 0x02) {
 
 <div class="note">
 <div class="note-title">错误码 (data[1])</div>
-<code>0</code>=OK, <code>1</code>=参数错误, <code>2</code>=器件处于故障状态。
+<code>0</code>=OK, <code>1</code>=参数错误, <code>2</code>=器件处于故障状态, <code>3</code>=忙(TEST 进行中)。
 </div>
 </div>
 
@@ -375,16 +376,21 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 
 
 <!-- FC_AM_CTRL -->
-<h2>12. FC_AM_CTRL (0x0C) — AM 解码器控制</h2>
+<h2>12. FC_AM_CTRL (0x0C) — AM 消磁器控制</h2>
 <div class="phase">
-<p>本命令把 AM 解码器（复用表 / 电能 / 计量读表模块）暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x05），其后为参数。硬件经 <strong>USART1</strong>（RS485，经 SP3485 收发，PA9=TX / PA10=RX，方向控制 PA8，<code>0x2A 0xA2</code> 帧族）与解码器通信。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。16 位参数值高字节在后：<code>(H&lt;&lt;8)|L</code>。</p>
+<p>本命令把 AM EAS <strong>消磁器（Deactivator）</strong>暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x07），其后为参数。硬件经 <strong>USART1</strong>（RS485，经 SP3485 收发，PA9=TX / PA10=RX，方向控制 PA8，<code>0x2A 0xA2</code> 帧族）与消磁器通信。16 位参数值高字节在后：<code>(H&lt;&lt;8)|L</code>。</p>
+<div class="warn">
+<b>设备语义（实测）</b>：这是 <b>消磁器</b>（检测标签→消磁/报警），<b>不读标签唯一 ID</b>。参数命令为「回显式写」，<b>无真读回</b>；发空数据=写 0（危险）。故 <code>GET_CONFIG / GET_PARAM</code> 返回的是<b>设备本地缓存</b>（最近一次成功写入值），<b>不是</b>从解码器读回。cmd17 是设备主动上报的“检测到标签”事件：<code>2A A2 17 01 01 07 FF FF FF FF FF 00 00 校验</code>（5B 字段恒 FF×5，仅作事件标记，不区分标签），经监控子命令累计。
+</div>
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
-<tr><td><code>0x01</code></td><td>GET_CONFIG</td><td>[cmd]</td><td>[cmd, err, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode]</td><td>读取当前配置</td></tr>
-<tr><td><code>0x02</code></td><td>SET_CONFIG</td><td>[cmd, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode]</td><td>[cmd, err]</td><td>设置配置并持久化</td></tr>
-<tr><td><code>0x03</code></td><td>GET_PARAM</td><td>[cmd, amCmd]</td><td>[cmd, err, amCmd, valH,valL]</td><td>读单个参数（amCmd 为 AM 命令字）</td></tr>
-<tr><td><code>0x04</code></td><td>SET_PARAM</td><td>[cmd, amCmd, valH,valL]</td><td>[cmd, err]</td><td>写单个参数</td></tr>
-<tr><td><code>0x05</code></td><td>QUERY</td><td>[cmd]</td><td>[cmd, err, link]</td><td>总查询，探测链路（link=0 正常）</td></tr>
+<tr><td><code>0x01</code></td><td>GET_CONFIG</td><td>[cmd]</td><td>[cmd, err, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode, mains]</td><td>读取当前配置（本地缓存）</td></tr>
+<tr><td><code>0x02</code></td><td>SET_CONFIG</td><td>[cmd, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode, (mains)]</td><td>[cmd, err]</td><td>设置配置并持久化</td></tr>
+<tr><td><code>0x03</code></td><td>GET_PARAM</td><td>[cmd, amCmd]</td><td>[cmd, err, amCmd, valH,valL]</td><td>读单个参数（本地缓存）</td></tr>
+<tr><td><code>0x04</code></td><td>SET_PARAM</td><td>[cmd, amCmd, valH,valL]</td><td>[cmd, err]</td><td>写单个参数（回显校验+缓存）</td></tr>
+<tr><td><code>0x05</code></td><td>QUERY</td><td>[cmd]</td><td>[cmd, err, link]</td><td>探测链路（link=0 正常）</td></tr>
+<tr><td><code>0x06</code></td><td>GET_STATUS</td><td>[cmd]</td><td>[cmd, link, evt(4), last(4)]</td><td>监控：链路 + 标签检测事件累计(4B) + 最近事件相对上电 ms(4B)</td></tr>
+<tr><td><code>0x07</code></td><td>SET_MODE</td><td>[cmd, mode]</td><td>[cmd, err]</td><td>仅切工作模式并持久化</td></tr>
 </table>
 <div class="note">
 <div class="note-title">配置字段 (SET_CONFIG / GET_CONFIG)</div>
@@ -398,14 +404,16 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <tr><td><code>invert</code></td><td>0~1</td><td>零火翻转：0=否 1=是</td></tr>
 <tr><td><code>sync</code></td><td>0~2000</td><td>相位同步 (16bit)</td></tr>
 <tr><td><code>volt</code></td><td>0~2</td><td>解码电压：0=低 1=中 2=高</td></tr>
-<tr><td><code>mode</code></td><td>0~2</td><td>工作模式：0=检测解码 1=检测 2=待机</td></tr>
+<tr><td><code>mode</code></td><td>0~2</td><td>工作模式：0=检测/消磁 1=仅检测 2=待机（SET_MODE 亦可用）</td></tr>
+<tr><td><code>mains</code></td><td>0~1</td><td>市电频率：0=50Hz 1=60Hz（SET_CONFIG 可省略，省略保持当前值）</td></tr>
 </table>
 </div>
 <div class="note">
 <div class="note-title">错误码 (data[1])</div>
-<code>0</code>=OK, <code>1</code>=参数错误, <code>4</code>=链路错误, <code>6</code>=超时。
+<code>0</code>=OK, <code>1</code>=参数错误, <code>4</code>=链路错误, <code>6</code>=超时。<code>GET_STATUS</code> 无 err 字段，首字节即 <code>link</code>。
 </div>
 </div>
+
 
 <!-- FC_LOCKER_CTRL -->
 <h2>13. FC_LOCKER_CTRL (0x0D) — 开锁器业务编排</h2>
@@ -481,7 +489,7 @@ FC_RESET                  = 0x08
 FC_EXIT_BOOT              = 0x09   // 退出升级 (Boot 处理)
 FC_MOTOR_CTRL             = 0x0A   // 步进电机 DRV8434S 控制
 FC_UHF_CTRL               = 0x0B   // UHF 超高频 SIM7500 模块控制
-FC_AM_CTRL                = 0x0C   // AM 解码器控制
+FC_AM_CTRL                = 0x0C   // AM 消磁器控制
 FC_LOCKER_CTRL            = 0x0D   // 开锁器业务编排
 FC_RGB_CTRL               = 0x0E   // RGB 三色灯控制 (G=PA4/R=PA5/B=PA6)
 
@@ -492,9 +500,11 @@ MOTOR_SUB_SPEED           = 0x03   // 微步/秒 [hz 16bit]
 MOTOR_SUB_TORQUE          = 0x04   // 转矩百分比 [pct u8]
 MOTOR_SUB_QUERY           = 0x05   // 查询状态/故障/步数
 MOTOR_SUB_CLEAR           = 0x06   // 清故障
+MOTOR_SUB_TEST            = 0x07   // 电机行程测试 [passes 往返次数]; 进行中回 BUSY
 MOTOR_ERR_OK              = 0
 MOTOR_ERR_PARAM           = 1
 MOTOR_ERR_FAULT           = 2
+MOTOR_ERR_BUSY            = 3      // TEST 进行中
 MOTOR_STATE_IDLE          = 0
 MOTOR_STATE_RUN           = 1
 MOTOR_STATE_FAULT         = 2
@@ -528,11 +538,13 @@ UHF_STATE_ERROR           = 5
 UHF_PARM_MAGIC            = 0x5548  // userParam UHF 配置魔数
 
 // FC=0x0C 子命令码 (FC_AM_CTRL)
-AM_SUB_GET_CONFIG         = 0x01   // 读配置 [thr,hit,freq,delay,len,invert,sync,volt,mode]
-AM_SUB_SET_CONFIG         = 0x02   // 写配置并持久化 (同上字段)
-AM_SUB_GET_PARAM          = 0x03   // 读单个参数 [amCmd]
+AM_SUB_GET_CONFIG         = 0x01   // 读配置(本地缓存) [thr,hit,freq,delay,len,invert,sync,volt,mode,mains]
+AM_SUB_SET_CONFIG         = 0x02   // 写配置并持久化 (同上字段, mains 可省略)
+AM_SUB_GET_PARAM          = 0x03   // 读单个参数(本地缓存) [amCmd]
 AM_SUB_SET_PARAM          = 0x04   // 写单个参数 [amCmd, valH,valL]
-AM_SUB_QUERY              = 0x05   // 总查询 [link]
+AM_SUB_QUERY              = 0x05   // 探测链路 [link]
+AM_SUB_GET_STATUS         = 0x06   // 监控: [link, evt(4B), lastEventMs(4B)]
+AM_SUB_SET_MODE           = 0x07   // 仅切工作模式并持久化 [mode]
 AM_ERR_OK                 = 0
 AM_ERR_PARAM              = 1
 AM_ERR_LINK               = 4

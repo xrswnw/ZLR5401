@@ -75,10 +75,14 @@
 #define MOTOR_CMD_TORQUE    0x04   /* data: [cmd,pct]  转矩百分比 (6~100) */
 #define MOTOR_CMD_QUERY     0x05   /* 查询: 状态/故障/步数 */
 #define MOTOR_CMD_CLEAR     0x06   /* 清除故障 */
+#define MOTOR_CMD_TEST      0x07   /* 电机行程测试: data: [cmd,passes]. passes=往返次数(1~255).
+                                       流程: 最高速正转->触点->立即反转->触点(完成1次)->重复passes次->停转.
+                                       进行中再下发: 回 MOTOR_ERR_BUSY. */
 /* 运行错误码 */
 #define MOTOR_ERR_OK            0
 #define MOTOR_ERR_PARAM         1
 #define MOTOR_ERR_FAULT         2
+#define MOTOR_ERR_BUSY          3
 
 /* ---- FC_UHF_CTRL (0x0B) 子命令编码 (data[0]) ----
  * data: [0]=cmd, 后续参数随 cmd 而定. 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd. */
@@ -108,10 +112,12 @@
  * 值用 16bit (高字节在后) 表示: (dataH<<8)|dataL. */
 #define AM_SUB_GET_CONFIG   0x01   /* data: [cmd]  读取当前配置 */
 #define AM_SUB_SET_CONFIG   0x02   /* data: [cmd, thrH,thrL, hitH,hitL, freq, delayH,delayL,
-                                               len, invert, syncH,syncL, volt, mode]  设置配置 */
-#define AM_SUB_GET_PARAM    0x03   /* data: [cmd, amCmd]  读单个参数 (amCmd 为 AM 命令字) */
+                                               len, invert, syncH,syncL, volt, mode, mains]  设置配置 */
+#define AM_SUB_GET_PARAM    0x03   /* data: [cmd, amCmd]  读单个参数 (amCmd 为 AM 命令字, 返回本地缓存) */
 #define AM_SUB_SET_PARAM    0x04   /* data: [cmd, amCmd, valH, valL]  写单个参数 */
-#define AM_SUB_QUERY        0x05   /* data: [cmd]  总查询, 探测链路 */
+#define AM_SUB_QUERY        0x05   /* data: [cmd]  探测链路 */
+#define AM_SUB_GET_STATUS   0x06   /* data: [cmd]  读监控: [cmd, link, evtL,evtH, lastL,lastH] (自 0x06 起无 err 字段) */
+#define AM_SUB_SET_MODE     0x07   /* data: [cmd, mode]  仅切工作模式 (0检测消磁/1仅检测/2待机), 持久化 */
 /* 运行错误码 (data[1]) */
 #define AM_ERR_OK           0
 #define AM_ERR_PARAM        1

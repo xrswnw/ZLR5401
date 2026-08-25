@@ -17,6 +17,7 @@
 #include "App_AM.h"
 #include "App_Locker.h"
 #include "App_NewPeriph_HL.h"
+#include "App_MotorTest.h"
 #include "App_BootSelfTest.h"
 
 void System_Init(void)
@@ -126,12 +127,16 @@ void System_Init(void)
             c.phaseSync   = pc.phaseSync;
             c.decodeVolt  = pc.decodeVolt;
             c.mode        = pc.mode;
+            c.mainsFreq   = pc.mainsFreq;
             (void)App_AM_SetConfig(&c, 0);
         }
     }
 
     /* 8.9 开锁器业务编排层初始化 (IDLE, 默认锁定)*/
     App_Locker_Init();
+
+    /* 8.10 电机行程测试状态机初始化 (IDLE, 不占用电机)*/
+    App_MotorTest_Init();
 
     /* 9. 开全局中断 (最后一步 Sys_EnableInt, USB 准备就绪后才开)*/
     __asm volatile ("cpsie i");
@@ -162,6 +167,9 @@ int main(void)
 
         /* 开锁器业务状态机推进 (硬标签EPC比对/软标解码编排)*/
         App_Locker_Process();
+
+        /* 电机行程测试状态机推进 (仅 TEST 指令触发时占用电机)*/
+        App_MotorTest_Process();
 
         /* UHF 状态机推进 (标签流采集 + 空闲结束检测)*/
         App_UHF_Process();

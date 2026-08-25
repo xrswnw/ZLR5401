@@ -4,6 +4,7 @@
 #include "App_SysTick_HL.h"
 #include "App_Param.h"
 #include "App_Stepper.h"
+#include "App_MotorTest.h"
 #include "App_UHF.h"
 #include "App_AM.h"
 #include "App_AM_HL.h"
@@ -154,6 +155,19 @@ void AppDispatch(ProtoFrame_t *f) {
             qrsp[6] = (uint8_t)(App_Stepper_GetStepsDone() & 0xFF);
             qrsp[7] = (uint8_t)((App_Stepper_GetStepsDone() >> 8) & 0xFF);
             Proto_TxResponse(ch, FC_MOTOR_CTRL, qrsp, sizeof(qrsp));
+            break;
+        }
+        case MOTOR_CMD_TEST: {
+            /* [cmd, passes]  passes=往返次数; 进行中再下发回 BUSY */
+            if (f->dataLen < 2u) {
+                err = MOTOR_ERR_PARAM;
+                break;
+            }
+            int e = App_MotorTest_Start(f->data[1]);
+            if (e == 0)       err = MOTOR_ERR_OK;
+            else if (e == -1) err = MOTOR_ERR_BUSY;
+            else if (e == -2) err = MOTOR_ERR_PARAM;
+            else              err = MOTOR_ERR_FAULT;
             break;
         }
         case MOTOR_CMD_CLEAR:
@@ -383,7 +397,7 @@ void AppDispatch(ProtoFrame_t *f) {
         case AM_SUB_GET_CONFIG: {
             AppAMConfig_t c;
             App_AM_GetConfig(&c);
-            uint8_t r[2 + 2 + 2 + 1 + 2 + 1 + 1 + 2 + 1 + 1] = {
+            uint8_t r[2 + 2 + 2 + 1 + 2 + 1 + 1 + 2 + 1 + 1 + 1] = {
                 sub, AM_ERR_OK,
                 (uint8_t)((c.threshold >> 8) & 0xFF), (uint8_t)(c.threshold & 0xFF),
                 (uint8_t)((c.hitCount >> 8) & 0xFF), (uint8_t)(c.hitCount & 0xFF),
@@ -393,14 +407,15 @@ void AppDispatch(ProtoFrame_t *f) {
                 c.phaseInvert,
                 (uint8_t)((c.phaseSync >> 8) & 0xFF), (uint8_t)(c.phaseSync & 0xFF),
                 c.decodeVolt,
-                c.mode
+                c.mode,
+                c.mainsFreq
             };
             Proto_TxResponse(ch, FC_AM_CTRL, r, sizeof(r));
             break;
         }
         case AM_SUB_SET_CONFIG: {
-            /* [sub, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode] */
-            if (f->dataLen < 15u) {
+            /* [sub, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode, (mains)] */
+            if (f->dataLen < 14u) {
                 uint8_t r[2] = { sub, AM_ERR_PARAM };
                 Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
                 break;
@@ -415,6 +430,10 @@ void AppDispatch(ProtoFrame_t *f) {
             c.phaseSync   = (uint16_t)(((uint16_t)f->data[10] << 8) | f->data[11]);
             c.decodeVolt  = f->data[12];
             c.mode        = f->data[13];
+            /* 版本兼容: dataLen>=15 才含 mains (新主机); 否则保持当前值不覆盖 */
+            AppAMConfig_t cur;
+            App_AM_GetConfig(&cur);
+            c.mainsFreq   = (f->dataLen >= 15u) ? f->data[14] : cur.mainsFreq;
 
             int e = App_AM_SetConfig(&c, 0);
             uint8_t r[2] = { sub, AM_ERR_OK };
@@ -423,7 +442,7 @@ void AppDispatch(ProtoFrame_t *f) {
             else {
                 AMUserCfg_t pc = { c.threshold, c.hitCount, c.freqRange,
                                    c.recvDelay, c.recvLength, c.phaseInvert,
-                                   c.phaseSync, c.decodeVolt, c.mode };
+                                   c.phaseSync, c.decodeVolt, c.mode, c.mainsFreq };
                 (void)AmParam_Save(&pc);
             }
             Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
@@ -467,6 +486,43 @@ void AppDispatch(ProtoFrame_t *f) {
                 (uint8_t)App_AM_GetLinkStatus() };
             if (e != APP_AM_ERR_OK) r[1] = AM_ERR_LINK;
             Proto_TxResponse(ch, FC_AM_CTRL, r, sizeof(r));
+            break;
+        }
+        case AM_SUB_GET_STATUS: {
+            /* [cmd, link, evtL, evtH, lastL, lastH]  无 err 字段 */
+            uint32_t evt = App_AM_GetEventCount();
+            uint32_t last = App_AM_GetLastEventMs();
+            uint8_t r[1 + 5 + 4] = {
+                sub,
+                (uint8_t)App_AM_GetLinkStatus(),
+                (uint8_t)(evt & 0xFF),      (uint8_t)((evt >> 8) & 0xFF),
+                (uint8_t)((evt >> 16) & 0xFF), (uint8_t)((evt >> 24) & 0xFF),
+                (uint8_t)(last & 0xFF),     (uint8_t)((last >> 8) & 0xFF),
+                (uint8_t)((last >> 16) & 0xFF), (uint8_t)((last >> 24) & 0xFF)
+            };
+            Proto_TxResponse(ch, FC_AM_CTRL, r, sizeof(r));
+            break;
+        }
+        case AM_SUB_SET_MODE: {
+            /* [cmd, mode]  仅切工作模式 + 持久化 */
+            if (f->dataLen < 2u || f->data[1] > 2u) {
+                uint8_t r[2] = { sub, AM_ERR_PARAM };
+                Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
+                break;
+            }
+            int e = App_AM_SetParam(AM_CMD_MODE, f->data[1]);
+            uint8_t r[2] = { sub, AM_ERR_OK };
+            if (e == APP_AM_ERR_LINK) { r[1] = AM_ERR_LINK; Proto_TxResponse(ch, FC_AM_CTRL, r, 2); break; }
+
+            /* 同步持久化: 读当前缓存改 mode 后存回 */
+            AppAMConfig_t c;
+            App_AM_GetConfig(&c);
+            c.mode = f->data[1];
+            AMUserCfg_t pc = { c.threshold, c.hitCount, c.freqRange,
+                               c.recvDelay, c.recvLength, c.phaseInvert,
+                               c.phaseSync, c.decodeVolt, c.mode, c.mainsFreq };
+            (void)AmParam_Save(&pc);
+            Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
             break;
         }
         default:
