@@ -30,6 +30,7 @@ void     App_Stepper_Process(void);      /* 主循环节拍: 推进步进 + 故�
 /* ---- 控制 API (由协议层或任务调用) ---- */
 int      App_Stepper_Move(AppStepperMove_t *mv);      /* 启动一次运动 (先停止再启动) */
 int      App_Stepper_Stop(void);                       /* 停止并关断输出 */
+int      App_Stepper_DcBrakeStop(void);                /* DC磁制动停: 短暂维持磁场抗滑行再断电 (触点停位用) */
 int      App_Stepper_SetSpeedHz(uint32_t hz);          /* 设定步进频率 (微步/s, 1~2000) */
 int      App_Stepper_SetTorquePercent(uint8_t pct);    /* 转矩百分比 6~100 (整数, 内部转 TRQ_DAC) */
 int      App_Stepper_ClearFault(void);                 /* 清故障并回到 IDLE */

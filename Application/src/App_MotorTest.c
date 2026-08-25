@@ -180,9 +180,9 @@ void App_MotorTest_Process(void)
                 (now - s_trigMs) >= MT_DEBOUNCE_MS) {
                 s_trimmedVisited = 1;
                 /* 警戒线硬停: 正程(dir=0)触到上行程 KEY_UP 即警戒线, 立即停,
-                 * 绝不在正向再走一步, 再换向反转. */
+                 * 绝不在正向再走一步, 再换向反转. DC磁制动抗惯性滑行减超程. */
                 if (s_dir == 0u) {
-                    App_Stepper_Stop();
+                    App_Stepper_DcBrakeStop();
                 }
                 /* 反转段(第2半程)到达 -> 完成1次往返 */
                 if (s_dir == 1u) {

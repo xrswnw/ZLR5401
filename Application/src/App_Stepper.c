@@ -180,6 +180,20 @@ int App_Stepper_Stop(void)
     return 0;
 }
 
+/* DC 磁制动停止: Stop 断电前短暂维持磁场(EN_OUT=1)抵抗惯性滑行, 再关断输出.
+ * 用于触点接触的停位事件(如 KEY_UP 警戒线硬停), 减少"到了还在沿旧趋势走"的超程.
+ * 罕见事件上的短暂阻塞在单任务 1ms 主循环下可接受. */
+#define STEPPER_DC_BRAKE_MS  8u
+int App_Stepper_DcBrakeStop(void)
+{
+    s_stepsReq = 0;
+    uint32_t t0 = SysTickHl_GetMs();
+    while ((SysTickHl_GetMs() - t0) < STEPPER_DC_BRAKE_MS) { }
+    stepper_disable_output();
+    s_state = APP_STEPPER_IDLE;
+    return 0;
+}
+
 int App_Stepper_SetSpeedHz(uint32_t hz)
 {
     if (hz < STEPPER_MIN_HZ) hz = STEPPER_MIN_HZ;
