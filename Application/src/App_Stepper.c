@@ -37,7 +37,7 @@ void App_Stepper_Init(void)
     Drv8434S_HL_Init();
 
     cfg.vref_voltage = APP_VREF_VOLTS;
-    cfg.microstep    = DRV8434S_MICROSTEP_HALF;
+    cfg.microstep    = DRV8434S_MICROSTEP_FULL_100;
     cfg.decay        = DRV8434S_DECAY_SMART_TUNE_RIPPLE;
     cfg.enable_ol    = 0;
     cfg.ocp_retry    = 0;
