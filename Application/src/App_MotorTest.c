@@ -41,7 +41,7 @@ static void start_leg(uint8_t dir)
     s_trimmedVisited = 0;
     s_wrongActive = 0;
     s_legStartMs = SysTickHl_GetMs();
-    /* 若段起点两触点均已释放, 视为已进入自由行程; 否则起始被压住的
+    /* 若段起点两触点均已释放(未按下), 视为已进入自由行程; 否则起始被压住的
      * 触点(如机构停在下触点)是离出位置, 需等电机挣脱后才判极性错触. */
     s_brokeAway = ((App_NewPeriph_ReadKeyUp() == 0u) &&
                    (App_NewPeriph_ReadKeyDown() == 0u)) ? 1u : 0u;
@@ -105,8 +105,8 @@ void App_MotorTest_Process(void)
             return;
         }
 
-        uint8_t upHit   = (App_NewPeriph_ReadKeyUp() != 0u);   /* 上行程触发 */
-        uint8_t downHit = (App_NewPeriph_ReadKeyDown() != 0u); /* 下行程触发 */
+        uint8_t upHit   = (App_NewPeriph_ReadKeyUp() == 0u);   /* 按下(低)=触上行程 */
+        uint8_t downHit = (App_NewPeriph_ReadKeyDown() == 0u); /* 按下(低)=触下行程 */
 
         /* 仍未脱离起点(两触点均未释放过): 等待电机挣脱被压住的离出触点.
          * 只有已进入自由行程后才开始判方向极性错触与期望触点. */
