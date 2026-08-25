@@ -35,10 +35,10 @@ static uint32_t s_wrongMs    = 0;     /* 错触触点持续起始时刻 (防抖)
 static uint8_t  s_wrongActive = 0;    /* 错触触点当前是否保持触发 */
 static uint8_t  s_brokeAway  = 1;     /* 已脱离起点进入自由行程 (两触点均释放过) */
 
-/* 行程测试速度: 原 2000 微步/s 满速长行程致 DRV8434S 堵转拉 nFAULT.
- * 降为驱动可持续承载的 500 微步/s (与 MT_TEST_TIMEOUT_MS=90s 联动, 见 .h).
- * 转矩保持满刻度保证带载触碰. */
-#define MT_TEST_SPEED_HZ    500u
+/* 行程测试速度: 原 2000 微步/s 满速长行程致 DRV8434S 堵转; 1500 亦致机构回弹误触
+ * 下行程开关(see 2026-08-26). 1000 微步/s = 5 转/s = 300 RPM 为当前实测可承载上限
+ * (仍 < 2000 上限). 转矩保持满刻度保证带载触碰. */
+#define MT_TEST_SPEED_HZ    1000u
 
 /* 测试运行速度 + 满转矩 */
 static void set_test_params(void)
