@@ -11,6 +11,8 @@
 #define STEPPER_DEFAULT_HZ   500u    /* 默认 500 微步/s */
 #define STEPPER_MIN_HZ       1u
 #define STEPPER_MAX_HZ       2000u   /* 上限, 兼顾 SPI 开销与 IWDG 2s 预算 (每 tick 一次 SPI) */
+#define STEPPER_RAMP_STEPS   180u    /* 加速斜坡步数: 全步1圈, 起步由低速线性升到目标速 */
+#define STEPPER_RAMP_MIN_HZ  100u    /* 起步保持转速 (低速防机构回弹/堵转) */
 #define APP_VREF_VOLTS       2.64f   /* 硬件 VREF (仅配置结构数据, 无浮点运算) */
 
 static AppStepperState_t s_state = APP_STEPPER_IDLE;
@@ -18,10 +20,21 @@ static uint32_t          s_speedHz  = STEPPER_DEFAULT_HZ;
 static uint32_t          s_stepsReq = 0;      /* 本次目标微步数, 0=持续 */
 static uint32_t          s_stepsDone = 0;
 static uint32_t          s_lastTickMs;
-static uint32_t          s_intervalUs;
 static uint8_t           s_fault, s_diag1, s_diag2;
 static uint8_t           s_dir;
 static uint32_t          s_acc;               /* 微步累加器 (1ms 基准) */
+
+/* 加速斜坡: 已完成 stepDone 步后应采用的目标间隔. 起步 STEPPER_RAMP_MIN_HZ,
+ * 在 STEPPER_RAMP_STEPS 内线性升到目标速 s_speedHz. 目标低于起步速则直接目标速. */
+static uint32_t stepper_ramp_interval(uint32_t stepDone, uint32_t targetHz)
+{
+    if (stepDone >= STEPPER_RAMP_STEPS || targetHz <= STEPPER_RAMP_MIN_HZ)
+        return 1000000u / targetHz;
+    uint32_t p = stepDone * 100u / STEPPER_RAMP_STEPS;          /* 0..100 */
+    uint32_t hz = STEPPER_RAMP_MIN_HZ
+                + (targetHz - STEPPER_RAMP_MIN_HZ) * p / 100u;  /* 线性升频 */
+    return 1000000u / hz;
+}
 
 static void stepper_disable_output(void)
 {
@@ -46,7 +59,6 @@ void App_Stepper_Init(void)
 
     s_state = APP_STEPPER_IDLE;
     s_speedHz = STEPPER_DEFAULT_HZ;
-    s_intervalUs = 1000000u / STEPPER_DEFAULT_HZ;
     s_stepsReq = 0; s_stepsDone = 0; s_acc = 0; s_dir = 0;
     s_fault = 0; s_diag1 = 0; s_diag2 = 0;
     s_lastTickMs = SysTickHl_GetMs();
@@ -126,8 +138,9 @@ void App_Stepper_Process(void)
     lastMs = mnow;
 
     s_acc += 1000u;                       /* 1ms 基准 */
-    while (s_acc >= s_intervalUs) {
-        s_acc -= s_intervalUs;
+    uint32_t interval = stepper_ramp_interval(s_stepsDone, s_speedHz);
+    while (s_acc >= interval) {
+        s_acc -= interval;
         /* GPIO 控制: 先设方向 (DIR 引脚), 再发 STEP 微步脉冲 (SPI 仅管寄存器配置) */
         drv8434s_hal_set_pin(&g_hMotor, DRV8434S_PIN_DIR, s_dir);
         drv8434s_pin_step_pulse(&g_hMotor);
@@ -171,7 +184,6 @@ int App_Stepper_SetSpeedHz(uint32_t hz)
     if (hz < STEPPER_MIN_HZ) hz = STEPPER_MIN_HZ;
     if (hz > STEPPER_MAX_HZ) hz = STEPPER_MAX_HZ;
     s_speedHz   = hz;
-    s_intervalUs = 1000000u / hz;
     return 0;
 }
 
