@@ -39,6 +39,7 @@ AppStepperState_t App_Stepper_GetState(void);
 uint8_t  App_Stepper_GetFault(void);       /* 最近一次读取的 FAULT 寄存器原始值 */
 uint8_t  App_Stepper_GetDiag1(void);
 uint8_t  App_Stepper_GetDiag2(void);
+uint8_t  App_Stepper_GetMicrostep(void);  /* 诊断: 实时读 DRV8434S CTRL3 微步位 */
 uint32_t App_Stepper_GetStepsDone(void);   /* 本次运动已完成微步数 */
 
 #endif /* __APP_STEPPER_H */

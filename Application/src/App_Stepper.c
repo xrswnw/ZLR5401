@@ -37,7 +37,7 @@ void App_Stepper_Init(void)
     Drv8434S_HL_Init();
 
     cfg.vref_voltage = APP_VREF_VOLTS;
-    cfg.microstep    = DRV8434S_MICROSTEP_1_16;
+    cfg.microstep    = DRV8434S_MICROSTEP_HALF;
     cfg.decay        = DRV8434S_DECAY_SMART_TUNE_RIPPLE;
     cfg.enable_ol    = 0;
     cfg.ocp_retry    = 0;
@@ -62,6 +62,14 @@ void App_Stepper_Init(void)
     {
         uint8_t ctrl3 = drv8434s_read_reg(&g_hMotor, DRV8434S_REG_CTRL3);
         ctrl3 &= (uint8_t)~(DRV8434S_CTRL3_SPI_STEP | DRV8434S_CTRL3_SPI_DIR);
+        drv8434s_write_reg(&g_hMotor, DRV8434S_REG_CTRL3, ctrl3);
+    }
+    /* 显式重申微步档位: 某些默认/旧寄存器保留值下 init 的微步写入可能被覆盖,
+     * 这里在清除 SPI 位后重新写入并保持 (1/2 步, 0x03). */
+    {
+        uint8_t ctrl3 = drv8434s_read_reg(&g_hMotor, DRV8434S_REG_CTRL3);
+        ctrl3 &= (uint8_t)~(DRV8434S_CTRL3_MICROSTEP_MASK);
+        ctrl3 |= ((uint8_t)cfg.microstep & 0x0F);
         drv8434s_write_reg(&g_hMotor, DRV8434S_REG_CTRL3, ctrl3);
     }
     /* 默认转矩 50%: 直接写 CTRL1 TRQ_DAC (整数, 避免链接浮点软库) */
@@ -190,4 +198,6 @@ AppStepperState_t App_Stepper_GetState(void) { return s_state; }
 uint8_t  App_Stepper_GetFault(void)     { return s_fault; }
 uint8_t  App_Stepper_GetDiag1(void)     { return s_diag1; }
 uint8_t  App_Stepper_GetDiag2(void)     { return s_diag2; }
+uint8_t  App_Stepper_GetMicrostep(void)   /* 诊断: 实时读 DRV8434S CTRL3 微步位 [3:0] */
+{ return (uint8_t)(drv8434s_read_reg(&g_hMotor, DRV8434S_REG_CTRL3) & DRV8434S_CTRL3_MICROSTEP_MASK); }
 uint32_t App_Stepper_GetStepsDone(void) { return s_stepsDone; }
