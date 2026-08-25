@@ -55,7 +55,8 @@ void App_Stepper_Init(void)
     cfg.enable_ol    = 0;
     cfg.ocp_retry    = 0;
     cfg.otsd_auto_recover = 0;
-    cfg.enable_stall = 0;
+    cfg.enable_stall = 0;           /* 失速检测仅诊断用, 功能固件关闭 */
+    cfg.stall_report = 1;
 
     s_state = APP_STEPPER_IDLE;
     s_speedHz = STEPPER_DEFAULT_HZ;
