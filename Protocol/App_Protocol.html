@@ -109,7 +109,7 @@ li { margin: 3px 0; }
 <tr><td><code>0x07</code></td><td>FC_DEVICE_INFO</td><td>—</td><td>34B: result/addr/hwVersion/version (App层=swVersion)</td><td>查询版本 / 设备地址</td></tr>
 <tr><td><code>0x08</code></td><td>FC_RESET</td><td>—</td><td>1B: result</td><td>软件复位 (空参数, 回 OK 后延时 20ms 再复位)</td></tr>
 <tr><td><code>0x09</code></td><td>FC_EXIT_BOOT</td><td>—</td><td>1B: result</td><td>退出升级 (Boot 处理); App 忽略</td></tr>
-<tr><td><code>0x0A</code></td><td>FC_MOTOR_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §10 (subCmd 0x01~0x06)</td><td>步进电机 DRV8434S 控制</td></tr>
+<tr><td><code>0x0A</code></td><td>FC_MOTOR_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §10 (subCmd 0x01~0x09)</td><td>步进电机 DRV8434S 控制 + 健康监控</td></tr>
 <tr><td><code>0x0B</code></td><td>FC_UHF_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §11 (subCmd 0x01~0x0A)</td><td>UHF 超高频 SIM7500 模块控制</td></tr>
 <tr><td><code>0x0C</code></td><td>FC_AM_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §12 (subCmd 0x01~0x07)</td><td>AM 消磁器控制</td></tr>
 <tr><td><code>0x0D</code></td><td>FC_LOCKER_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §13 (subCmd 0x01~0x07)</td><td>开锁器业务编排</td></tr>
@@ -284,17 +284,32 @@ if (n >= 64 && report[0] == 0x02) {
 <tr><td><code>0x05</code></td><td>QUERY</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, fault, diag1, diag2, stepsDoneL, stepsDoneH]</code></td><td>查询状态/故障/已走微步数</td></tr>
 <tr><td><code>0x06</code></td><td>CLEAR</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>清除故障并回到 IDLE</td></tr>
 <tr><td><code>0x07</code></td><td>TEST</td><td><code>[cmd, passes]</code></td><td><code>[cmd, err]</code></td><td>电机行程测试: 最高速正转→触碰行程开关→立即反转→触碰(完成1次往返), 共 <code>passes</code> 次后自动停转. 进行中再下发回 <code>MOTOR_ERR_BUSY</code></td></tr>
+<tr><td><code>0x08</code></td><td>HEALTH</td><td><code>[cmd]</code></td><td><code>[cmd, err, olovState, threshL, threshH, trqL, trqH, reason]</code></td><td>读健康/堵转监测: 高负载状态 / 高负载阈值 / 实时转矩计数 / 最近停机原因</td></tr>
+<tr><td><code>0x09</code></td><td>STATS</td><td><code>[cmd]</code></td><td><code>[cmd, err, runSeconds(3B), startCount(2B), lastReason]</code></td><td>读运行统计: 累计运行秒数 / 启动次数 / 最近停止原因</td></tr>
 </table>
 
 <h3>10.2 QUERY 响应字段</h3>
 <table>
 <tr><th>字段</th><th>说明</th></tr>
 <tr><td><code>err</code></td><td>0=OK</td></tr>
-<tr><td><code>state</code></td><td>0=IDLE(停止) / 1=RUN / 2=FAULT</td></tr>
+<tr><td><code>state</code></td><td>0=IDLE(停止) / 1=RUN / 2=FAULT; 行程测试时上报测试态(2=DONE/3=FAULT)</td></tr>
 <tr><td><code>fault</code></td><td>DRV8434S FAULT 寄存器原始值 (bit7=FAULT, bit5=UVLO, bit4=CPUV, bit3=OCP, bit2=STALL, bit1=过温)</td></tr>
-<tr><td><code>diag1</code></td><td>诊断寄存器1 (OCP 位置)</td></tr>
+<tr><td><code>diag1</code></td><td>行程测试故障原因 (非测试时为 0): 1=步进故障 / 2=挣脱超时 / 3=方向极性错触 / 4=期望触点超时</td></tr>
 <tr><td><code>diag2</code></td><td>诊断寄存器2 (OTW/OTS/STALL/OL)</td></tr>
 <tr><td><code>stepsDone</code></td><td>本次运动已完成的微步数 (16bit, 溢出截断; 持续运行意会)</td></tr>
+</table>
+
+<h3>10.3 HEALTH / STATS 响应字段</h3>
+<table>
+<tr><th>命令</th><th>字段</th><th>说明</th></tr>
+<tr><td rowspan="5"><code>HEALTH (0x08)</code></td><td><code>olovState</code></td><td>高负载监测状态: 0=正常 / 1=持续高负载(待降速) / 2=已自动降速 / 3=高负载停机</td></tr>
+<tr><td><code>thresh</code></td><td>高负载 TRQ_COUNT 阈值 (16bit, 默认 400; 越低越接近失速)</td></tr>
+<tr><td><code>trq</code></td><td>最近一次转矩计数采样 (12bit, 满刻度 4095=无负载, 越低负载越高)</td></tr>
+<tr><td><code>reason</code></td><td>最近停机原因: 0=无 / 1=正常停止 / 2=运行时限 / 3=高负载停机 / 4=DRV故障</td></tr>
+<tr><td colspan="2"><em>注: 运行中每 100ms 采样 TRQ_COUNT; 持续低于阈值 600ms → 自动降速到 800 微步/s; 降速后仍低 400ms → 强制停机。单次连续运行上限 60s。</em></td></tr>
+<tr><td rowspan="3"><code>STATS (0x09)</code></td><td><code>runSeconds</code></td><td>累计运行秒数 (24bit, RAM 仅存, 断电清零)</td></tr>
+<tr><td><code>startCount</code></td><td>累计启动次数 (16bit, RAM 仅存)</td></tr>
+<tr><td><code>lastReason</code></td><td>最近停止原因 (同 HEALTH.reason)</td></tr>
 </table>
 
 <div class="note">
@@ -501,6 +516,8 @@ MOTOR_SUB_TORQUE          = 0x04   // 转矩百分比 [pct u8]
 MOTOR_SUB_QUERY           = 0x05   // 查询状态/故障/步数
 MOTOR_SUB_CLEAR           = 0x06   // 清故障
 MOTOR_SUB_TEST            = 0x07   // 电机行程测试 [passes 往返次数]; 进行中回 BUSY
+MOTOR_SUB_HEALTH          = 0x08   // 读健康/堵转监测 [olovState, thresh(2), trq(2), reason]
+MOTOR_SUB_STATS           = 0x09   // 读运行统计 [runSeconds(3), startCount(2), lastReason]
 MOTOR_ERR_OK              = 0
 MOTOR_ERR_PARAM           = 1
 MOTOR_ERR_FAULT           = 2

@@ -63,7 +63,7 @@
 <body>
 <div class="topbar">
   <h1>ZLR5401 步进电机运动优化 · 技术报告</h1>
-  <div class="sub">Agent/Round_007 &nbsp;·&nbsp; 2026-08-26 &nbsp;·&nbsp; 硬件定时器 STEP 架构 · S 型加减速 · 电机保护与健康监控 &nbsp;·&nbsp; 已烧录并硬件实测</div>
+  <div class="sub">Agent/Round_007 &nbsp;·&nbsp; 2026-08-26 &nbsp;·&nbsp; 硬件定时器 STEP · S型加减速 · 电机保护与健康监控(已实现) &nbsp;·&nbsp; 已烧录并硬件实测</div>
 </div>
 
 <div class="wrap">
@@ -84,7 +84,7 @@
 </div>
 
 <h2>1. 结论与最终配置</h2>
-<p>本轮完成步进电机从"软件时基脉冲"到 <b>TIM4 硬件定时器 STEP 脉冲</b>的架构改造，彻底解决运动"一顿一顿"（不连续）问题，并将噪声、平滑度、发热与寿命收敛到理想平衡点。随后落地 <b>S 型加减速曲线</b>（削减启停冲击）与 <b>失速(DIAG2)守卫</b>，并给出电机保护与健康监控体系建议。最终定稿参数已烧录并通过行程测试硬件验证。</p>
+<p>本轮完成步进电机从"软件时基脉冲"到 <b>TIM4 硬件定时器 STEP 脉冲</b>的架构改造，彻底解决运动"一顿一顿"（不连续）问题，并将噪声、平滑度、发热与寿命收敛到理想平衡点。随后落地 <b>S 型加减速曲线</b>（削减启停冲击）、<b>失速(DIAG2)守卫</b>，并<b>实现电机保护与健康监控</b>（堵转预警+连续运行时限+运行统计）。最终定稿参数已烧录并通过行程测试硬件验证。</p>
 
 <div class="grid">
   <div class="metric"><div class="v">1/2</div><div class="k">微步档位 (400 微步/转)</div></div>
@@ -194,8 +194,10 @@ if ((s_fault &amp; DRV8434S_FLT_FAULT) ||
   <tr><td>行程步数</td><td>—</td><td>4330 ≈ 4288 基准 ✔</td></tr>
 </table>
 
-<h2>9. 电机保护与健康监控（建议）</h2>
-<p>电机是开锁器核心执行件，其损坏代价高（机构堵转、堵转相电流持续导通、长期超温润滑失效等）。DRV8434S 已暴露丰富的保护/诊断信号，建议建立分层"粗—细—遥"监控体系：</p>
+<h2>9. 电机保护与健康监控（已实现）</h2>
+<p>电机是开锁器核心执行件，其损坏代价高（机构堵转、堵转相电流持续导通、长期超温润滑失效等）。DRV8434S 已暴露丰富的保护/诊断信号。本表建立分层"粗—细—遥"监控体系，<b>核心已落地</b>（堵转预警+连续运行时限+运行统计，经 <code>MOTOR_CMD_HEALTH/STATS</code> 协议上报）。</p>
+
+<div class="card ok"><span class="tt">实现要点</span> — 运行态每 100ms 采样 <code>TRQ_COUNT</code>：持续低于阈值(默认 400, 可配)600ms → 判高负载并自动降速(800 微步/s)；降速后仍低 400ms → 强制停机。单次连续运行上限 60s → 强制停机。统计(RAM)：累计运行秒/启动次数/最近停止原因。新协议：<code>HEALTH(0x08)</code>、<code>STATS(0x09)</code>。实测自由运行 TRQ=4095(无负载)不误触发，行程测试仍 DONE/4341。</div>
 
 <h3>9.1 可用的硬件诊断源</h3>
 <table>
@@ -203,26 +205,27 @@ if ((s_fault &amp; DRV8434S_FLT_FAULT) ||
   <tr><td>FAULT 寄存器</td><td>nFAULT 锁存原因（UVLO/CPUV/OCP/STL/TF/OL/SPI_ERR）</td><td>已轮询读取</td></tr>
   <tr><td>DIAG1</td><td>过流细分（A/B 相 × 高/低边 MOSFET OCP）</td><td>已读取，未细分动作</td></tr>
   <tr><td>DIAG2</td><td>过温警告 OTW / 过温关断 OTS / 开路 OL / <b>失速 STALL</b></td><td>已读取，失速位已动作</td></tr>
-  <tr><td>TRQ_COUNT</td><td>12-bit 转矩计数，<b>越低越接近失速</b>（负载/堵转间接量）</td><td>未上报</td></tr>
+  <tr><td>TRQ_COUNT</td><td>12-bit 转矩计数，<b>越低越接近失速</b>（负载/堵转间接量）</td><td><b>已采样并守护</b></td></tr>
   <tr><td>STEP 步数</td><td>命令步数 vs 期望行程（可做"动了多少"粗判）</td><td>已上报</td></tr>
 </table>
 
 <h3>9.2 分层保护策略</h3>
 <table>
-  <tr><th>层级</th><th>手段</th><th>动作</th><th>优先级</th></tr>
-  <tr><td><b>硬件硬保护</b></td><td>OCP/OTS/UVLO + nFAULT</td><td>芯片自断输/自恢复；FW 读 nFAULT 立即停转</td><td>必做·已实现</td></tr>
-  <tr><td><b>固件立即保护</b></td><td>10ms 轮询 FAULT + DIAG2(OTS) + nFAULT 拉低</td><td>StepperTim4_Stop + disable output → FAULT 上报</td><td>必做·已实现</td></tr>
-  <tr><td><b>健康监控</b></td><td>TRQ_COUNT 阈值 → 判"堵转/高负载"预警</td><td>记录/上报，可联动降速或停机（防长期堵转烧毁）</td><td>建议·可加</td></tr>
-  <tr><td><b>温度监控</b></td><td>DIAG2 OTW 预警 / OTS 硬断 + 可选绕组 NTC</td><td>OTW 降转矩/降频；OTS 立即停</td><td>建议·可加</td></tr>
-  <tr><td><b>超时/行程守护</b></td><td>行程测试引擎已有单程超时 FAULT</td><td>防"卡住仍通电"持续耗热</td><td>已实现</td></tr>
+  <tr><th>层级</th><th>手段</th><th>动作</th><th>状态</th></tr>
+  <tr><td><b>硬件硬保护</b></td><td>OCP/OTS/UVLO + nFAULT</td><td>芯片自断输/自恢复；FW 读 nFAULT 立即停转</td><td>已实现</td></tr>
+  <tr><td><b>固件立即保护</b></td><td>10ms 轮询 FAULT + DIAG2(OTS) + nFAULT 拉低</td><td>StepperTim4_Stop + disable output → FAULT 上报</td><td>已实现</td></tr>
+  <tr><td><b>堵转健康监控</b></td><td>TRQ_COUNT 阈值(默认400) → 判"高负载/堵转"</td><td><b>自动降速(800) → 仍高 400ms 强制停机</b>；原因=高负载</td><td><b>已实现</b></td></tr>
+  <tr><td><b>连续运行时限</b></td><td>单次 ≤60s 超时</td><td>强制停机；原因=运行时限</td><td><b>已实现</b></td></tr>
+  <tr><td><b>运行统计</b></td><td>RAM：运行秒/启动次数/最近原因</td><td>经 <code>STATS(0x09)</code> 上报，供寿命判断</td><td><b>已实现</b></td></tr>
+  <tr><td><b>温度监控</b></td><td>DIAG2 OTW 预警 / OTS 硬断 + 可选绕组 NTC</td><td>OTW 降转矩/降频；OTS 立即停</td><td>建议·后续</td></tr>
 </table>
 
-<h3>9.3 建议的落地增量（低侵入）</h3>
+<h3>9.3 落地增量状态</h3>
 <ul>
-  <li><b>堵转 TRQ_COUNT 阈值预警</b>：运行中采样 <code>drv8434s_get_torque_count()</code>，持续低于阈值 → 上报"高负载/疑似堵转"事件；可配置为自动降速或停机。这比 STEP 计时更能反映真实转子状态，且不依赖 EN_STL（避开其高速误锁）。</li>
-  <li><b>OPC/OTS 归因</b>：把 DIAG1(DIAG2) 各 bit 解析为可读原因码（过流/过温/开路），经 QUERY/诊断帧上报，便于现场定位"是堵转烧了相还是过热"。</li>
-  <li><b>运行任期限制</b>：单次连续运行超时强制停机（防机构长时间卡死通电），与行程测试超时对齐。</li>
-  <li><b>统计上报</b>：累计电机运行时间、启动次数、最近故障原因，供上位机做寿命健康度判断。</li>
+  <li><b>堵转 TRQ_COUNT 阈值预警</b> ✔ 已实现（自动降速→停机，阈值可配）。</li>
+  <li><b>OPC/OTS 归因</b>：既有 FAULT/DIAG1/DIAG2 原始寄存器经 QUERY 上报；可读原因码（过流/过温/开路/失速）已可现场区分。需进一步可读化可后续扩展。</li>
+  <li><b>运行任期限制</b> ✔ 已实现（60s）。</li>
+  <li><b>统计上报</b> ✔ 已实现（<code>STATS</code>，RAM）。</li>
 </ul>
 
 <h2>10. 后续扩展建议</h2>
