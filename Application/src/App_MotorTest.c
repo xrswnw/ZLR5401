@@ -25,6 +25,7 @@ static uint32_t s_trigMs     = 0;     /* 触点开始持续的起始时刻 (防�
 static uint8_t  s_trigActive = 0;     /* 触点当前是否保持触发 (防抖锁存) */
 static uint32_t s_wrongMs    = 0;     /* 错触触点持续起始时刻 (防抖) */
 static uint8_t  s_wrongActive = 0;    /* 错触触点当前是否保持触发 */
+static uint8_t  s_brokeAway  = 1;     /* 已脱离起点进入自由行程 (两触点均释放过) */
 
 /* 最高速 + 满转矩 */
 static void set_fast(void)
@@ -40,6 +41,10 @@ static void start_leg(uint8_t dir)
     s_trimmedVisited = 0;
     s_wrongActive = 0;
     s_legStartMs = SysTickHl_GetMs();
+    /* 若段起点两触点均已释放, 视为已进入自由行程; 否则起始被压住的
+     * 触点(如机构停在下触点)是离出位置, 需等电机挣脱后才判极性错触. */
+    s_brokeAway = ((App_NewPeriph_ReadKeyUp() == 0u) &&
+                   (App_NewPeriph_ReadKeyDown() == 0u)) ? 1u : 0u;
     mv.dir = dir;
     mv.steps = 0u;                     /* 0 = 持续运行 */
     (void)App_Stepper_Move(&mv);
@@ -51,6 +56,7 @@ void App_MotorTest_Init(void)
     s_passTotal = 0; s_passDone = 0;
     s_dir = 0; s_trimmedVisited = 0; s_armed = 1;
     s_trigActive = 0; s_trigMs = 0; s_wrongActive = 0; s_wrongMs = 0;
+    s_brokeAway = 1;
 }
 
 int App_MotorTest_Start(uint8_t passes)
@@ -102,9 +108,24 @@ void App_MotorTest_Process(void)
         uint8_t upHit   = (App_NewPeriph_ReadKeyUp() != 0u);   /* 上行程触发 */
         uint8_t downHit = (App_NewPeriph_ReadKeyDown() != 0u); /* 下行程触发 */
 
-        /* 2) 校验方向极性: 正转段应触上行程, 反转段应触下行程;
-         *    若在正转段错误触到 KEY_DOWN 或在反转段错误触到 KEY_UP
-         *    (连续保持) -> 判定方向/接线异常 -> FAULT. */
+        /* 仍未脱离起点(两触点均未释放过): 等待电机挣脱被压住的离出触点.
+         * 只有已进入自由行程后才开始判方向极性错触与期望触点. */
+        if (!s_brokeAway) {
+            if (!upHit && !downHit) s_brokeAway = 1;
+            else {
+                s_trigActive = 0; s_wrongActive = 0;
+            }
+            if ((now - s_legStartMs) >= MT_TEST_TIMEOUT_MS) {   /* 挣脱超时 */
+                App_Stepper_Stop();
+                s_state = MT_STATE_FAULT;
+                return;
+            }
+            return;
+        }
+
+        /* 4) 校验方向极性: 正转段应触上行程, 反转段应触下行程;
+         *    自由行程中在正转段错误触到 KEY_DOWN 或在反转段错误触到
+         *    KEY_UP (连续保持) -> 判定方向/接线异常 -> FAULT. */
         uint8_t wrongHit = (s_dir == 0u) ? downHit : upHit;
         if (wrongHit) {
             if (!s_wrongActive) { s_wrongActive = 1; s_wrongMs = now; }
@@ -117,7 +138,7 @@ void App_MotorTest_Process(void)
             s_wrongActive = 0;
         }
 
-        /* 3) 期望触点的防抖采样 (本次行程应到达的触点) */
+        /* 5) 期望触点的防抖采样 (本次行程应到达的触点) */
         uint8_t expectHit = (s_dir == 0u) ? upHit : downHit;
         if (expectHit) {
             if (!s_trigActive) { s_trigActive = 1; s_trigMs = now; }
@@ -145,7 +166,7 @@ void App_MotorTest_Process(void)
                 s_armed = 1;
         }
 
-        /* 4) 单程超时 -> FAULT */
+        /* 6) 单程超时 -> FAULT */
         if ((now - s_legStartMs) >= MT_TEST_TIMEOUT_MS) {
             App_Stepper_Stop();
             s_state = MT_STATE_FAULT;
