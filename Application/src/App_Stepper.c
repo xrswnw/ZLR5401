@@ -1,40 +1,28 @@
 #include "App_Stepper.h"
 #include "App_Motor_HL.h"
 #include "App_SysTick_HL.h"
+#include "App_Stepper_Tim4.h"
 #include "drv8434s.h"
 
 /* 步进电机应用状态机.
  * 硬件电流档: VREF 按硬件 2.64V 假设, IFS=2A (100%). 如硬件 VREF 不同, 调整此处.
- * 速度: 每微步间隔 = 1/speed; 默认 500 微步/s (Smart Tune Ripple 消磁下可持续). */
+ * 速度: 每微步间隔 = 1/speed; 默认 500 微步/s (Smart Tune Ripple 消磁下可持续).
+ *
+ * STEP 脉冲由 TIM4 硬件定时器(PB6)产生, 微秒级精确均匀 (App_Stepper_Tim4.c).
+ * 本层仅管理状态机、方向、使能、故障检测与速度参数. */
 
 #define STEPPER_PCT_DEFAULT  100u   /* 默认转矩 100% (满刻度); 协议 TORQUE 可下调 */
 #define STEPPER_DEFAULT_HZ   500u    /* 默认 500 微步/s */
 #define STEPPER_MIN_HZ       1u
-#define STEPPER_MAX_HZ       2000u   /* 上限, 兼顾 SPI 开销与 IWDG 2s 预算 (每 tick 一次 SPI) */
-#define STEPPER_RAMP_STEPS   400u    /* 加速斜坡步数: 1/2档1圈=400步, 保持相同物理起步距离 */
-#define STEPPER_RAMP_MIN_HZ  2000u   /* 起步=目标速: 等于取消加速斜坡直接全速起 (试验: 消除换向低速段噪声) */
+#define STEPPER_MAX_HZ       8000u   /* 上限, 兼顾 SPI 开销与 IWDG 2s 预算 (每 tick 一次 SPI) */
 #define APP_VREF_VOLTS       2.64f   /* 硬件 VREF (仅配置结构数据, 无浮点运算) */
 
 static AppStepperState_t s_state = APP_STEPPER_IDLE;
 static uint32_t          s_speedHz  = STEPPER_DEFAULT_HZ;
 static uint32_t          s_stepsReq = 0;      /* 本次目标微步数, 0=持续 */
-static uint32_t          s_stepsDone = 0;
 static uint32_t          s_lastTickMs;
 static uint8_t           s_fault, s_diag1, s_diag2;
 static uint8_t           s_dir;
-static uint32_t          s_acc;               /* 微步累加器 (1ms 基准) */
-
-/* 加速斜坡: 已完成 stepDone 步后应采用的目标间隔. 起步 STEPPER_RAMP_MIN_HZ,
- * 在 STEPPER_RAMP_STEPS 内线性升到目标速 s_speedHz. 目标低于起步速则直接目标速. */
-static uint32_t stepper_ramp_interval(uint32_t stepDone, uint32_t targetHz)
-{
-    if (stepDone >= STEPPER_RAMP_STEPS || targetHz <= STEPPER_RAMP_MIN_HZ)
-        return 1000000u / targetHz;
-    uint32_t p = stepDone * 100u / STEPPER_RAMP_STEPS;          /* 0..100 */
-    uint32_t hz = STEPPER_RAMP_MIN_HZ
-                + (targetHz - STEPPER_RAMP_MIN_HZ) * p / 100u;  /* 线性升频 */
-    return 1000000u / hz;
-}
 
 static void stepper_disable_output(void)
 {
@@ -60,9 +48,12 @@ void App_Stepper_Init(void)
 
     s_state = APP_STEPPER_IDLE;
     s_speedHz = STEPPER_DEFAULT_HZ;
-    s_stepsReq = 0; s_stepsDone = 0; s_acc = 0; s_dir = 0;
+    s_stepsReq = 0; s_dir = 0;
     s_fault = 0; s_diag1 = 0; s_diag2 = 0;
     s_lastTickMs = SysTickHl_GetMs();
+
+    /* 硬件 STEP 定时器: PB6 重配为 TIM4_CH1, 产生微秒级均匀 STEP 脉冲 */
+    StepperTim4_Init();
 
     /* 上电配置 (内部等唤醒、清故障、应用配置、EN_OUT=1), 然后关断输出 (IDLE 无负载) */
     if (drv8434s_init(&g_hMotor, &cfg) != DRV8434S_OK) {
@@ -122,35 +113,11 @@ void App_Stepper_Process(void)
             /* 故障 (FAULT 位或 nFAULT 拉低) -> 停转 */
             if ((s_fault & DRV8434S_FLT_FAULT) ||
                 (drv8434s_check_fault_pin(&g_hMotor) == 0u)) {
+                StepperTim4_Stop();
                 s_state = APP_STEPPER_FAULT;
                 stepper_disable_output();
                 return;
             }
-        }
-    }
-
-    if (s_state != APP_STEPPER_RUN) return;
-
-    /* 步进节拍: 用 1ms 粒度累加器按 s_intervalUs 微步间隔推进.
-     * 每 1ms 累计 1000us, 满 intervalUs 则下发一个微步 (SPI). */
-    static uint32_t lastMs = 0;
-    uint32_t mnow = SysTickHl_GetMs();
-    if (mnow == lastMs) return;
-    lastMs = mnow;
-
-    s_acc += 1000u;                       /* 1ms 基准 */
-    uint32_t interval = stepper_ramp_interval(s_stepsDone, s_speedHz);
-    while (s_acc >= interval) {
-        s_acc -= interval;
-        /* GPIO 控制: 先设方向 (DIR 引脚), 再发 STEP 微步脉冲 (SPI 仅管寄存器配置) */
-        drv8434s_hal_set_pin(&g_hMotor, DRV8434S_PIN_DIR, s_dir);
-        drv8434s_pin_step_pulse(&g_hMotor);
-        s_stepsDone++;
-        /* 限步: 持续运行(stepsReq==0)不受限 */
-        if (s_stepsReq != 0u && s_stepsDone >= s_stepsReq) {
-            s_state = APP_STEPPER_IDLE;
-            stepper_disable_output();
-            break;
         }
     }
 }
@@ -158,8 +125,9 @@ void App_Stepper_Process(void)
 int App_Stepper_Move(AppStepperMove_t *mv)
 {
     if (!mv || s_state == APP_STEPPER_FAULT) return -1;
-    /* 复位本段: 停止已有运动并清计数 */
-    s_stepsDone = 0; s_acc = 0; s_dir = (mv->dir) ? 1u : 0u;
+    /* 停止已有运动 */
+    StepperTim4_Stop();
+    s_dir = (mv->dir) ? 1u : 0u;
     s_stepsReq = mv->steps;
     drv8434s_hal_set_pin(&g_hMotor, DRV8434S_PIN_DIR, s_dir);   /* GPIO 方向脚 */
     /* 清残留故障再使能输出 */
@@ -168,6 +136,8 @@ int App_Stepper_Move(AppStepperMove_t *mv)
         s_fault = 0;
     }
     (void)drv8434s_set_enable(&g_hMotor, DRV8434S_ENABLED);
+    /* TIM4 硬件 STEP: 斜坡起速升到 s_speedHz, stepsReq 步后自动停 */
+    StepperTim4_Start(mv->steps, s_speedHz);
     s_state = APP_STEPPER_RUN;
     return 0;
 }
@@ -175,6 +145,7 @@ int App_Stepper_Move(AppStepperMove_t *mv)
 int App_Stepper_Stop(void)
 {
     s_stepsReq = 0;
+    StepperTim4_Stop();
     stepper_disable_output();
     s_state = APP_STEPPER_IDLE;
     return 0;
@@ -187,6 +158,7 @@ int App_Stepper_Stop(void)
 int App_Stepper_DcBrakeStop(void)
 {
     s_stepsReq = 0;
+    StepperTim4_Stop();
     uint32_t t0 = SysTickHl_GetMs();
     while ((SysTickHl_GetMs() - t0) < STEPPER_DC_BRAKE_MS) { }
     stepper_disable_output();
@@ -227,4 +199,4 @@ uint8_t  App_Stepper_GetDiag1(void)     { return s_diag1; }
 uint8_t  App_Stepper_GetDiag2(void)     { return s_diag2; }
 uint8_t  App_Stepper_GetMicrostep(void)   /* 诊断: 实时读 DRV8434S CTRL3 微步位 [3:0] */
 { return (uint8_t)(drv8434s_read_reg(&g_hMotor, DRV8434S_REG_CTRL3) & DRV8434S_CTRL3_MICROSTEP_MASK); }
-uint32_t App_Stepper_GetStepsDone(void) { return s_stepsDone; }
+uint32_t App_Stepper_GetStepsDone(void) { return StepperTim4_GetStepsDone(); }

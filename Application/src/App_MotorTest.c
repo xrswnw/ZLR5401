@@ -35,11 +35,11 @@ static uint32_t s_wrongMs    = 0;     /* 错触触点持续起始时刻 (防抖)
 static uint8_t  s_wrongActive = 0;    /* 错触触点当前是否保持触发 */
 static uint8_t  s_brokeAway  = 1;     /* 已脱离起点进入自由行程 (两触点均释放过) */
 
-#define MT_TEST_SPEED_HZ    2000u
-#define MT_TEST_TORQUE_PCT  100u
+#define MT_TEST_SPEED_HZ    4000u
+#define MT_TEST_TORQUE_PCT  60u
 
-/* 测试速度2000(1/2档, 400步/转, 5转/s=300RPM) + 满转矩: 已验证的安静稳定配置.
- * 行程基准 10.7圈×400 = 4288 微步/程; 无加速斜坡(起步=目标速)降换向噪声. */
+/* 测试速度4000(1/2档, 400步/转, 10转/s=600RPM) + 转矩60%: 600RPM细分0.9°/步.
+ * 行程基准 10.7圈×400=4288/程. STEP 由 TIM4 硬件定时器产生. */
 static void set_test_params(void)
 {
     (void)App_Stepper_SetSpeedHz(MT_TEST_SPEED_HZ);

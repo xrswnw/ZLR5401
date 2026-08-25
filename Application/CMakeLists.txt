@@ -48,6 +48,7 @@ set(SOURCES
   src/System_PeriphClk.c
   src/App_Motor_HL.c
   src/App_Stepper.c
+  src/App_Stepper_Tim4.c
   src/App_UHF.c
   src/App_UHF_HL.c
   src/App_AM.c

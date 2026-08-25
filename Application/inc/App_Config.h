@@ -186,7 +186,8 @@ typedef unsigned char BOOL;
 #define APP_DEBUG_SERIAL_EN     0   /* 旧调试串口 UART4 已禁用(引脚被 UHF 占用) */
 #define APP_RCC_APB1_PERIPH    (RCC_APB1Periph_USB | \
                                 RCC_APB1Periph_TIM3 | \
-                                RCC_APB1Periph_SPI3) /* USB HID; TIM3 LED软PWM时基; SPI3 步进电机*/
+                                RCC_APB1Periph_TIM4 | \
+                                RCC_APB1Periph_SPI3) /* USB HID; TIM3 LED软PWM时基; TIM4 STEP硬件脉冲; SPI3 步进电机*/
                                 /* UART4 时钟由 UHF_HL_Init 自行开启 */
 
 /* ===================== Boot Timeout =====================*/

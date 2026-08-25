@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 步进电机运动优化报告 (Round_007)</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.9;}
+  .wrap{max-width:1000px; margin:0 auto; padding:24px 28px 60px;}
+  .toc{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 22px;
+       box-shadow:0 1px 4px rgba(11,42,74,.06);}
+  .toc b{color:var(--navy);}
+  .toc ol{margin:8px 0 0; padding-left:20px;}
+  .toc li{margin:3px 0; font-size:14px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:40px 0 16px; font-size:20px;}
+  h3{color:var(--blue); margin:26px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:14px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13.5px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:13px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:13px; line-height:1.5;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-left:5px solid var(--sky);
+        border-radius:8px; padding:12px 16px; margin:14px 0;}
+  .card .tt{font-weight:600; color:var(--navy);}
+  .ok{border-left:5px solid var(--green);}
+  .warn{border-left:5px solid var(--gold);}
+  .bad{border-left:5px solid var(--red);}
+  .tag{display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px;
+       color:#fff; background:var(--blue); margin-right:4px;}
+  .tag.g{background:var(--green);}
+  .tag.y{background:var(--gold);}
+  .tag.r{background:var(--red);}
+  .grid{display:grid; grid-template-columns:repeat(auto-fill,minmax(280px,1fr)); gap:14px; margin:16px 0;}
+  .metric{background:#fff; border:1px solid var(--line); border-radius:10px; padding:14px 16px;
+          box-shadow:0 1px 3px rgba(11,42,74,.06);}
+  .metric .v{font-size:24px; font-weight:700; color:var(--blue);}
+  .metric .k{font-size:12px; color:var(--muted); margin-top:2px;}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+        color:var(--muted); font-size:12px; text-align:center;}
+  ul,ol{font-size:14.5px;}
+  li{margin:4px 0;}
+  .stone{background:#fffbe6; border:1px solid #f0e2a0; border-left:5px solid var(--gold);
+         border-radius:8px; padding:12px 16px; margin:14px 0; font-size:14px;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>ZLR5401 步进电机运动优化 · 技术报告</h1>
+  <div class="sub">Agent/Round_007 &nbsp;·&nbsp; 2026-08-26 &nbsp;·&nbsp; 硬件定时器 STEP 架构落地 + 参数寻优收敛 &nbsp;·&nbsp; 已烧录并硬件实测</div>
+</div>
+
+<div class="wrap">
+
+<div class="toc"><b>目录</b>
+  <ol>
+    <li>结论与最终配置</li>
+    <li>问题背景：为什么"一顿一顿"</li>
+    <li>架构改造：TIM4 硬件脉冲生成</li>
+    <li>参数寻优全历程（各方案实测对比）</li>
+    <li>微步 × 速率 × 转矩 × 实际转速 联动分析</li>
+    <li>关键指标对照</li>
+    <li>后续扩展建议</li>
+  </ol>
+</div>
+
+<h2>1. 结论与最终配置</h2>
+<p>本轮完成步进电机从"软件时基脉冲"到 <b>TIM4 硬件定时器 STEP 脉冲</b>的架构改造，彻底解决运动"一顿一顿"（不连续）问题，并将噪声、平滑度、发热与寿命收敛到理想平衡点。最终定稿参数已烧录并通过行程测试硬件验证。</p>
+
+<div class="grid">
+  <div class="metric"><div class="v">1/2</div><div class="k">微步档位 (400 微步/转)</div></div>
+  <div class="metric"><div class="v">4000 µsteps/s</div><div class="k">STEP 脉冲率</div></div>
+  <div class="metric"><div class="v">600 RPM</div><div class="k">实际转速 (4000÷400×60)</div></div>
+  <div class="metric"><div class="v">60%</div><div class="k">转矩 (满刻度 100%=2A@VREF2.64V)</div></div>
+</div>
+
+<div class="card ok">
+  <span class="tt">验证结论</span> — 1/2 + 4000 + 转矩60%：行程测试 <code>state=DONE(2)</code>、无 FAULT、失速诊断 DIAG2=0、步数 4330 ≈ 基准 4288（10.7 圈 × 400，多出约 40 步为防抖换向的正常迟滞）。600RPM 高转速下 60% 转矩亦不失步，发热与抖动显著低于满转矩。
+</div>
+
+<h2>2. 问题背景：为什么"一顿一顿"</h2>
+<p>原实现（commit 70b8c9f 之前）的 STEP 脉冲来源于 <b>1ms 主循环软件累加 + 引脚翻转忙等</b>（<code>pin_step_pulse</code>，10µs 级 GPIO 电平切换 + us 级忙等）。其缺陷：</p>
+<ul>
+  <li><b>时基抖动</b>：1ms 时间片只在主循环"轮到"时才翻转一次，脉冲在时间轴上成团聚集（burst），间隔不均。</li>
+  <li><b>CPU 忙等</b>：每个 STEP 都占用 CPU 做 10µs 忙等，步频升高后主循环被拖死，其它任务饿死。</li>
+  <li><b>宏观表现</b>：电机肉眼可见地"一顿一顿"、走走停停，噪声断续 —— 与微步/速度无关，是脉冲时序质量问题。</li>
+</ul>
+<div class="card bad"><span class="tt">根因定位</span> — 不是微步档位或速度选错，而是<b>脉冲产生机制</b>。软件时基无法在高速下提供微秒级均匀脉冲，只有硬件定时器能根治。</div>
+
+<h2>3. 架构改造：TIM4 硬件脉冲生成</h2>
+<p>引入 <code>App_Stepper_Tim4.c/h</code>，用 <b>TIM4_CH1 (PB6) PWM</b> 以微秒级精确间隔自动产生 STEP 脉冲：</p>
+<ul>
+  <li>定时器时钟 72MHz（PCLK1=36MHz，APB1 预分频2 → 2×）；<code>ARR = 72×interval(µs) − 1</code>，<code>CCR = ARR/2</code>，一个完整 PWM 周期 = 一个 STEP 脉冲（50% 占空）。</li>
+  <li>TIM4 更新中断内完成步数计数、限步停机、<b>斜坡调速</b>（起步逐步升频，避免起步丢步）。</li>
+  <li>方向 DIR、使能 EN_OUT、故障检测仍走 <code>App_Stepper</code> / DRV SDK —— 职责清晰不耦合。</li>
+</ul>
+<pre><code>// TIM4 更新中断：每周期=1个 STEP，计数+限步+斜坡升频
+void TIM4_IRQHandler(void){
+  if(TIM_GetITStatus(TIM4,TIM_IT_Update)!=RESET){
+    TIM_ClearITPendingBit(TIM4,TIM_IT_Update);
+    if(!s_run){ TIM_Cmd(TIM4,DISABLE); return; }
+    s_stepsDone++;
+    if(s_stepsReq && s_stepsDone>=s_stepsReq){ TIM_Cmd(TIM4,DISABLE); s_run=0; return; }
+    if(s_targetHz){                                 // 斜坡：升到目标速
+      uint32_t iv=tim4_ramp_interval(s_stepsDone,s_targetHz);
+      uint32_t arr=72*iv-1; arr=arr>65535?65535:arr;
+      TIM_SetAutoreload(TIM4,arr); TIM_SetCompare1(TIM4,arr/2);
+    }
+  }
+}</code></pre>
+<p><span class="tag g">成效</span> 用户实测"好了很多"，脉冲均匀连续、噪声平滑；并<b>附带释放了 600RPM</b>——这是软件时基时代无法达到的速度（此前全步 600RPM 会丢步甚至导致整机掉 USB）。</p>
+
+<h2>4. 参数寻优全历程（各方案实测对比）</h2>
+<p>从"微步×速率×转矩"三维组合逐一实测，记录每次结果与取舍：</p>
+
+<h3>4.1 软件时基时代（改造前）</h3>
+<table>
+  <tr><th>微步</th><th>速率</th><th>转矩</th><th>结果</th><th>结论</th></tr>
+  <tr><td>1/4</td><td>2000</td><td>100%</td><td>300RPM，平滑但"一顿一顿"</td><td>步进细但时基差 → 触发架构改造</td></tr>
+  <tr><td>全步1</td><td>2000</td><td>50%</td><td>600RPM <span class="tag r">没动了</span></td><td>低转矩+无斜坡首步丢步</td></tr>
+  <tr><td>全步1</td><td>2000</td><td>100%</td><td>丢步且整机掉 USB</td><td>600RPM 软件时基不稳定</td></tr>
+</table>
+
+<h3>4.2 TIM4 硬件时基时代（改造后寻优）</h3>
+<table>
+  <tr><th>微步</th><th>速率</th><th>转矩</th><th>实际转速</th><th>结果与取舍</th></tr>
+  <tr><td>1/2</td><td>2000</td><td>100%</td><td>300 RPM</td><td>好、平滑起步</td></tr>
+  <tr><td>1/2</td><td>4000</td><td>100%</td><td>600 RPM</td><td><span class="tag g">定稿候选</span> 高速无丢步（DIAG2=0）</td></tr>
+  <tr><td>1/4</td><td>8000</td><td>100%</td><td>600 RPM</td><td>同转速步进更细/更静，但发热+（电流持续导通）</td></tr>
+  <tr><td>1/4</td><td>16000</td><td>—</td><td>1200 RPM</td><td>超高速，接近机械共振/驱动极限</td></tr>
+</table>
+
+<div class="card ok"><span class="tt">收敛决策</span> — 经综合权衡，选 <b>1/2 + 4000</b>：600RPM 兼顾悦耳转速与中档细分；再叠 <b>转矩 60%</b>，在保证不失步的前提下压低相电流 → 降发热、降噪声、延寿命，是最经济的平衡点。</div>
+
+<h2>5. 微步 × 速率 × 转矩 × 实际转速 联动分析</h2>
+<table>
+  <tr><th>维度</th><th>提高的影响</th><th>代价</th></tr>
+  <tr><td><b>微步档位</b> ↑</td><td>步距角更细 → 更平滑、更低噪声、更低共振幅值</td><td>每转步数 ↑ → 同转速需更高脉冲率；发热轻微上升</td></tr>
+  <tr><td><b>速率(脉冲率)</b> ↑</td><td>转速 ↑</td><td>逼近失步极限；负载惯量/摩擦大时需更高转矩</td></tr>
+  <tr><td><b>转矩</b> ↑</td><td>带载裕量 +，抗失步能力 +</td><td>相电流 ↑ → 发热、寿命压力、振动噪声 ↑</td></tr>
+  <tr><td><b>实际转速</b></td><td>= 脉冲率 ÷ 每转微步 × 60</td><td>微步与脉冲率是一对；乘积相等则转速相同</td></tr>
+</table>
+<p><b>关键换算</b>：每转微步 = 200 整步 × 微步系数（全步=200、1/2=400、1/4=800、1/8=1600、1/16=3200）。行程基准 10.7 圈，微步变化则步数成正比（1/2→4288、1/4→8560…）。</p>
+<div class="stone"><b>发热/寿命权衡</b>：高转速 + 高细分 + 满转矩 = "三高发热"。电机温升主要来自相电流持续导通（尤其高细分 Sleep/慢衰减）。60% 转矩在 600RPM 下已实测不失步，是"够用且不烫"的甜点位。</div>
+
+<h2>6. 关键指标对照</h2>
+<table>
+  <tr><th>指标</th><th>改造前</th><th>改造后（定稿）</th></tr>
+  <tr><td>STEP 产生机制</td><td>1ms 软脉冲 + 忙等</td><td>TIM4 硬件 PWM（µs 级均匀）</td></tr>
+  <tr><td>运动连续性</td><td>一顿一顿</td><td>均匀平滑</td></tr>
+  <tr><td>最高可用转速</td><td>~300RPM（>600 丢步/掉USB）</td><td>600RPM 稳定（上限更高）</td></tr>
+  <tr><td>CPU 占用</td><td>每个 STEP 忙等 10µs</td><td>零忙等，仅 ISR 计数/斜坡</td></tr>
+  <tr><td>微步 / 速率 / 转矩</td><td>不定</td><td>1/2 · 4000 · 60%</td></tr>
+  <tr><td>实际转速</td><td>低</td><td>600 RPM</td></tr>
+  <tr><td>行程步数</td><td>—</td><td>4330 ≈ 4288 基准 ✔</td></tr>
+</table>
+
+<h2>7. 后续扩展建议</h2>
+<ul>
+  <li><b>斜坡/加减速曲线精细化</b>：当前 ISR 内线性斜坡（400 步到目标速），可扩展为 S 型曲线削减启停冲击，进一步降噪声与机构应力。</li>
+  <li><b>速度闭环/失速软保护</b>：现仅诊断读取 DIAG2，可用 STEP 完成时距换算实时转速并与期望比对，作软件级丢步保护。</li>
+  <li><b>多档位动态切换</b>：协议层已支持 TORQUE/速度调节，可加"运行加速段用低细分、平稳段切高细分"的两段式控制，兼顾高速与平滑。</li>
+  <li><b>电流自适应</b>：按负载/转速动态调 TRQ_DAC，低速大转矩、高速降流，延长寿命并降噪。</li>
+  <li><b>休眠功耗优化</b>：空闲时拉低 nSLEEP 关电流（已在 Stop 后有磁制动保持，可并入低功耗策略）。</li>
+  <li><b>机械研发</b>：600RPM 已接近细链机构的舒适上限，若需更高吞吐建议评估皮带/减速比，把步进留在中速区保平滑。</li>
+</ul>
+
+<div class="foot">ZLR5401 · Agent/Round_007 · TIM4 硬件 STEP 架构 + 1/2·4000·60% 定稿 · 备份 Round_040 · 2026-08-26</div>
+</div>
+</body>
+</html>
