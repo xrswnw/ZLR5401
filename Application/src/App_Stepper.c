@@ -11,7 +11,7 @@
 #define STEPPER_DEFAULT_HZ   500u    /* 默认 500 微步/s */
 #define STEPPER_MIN_HZ       1u
 #define STEPPER_MAX_HZ       2000u   /* 上限, 兼顾 SPI 开销与 IWDG 2s 预算 (每 tick 一次 SPI) */
-#define STEPPER_RAMP_STEPS   180u    /* 加速斜坡步数: 全步1圈, 起步由低速线性升到目标速 */
+#define STEPPER_RAMP_STEPS   360u    /* 加速斜坡步数: 1/4档下1圈(400步)为全步2倍, 保持相同物理起步距离 */
 #define STEPPER_RAMP_MIN_HZ  100u    /* 起步保持转速 (低速防机构回弹/堵转) */
 #define APP_VREF_VOLTS       2.64f   /* 硬件 VREF (仅配置结构数据, 无浮点运算) */
 
@@ -50,7 +50,7 @@ void App_Stepper_Init(void)
     Drv8434S_HL_Init();
 
     cfg.vref_voltage = APP_VREF_VOLTS;
-    cfg.microstep    = DRV8434S_MICROSTEP_FULL_100;
+    cfg.microstep    = DRV8434S_MICROSTEP_QUARTER;
     cfg.decay        = DRV8434S_DECAY_SMART_TUNE_RIPPLE;
     cfg.enable_ol    = 0;
     cfg.ocp_retry    = 0;
