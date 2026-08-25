@@ -43,8 +43,8 @@ static uint8_t  s_brokeAway  = 1;     /* 已脱离起点进入自由行程 (两�
 #define MT_TEST_SPEED_HZ    2000u
 #define MT_TEST_TORQUE_PCT  100u
 
-/* 测试速度2000(1/4档, 400步/转, 5转/s=300RPM, 与全步1000同转速但步进2倍平滑)
- * + 满转矩. 行程基准: 10.7圈×400 = 4288 微步. 1/4档受力更平稳, 观触止反转与超程. */
+/* 测试速度2000(1/2档, 400步/转, 5转/s=300RPM) + 满转矩.
+ * 行程基准: 10.7圈×400 = 4288 微步/程. */
 static void set_test_params(void)
 {
     (void)App_Stepper_SetSpeedHz(MT_TEST_SPEED_HZ);
