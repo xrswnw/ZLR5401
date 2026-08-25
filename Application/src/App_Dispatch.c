@@ -179,11 +179,42 @@ void AppDispatch(ProtoFrame_t *f) {
             App_Stepper_ClearFault();
             err = MOTOR_ERR_OK;
             break;
+        case MOTOR_CMD_HEALTH: {
+            /* 健康/堵转监测: [cmd,err,olovState,threshL,threshH,trqL,trqH,reason] */
+            uint16_t th = App_Stepper_GetOlovThreshold();
+            uint16_t tq = App_Stepper_GetTorqueCount();
+            uint8_t hrsp[8];
+            hrsp[0] = cmd;
+            hrsp[1] = MOTOR_ERR_OK;
+            hrsp[2] = (uint8_t)App_Stepper_GetOlovState();
+            hrsp[3] = (uint8_t)(th & 0xFF);
+            hrsp[4] = (uint8_t)((th >> 8) & 0xFF);
+            hrsp[5] = (uint8_t)(tq & 0xFF);
+            hrsp[6] = (uint8_t)((tq >> 8) & 0xFF);
+            hrsp[7] = App_Stepper_GetStats().lastReason;
+            Proto_TxResponse(ch, FC_MOTOR_CTRL, hrsp, sizeof(hrsp));
+            break;
+        }
+        case MOTOR_CMD_STATS: {
+            /* 运行统计: [cmd,err,runSec(3),startCnt(2),lastReason] */
+            AppStepperStats_t st = App_Stepper_GetStats();
+            uint8_t srsp[8];
+            srsp[0] = cmd;
+            srsp[1] = MOTOR_ERR_OK;
+            srsp[2] = (uint8_t)((st.runSeconds >> 16) & 0xFF);
+            srsp[3] = (uint8_t)((st.runSeconds >> 8) & 0xFF);
+            srsp[4] = (uint8_t)(st.runSeconds & 0xFF);
+            srsp[5] = (uint8_t)((st.startCount >> 8) & 0xFF);
+            srsp[6] = (uint8_t)(st.startCount & 0xFF);
+            srsp[7] = st.lastReason;
+            Proto_TxResponse(ch, FC_MOTOR_CTRL, srsp, sizeof(srsp));
+            break;
+        }
         default:
             break;
         }
 
-        if (cmd != MOTOR_CMD_QUERY) {
+        if (cmd != MOTOR_CMD_QUERY && cmd != MOTOR_CMD_HEALTH && cmd != MOTOR_CMD_STATS) {
             rsp[pos++] = cmd;
             rsp[pos++] = err;
             Proto_TxResponse(ch, FC_MOTOR_CTRL, rsp, pos);

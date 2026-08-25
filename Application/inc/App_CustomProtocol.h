@@ -78,6 +78,8 @@
 #define MOTOR_CMD_TEST      0x07   /* 电机行程测试: data: [cmd,passes]. passes=往返次数(1~255).
                                        流程: 最高速正转->触点->立即反转->触点(完成1次)->重复passes次->停转.
                                        进行中再下发: 回 MOTOR_ERR_BUSY. */
+#define MOTOR_CMD_HEALTH    0x08   /* 读健康/堵转监测: 回 [cmd,err,olovState,threshL,threshH,trqL,trqH,reason] */
+#define MOTOR_CMD_STATS     0x09   /* 读运行统计: 回 [cmd,err,runSec(3),startCnt(2),lastReason] */
 /* 运行错误码 */
 #define MOTOR_ERR_OK            0
 #define MOTOR_ERR_PARAM         1
