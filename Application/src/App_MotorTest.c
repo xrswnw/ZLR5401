@@ -5,10 +5,11 @@
 
 /* =====================================================================
  * 电机行程测试状态机.
- *  主循环节拍, 极性无关: 正转(或当前方向)运行中, 任一行程开关触发
- *  (连续 MT_DEBOUNCE_MS 保持) 即视为到达触点; 之后反转去触发另一
- *  触点构成 1 次往返. 电机故障或单程超时 -> FAULT.
- *  完成 N 次后自动停转 -> DONE -> (短暂保持不变可由 QUERY 读到) -> IDLE.
+ *  主循环节拍, 极性相关: dir=0 正转=向上触上行程 KEY_UP,
+ *  dir=1 反转=向下触下行程 KEY_DOWN (均已确认接线极性).
+ *  正转段只认 KEY_UP、反转段只认 KEY_DOWN 为有效触发; 若在正转段错触
+ *  KEY_DOWN 或在反转段错触 KEY_UP(连续防抖时长) -> FAULT, 暴露方向/接线错.
+ *  电机故障或单程超时 -> FAULT. 完成 N 次后自动停转 -> DONE -> IDLE.
  * ===================================================================== */
 
 #define MT_PASS_MIN   1u
@@ -16,12 +17,14 @@
 static AppMotorTestState_t s_state = MT_STATE_IDLE;
 static uint8_t  s_passTotal = 0;      /* 请求往返次数 */
 static uint8_t  s_passDone  = 0;      /* 已完成往返次数 */
-static uint8_t  s_dir       = 0;      /* 当前方向 (0=CW 正转, 1=CCW 反转) */
+static uint8_t  s_dir       = 0;      /* 当前方向 (0=正转向上, 1=反转向下) */
 static uint8_t  s_trimmedVisited = 0; /* 本次半程是否已触发过触点 (消重触) */
 static uint8_t  s_armed      = 1;     /* 触点可触发标志 (两触点均释放后置位) */
 static uint32_t s_legStartMs = 0;     /* 本半程启动时刻 (单程超时基准) */
 static uint32_t s_trigMs     = 0;     /* 触点开始持续的起始时刻 (防抖) */
 static uint8_t  s_trigActive = 0;     /* 触点当前是否保持触发 (防抖锁存) */
+static uint32_t s_wrongMs    = 0;     /* 错触触点持续起始时刻 (防抖) */
+static uint8_t  s_wrongActive = 0;    /* 错触触点当前是否保持触发 */
 
 /* 最高速 + 满转矩 */
 static void set_fast(void)
@@ -35,6 +38,7 @@ static void start_leg(uint8_t dir)
     AppStepperMove_t mv;
     s_dir = dir;
     s_trimmedVisited = 0;
+    s_wrongActive = 0;
     s_legStartMs = SysTickHl_GetMs();
     mv.dir = dir;
     mv.steps = 0u;                     /* 0 = 持续运行 */
@@ -46,7 +50,7 @@ void App_MotorTest_Init(void)
     s_state = MT_STATE_IDLE;
     s_passTotal = 0; s_passDone = 0;
     s_dir = 0; s_trimmedVisited = 0; s_armed = 1;
-    s_trigActive = 0; s_trigMs = 0;
+    s_trigActive = 0; s_trigMs = 0; s_wrongActive = 0; s_wrongMs = 0;
 }
 
 int App_MotorTest_Start(uint8_t passes)
@@ -59,9 +63,9 @@ int App_MotorTest_Start(uint8_t passes)
     s_passTotal = passes;
     s_passDone = 0;
     s_armed = 1;
-    s_trigActive = 0;
+    s_trigActive = 0; s_wrongActive = 0;
     s_state = MT_STATE_RUN;
-    start_leg(0u);                                     /* 先正转 */
+    start_leg(0u);                                     /* 先正转向上 */
     return 0;
 }
 
@@ -95,17 +99,34 @@ void App_MotorTest_Process(void)
             return;
         }
 
-        /* 2) 防抖采样: 任一触点触发 (高电平, 连续保持) */
-        uint8_t anyHit = (App_NewPeriph_ReadKeyUp() != 0u) ||
-                         (App_NewPeriph_ReadKeyDown() != 0u);
-        if (anyHit) {
+        uint8_t upHit   = (App_NewPeriph_ReadKeyUp() != 0u);   /* 上行程触发 */
+        uint8_t downHit = (App_NewPeriph_ReadKeyDown() != 0u); /* 下行程触发 */
+
+        /* 2) 校验方向极性: 正转段应触上行程, 反转段应触下行程;
+         *    若在正转段错误触到 KEY_DOWN 或在反转段错误触到 KEY_UP
+         *    (连续保持) -> 判定方向/接线异常 -> FAULT. */
+        uint8_t wrongHit = (s_dir == 0u) ? downHit : upHit;
+        if (wrongHit) {
+            if (!s_wrongActive) { s_wrongActive = 1; s_wrongMs = now; }
+            if ((now - s_wrongMs) >= MT_DEBOUNCE_MS) {
+                App_Stepper_Stop();
+                s_state = MT_STATE_FAULT;
+                return;
+            }
+        } else {
+            s_wrongActive = 0;
+        }
+
+        /* 3) 期望触点的防抖采样 (本次行程应到达的触点) */
+        uint8_t expectHit = (s_dir == 0u) ? upHit : downHit;
+        if (expectHit) {
             if (!s_trigActive) { s_trigActive = 1; s_trigMs = now; }
-            /* 3) 消重触: 本次半程触发过且未 re-arm, 忽略 */
+            /* 消重触: 本次半程触发过且未 re-arm, 忽略 */
             if (s_armed && !s_trimmedVisited &&
                 (now - s_trigMs) >= MT_DEBOUNCE_MS) {
                 s_trimmedVisited = 1;
-                /* 完成本次行程: 一轮=正转(上)到达 + 反转(下)到达 */
-                if (s_dir == 1u) {                  /* 本次为反转(第2半程) -> 完成1次往返 */
+                /* 反转段(第2半程)到达 -> 完成1次往返 */
+                if (s_dir == 1u) {
                     s_passDone++;
                     s_armed = 0;                    /* 等待两触点释放再 arm */
                     if (s_passDone >= s_passTotal) {
@@ -120,8 +141,7 @@ void App_MotorTest_Process(void)
         } else {
             s_trigActive = 0;
             /* 两触点均释放 -> 允许下次触发 */
-            if (!s_armed && (App_NewPeriph_ReadKeyUp() == 0u) &&
-                             (App_NewPeriph_ReadKeyDown() == 0u))
+            if (!s_armed && !upHit && !downHit)
                 s_armed = 1;
         }
 
