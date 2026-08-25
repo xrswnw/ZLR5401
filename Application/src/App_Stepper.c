@@ -12,7 +12,7 @@
 #define STEPPER_MIN_HZ       1u
 #define STEPPER_MAX_HZ       2000u   /* 上限, 兼顾 SPI 开销与 IWDG 2s 预算 (每 tick 一次 SPI) */
 #define STEPPER_RAMP_STEPS   400u    /* 加速斜坡步数: 1/2档1圈=400步, 保持相同物理起步距离 */
-#define STEPPER_RAMP_MIN_HZ  100u    /* 起步保持转速 (低速防机构回弹/堵转) */
+#define STEPPER_RAMP_MIN_HZ  2000u   /* 起步=目标速: 等于取消加速斜坡直接全速起 (试验: 消除换向低速段噪声) */
 #define APP_VREF_VOLTS       2.64f   /* 硬件 VREF (仅配置结构数据, 无浮点运算) */
 
 static AppStepperState_t s_state = APP_STEPPER_IDLE;
