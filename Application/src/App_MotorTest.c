@@ -14,7 +14,15 @@
 
 #define MT_PASS_MIN   1u
 
+/* 测试故障/停机原因(诊断, 经 QUERY diag1 上报): 0=无/未判 */
+#define MT_FR_NONE      0
+#define MT_FR_STP_FAULT 1   /* 步进层故障 (nFAULT/寄存器) */
+#define MT_FR_ESCAPE_MS 2   /* 挣脱被压住离出触点超时 */
+#define MT_FR_WRONG     3   /* 方向极性错触 */
+#define MT_FR_EXPECT_MS 4   /* 期望触点单程超时 */
+
 static AppMotorTestState_t s_state = MT_STATE_IDLE;
+static uint8_t s_faultReason = MT_FR_NONE;
 static uint8_t  s_passTotal = 0;      /* 请求往返次数 */
 static uint8_t  s_passDone  = 0;      /* 已完成往返次数 */
 static uint8_t  s_dir       = 0;      /* 当前方向 (0=正转向上, 1=反转向下) */
@@ -27,10 +35,15 @@ static uint32_t s_wrongMs    = 0;     /* 错触触点持续起始时刻 (防抖)
 static uint8_t  s_wrongActive = 0;    /* 错触触点当前是否保持触发 */
 static uint8_t  s_brokeAway  = 1;     /* 已脱离起点进入自由行程 (两触点均释放过) */
 
-/* 最高速 + 满转矩 */
-static void set_fast(void)
+/* 行程测试速度: 原 2000 微步/s 满速长行程致 DRV8434S 堵转拉 nFAULT.
+ * 降为驱动可持续承载的 500 微步/s (与 MT_TEST_TIMEOUT_MS=90s 联动, 见 .h).
+ * 转矩保持满刻度保证带载触碰. */
+#define MT_TEST_SPEED_HZ    500u
+
+/* 测试运行速度 + 满转矩 */
+static void set_test_params(void)
 {
-    (void)App_Stepper_SetSpeedHz(2000u);
+    (void)App_Stepper_SetSpeedHz(MT_TEST_SPEED_HZ);
     (void)App_Stepper_SetTorquePercent(100u);
 }
 
@@ -41,6 +54,15 @@ static void start_leg(uint8_t dir)
     s_trimmedVisited = 0;
     s_wrongActive = 0;
     s_legStartMs = SysTickHl_GetMs();
+    /* 警戒线防护: 上行程 KEY_UP 是正向终点/警戒线, 绝不允许"正向越过"它.
+     * 若启动正程(dir=0)时上行程已被压住(已在警戒线), 不得再正向驱动,
+     * 直接判 FAULT, 防止电机顶着/跳过警戒线继续正向. */
+    if (dir == 0u && App_NewPeriph_ReadKeyUp() == 0u) {
+        App_Stepper_Stop();
+        s_faultReason = MT_FR_WRONG;
+        s_state = MT_STATE_FAULT;
+        return;
+    }
     /* 若段起点两触点均已释放(未按下), 视为已进入自由行程; 否则起始被压住的
      * 触点(如机构停在下触点)是离出位置, 需等电机挣脱后才判极性错触. */
     s_brokeAway = ((App_NewPeriph_ReadKeyUp() == 0u) &&
@@ -53,6 +75,7 @@ static void start_leg(uint8_t dir)
 void App_MotorTest_Init(void)
 {
     s_state = MT_STATE_IDLE;
+    s_faultReason = MT_FR_NONE;
     s_passTotal = 0; s_passDone = 0;
     s_dir = 0; s_trimmedVisited = 0; s_armed = 1;
     s_trigActive = 0; s_trigMs = 0; s_wrongActive = 0; s_wrongMs = 0;
@@ -65,7 +88,7 @@ int App_MotorTest_Start(uint8_t passes)
     if (s_state == MT_STATE_RUN) return -1;            /* 忙 */
     if (App_Stepper_GetState() == APP_STEPPER_FAULT) return -3;  /* 电机故障 */
 
-    set_fast();
+    set_test_params();
     s_passTotal = passes;
     s_passDone = 0;
     s_armed = 1;
@@ -79,12 +102,14 @@ int App_MotorTest_Stop(void)
 {
     App_Stepper_Stop();
     s_passTotal = 0; s_passDone = 0;
+    s_faultReason = MT_FR_NONE;
     s_state = MT_STATE_IDLE;
     return 0;
 }
 
 int App_MotorTest_IsBusy(void) { return (s_state == MT_STATE_RUN) ? 1 : 0; }
 uint8_t App_MotorTest_GetState(void) { return (uint8_t)s_state; }
+uint8_t App_MotorTest_GetFaultReason(void) { return s_faultReason; }
 
 void App_MotorTest_GetProgress(uint8_t *total, uint8_t *done)
 {
@@ -101,6 +126,7 @@ void App_MotorTest_Process(void)
         /* 1) 电机故障 -> 停 + FAULT */
         if (App_Stepper_GetState() == APP_STEPPER_FAULT) {
             App_Stepper_Stop();
+            s_faultReason = MT_FR_STP_FAULT;
             s_state = MT_STATE_FAULT;
             return;
         }
@@ -117,6 +143,7 @@ void App_MotorTest_Process(void)
             }
             if ((now - s_legStartMs) >= MT_TEST_TIMEOUT_MS) {   /* 挣脱超时 */
                 App_Stepper_Stop();
+                s_faultReason = MT_FR_ESCAPE_MS;
                 s_state = MT_STATE_FAULT;
                 return;
             }
@@ -131,6 +158,7 @@ void App_MotorTest_Process(void)
             if (!s_wrongActive) { s_wrongActive = 1; s_wrongMs = now; }
             if ((now - s_wrongMs) >= MT_DEBOUNCE_MS) {
                 App_Stepper_Stop();
+                s_faultReason = MT_FR_WRONG;
                 s_state = MT_STATE_FAULT;
                 return;
             }
@@ -146,6 +174,11 @@ void App_MotorTest_Process(void)
             if (s_armed && !s_trimmedVisited &&
                 (now - s_trigMs) >= MT_DEBOUNCE_MS) {
                 s_trimmedVisited = 1;
+                /* 警戒线硬停: 正程(dir=0)触到上行程 KEY_UP 即警戒线, 立即停,
+                 * 绝不在正向再走一步, 再换向反转. */
+                if (s_dir == 0u) {
+                    App_Stepper_Stop();
+                }
                 /* 反转段(第2半程)到达 -> 完成1次往返 */
                 if (s_dir == 1u) {
                     s_passDone++;
@@ -169,6 +202,7 @@ void App_MotorTest_Process(void)
         /* 6) 单程超时 -> FAULT */
         if ((now - s_legStartMs) >= MT_TEST_TIMEOUT_MS) {
             App_Stepper_Stop();
+            s_faultReason = MT_FR_EXPECT_MS;
             s_state = MT_STATE_FAULT;
             return;
         }

@@ -128,6 +128,7 @@ void AppDispatch(ProtoFrame_t *f) {
         }
         case MOTOR_CMD_STOP:
             App_Stepper_Stop();
+            App_MotorTest_Stop();   /* 一并复位行程测试态, 便于上位机从测试时/FAULT 恢复 */
             err = MOTOR_ERR_OK;
             break;
         case MOTOR_CMD_SPEED:
@@ -148,9 +149,13 @@ void AppDispatch(ProtoFrame_t *f) {
             uint8_t qrsp[8];
             qrsp[0] = cmd;
             qrsp[1] = MOTOR_ERR_OK;
-            qrsp[2] = (uint8_t)App_Stepper_GetState();
+            /* 行程测试进行中/结束后上报测试态, 让上位机看到 DONE(2)/FAULT(3);
+             * 测试态=IDLE 时回退到步进状态. */
+            qrsp[2] = (App_MotorTest_GetState() != MT_STATE_IDLE)
+                      ? (uint8_t)App_MotorTest_GetState()
+                      : (uint8_t)App_Stepper_GetState();
             qrsp[3] = App_Stepper_GetFault();
-            qrsp[4] = App_Stepper_GetDiag1();
+            qrsp[4] = App_MotorTest_GetFaultReason();   /* 测试故障原因; 非测试时为 0 */
             qrsp[5] = App_Stepper_GetDiag2();
             qrsp[6] = (uint8_t)(App_Stepper_GetStepsDone() & 0xFF);
             qrsp[7] = (uint8_t)((App_Stepper_GetStepsDone() >> 8) & 0xFF);
