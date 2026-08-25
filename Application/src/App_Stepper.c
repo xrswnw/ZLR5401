@@ -43,7 +43,7 @@ void App_Stepper_Init(void)
     cfg.enable_ol    = 0;
     cfg.ocp_retry    = 0;
     cfg.otsd_auto_recover = 0;
-    cfg.enable_stall = 0;           /* 失速检测仅诊断用, 功能固件关闭 */
+    cfg.enable_stall = 0;           /* 失速检测关闭: 本硬件600RPM下使能EN_STL会误置SPI_ERROR/FAULT(见验证) */
     cfg.stall_report = 1;
 
     s_state = APP_STEPPER_IDLE;
@@ -110,8 +110,9 @@ void App_Stepper_Process(void)
         stepper_read_fault();
 
         if (s_state == APP_STEPPER_RUN) {
-            /* 故障 (FAULT 位或 nFAULT 拉低) -> 停转 */
+            /* 故障 (FAULT 位、失速 DIAG2 或 nFAULT 拉低) -> 停转 */
             if ((s_fault & DRV8434S_FLT_FAULT) ||
+                (s_diag2 & DRV8434S_DIAG2_STALL) ||
                 (drv8434s_check_fault_pin(&g_hMotor) == 0u)) {
                 StepperTim4_Stop();
                 s_state = APP_STEPPER_FAULT;

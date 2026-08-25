@@ -31,13 +31,26 @@ static volatile uint32_t  s_stepsReq  = 0;   /* 0=持续 */
 static volatile uint8_t   s_run       = 0;
 static volatile uint32_t  s_targetHz  = 0;
 
-/* 按已完成步数计算当前微步间隔(us), 与软件版斜坡同公式 */
+/* S 形曲线 LUT: 输入 P(0..100) -> 升频权重 S(0..100), 两端缓/中段快.
+ * 采样点 = (1-cos(pi*X/10))/2*100, X=0..10 (0,2,10,21,35,50,65,79,90,98,100).
+ * 定点线性插值, 避免浮点/链接软库. */
+static uint32_t tim4_sin8(uint8_t p)
+{
+    static const uint8_t lut[11] = {0, 2, 10, 21, 35, 50, 65, 79, 90, 98, 100};
+    if (p >= 100u) return 100u;
+    uint32_t i = p / 10u;
+    uint32_t f = p % 10u;
+    return (uint32_t)lut[i] + ((uint32_t)(lut[i + 1] - lut[i]) * f) / 10u;
+}
+
+/* 按已完成步数计算当前微步间隔(us): S 曲线升频 */
 static uint32_t tim4_ramp_interval(uint32_t stepDone, uint32_t targetHz)
 {
     if (stepDone >= STEP_RAMP_STEPS || targetHz <= STEP_RAMP_MIN_HZ)
         return 1000000u / targetHz;
     uint32_t p = stepDone * 100u / STEP_RAMP_STEPS;
-    uint32_t hz = STEP_RAMP_MIN_HZ + (targetHz - STEP_RAMP_MIN_HZ) * p / 100u;
+    uint32_t s = tim4_sin8((uint8_t)p);
+    uint32_t hz = STEP_RAMP_MIN_HZ + (targetHz - STEP_RAMP_MIN_HZ) * s / 100u;
     return 1000000u / hz;
 }
 
