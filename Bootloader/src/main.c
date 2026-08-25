@@ -43,11 +43,11 @@ static void JumpToApp(void) {
         NVIC->ICPR[i] = 0xFFFFFFFF;
 
     /* 0: USB 软断开 — 关 USB 外设(PDWN+FRES)+关 USB 时钟+禁 USB IRQ,
-     * 并拉低 USB_EN(PA1) 断开 D+ 上拉, 让主机看到物理断开.
-     * Boot 残留的 USB 状态不带进 App, App 会重新拉高 PA1 重新枚举,
+     * 并拉低 USB_EN(PA6) 断开 D+ 上拉, 让主机看到物理断开.
+     * Boot 残留的 USB 状态不带进 App, App 会重新拉高 PA6 重新枚举,
      * 避免过渡期总线错误. (此处 SysTick 已停, 不做延时, 靠电平跳变让主机检测.)*/
     Boot_Usb_HL_DeInit();
-    GPIO_ResetBits(GPIOA, GPIO_Pin_1);
+    GPIO_ResetBits(GPIOA, GPIO_Pin_6);
 
     __asm volatile ("dsb");
     SCB->VTOR = APP_FLASH_ORIGIN;

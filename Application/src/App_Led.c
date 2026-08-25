@@ -53,7 +53,7 @@ void AppLedProcess(void) {
  * 按键诊断闪烁 (长按保持, 独立)
  * 行程开关低电平(按下)时, ERR 灯周期性亮灭:
  *   KEY_UP   按住 -> ERR 100ms 闪烁 (亮100/灭100) ; 放开 -> 常亮
- *   (下行程 KEY_DOWN=PC9 已改作 USB_EN, 其闪烁分支暂禁用)
+ *   (下行程 KEY_DOWN=PC9 已恢复, 但其闪烁分支暂未接入; 仅 KEY_UP 参与闪烁)
  * 用活动模式 s_keyMode 区分, 仅在模式切换时重置相位, 避免"按下不亮".
  * ===================================================================== */
 #define KEY_BLINK_UP_MS    100u
@@ -71,7 +71,7 @@ void AppLed_KeyBlinkProcess(void)
     uint8_t  keyUp   = App_NewPeriph_ReadKeyUp();    /* 1=非触发(高), 0=按下(低) */
     uint8_t  upLow   = (keyUp == 0u);
 
-    /* 判定当前模式 (KEY_DOWN 分支已禁用) */
+    /* 判定当前模式 (KEY_DOWN 分支未接入闪烁, 仍只处理 KEY_UP) */
     uint8_t mode = upLow ? KEY_MODE_UP : KEY_MODE_NONE;
 
     /* 模式切换: 重置相位与计时基准 (从亮开始), 并立即应用对应状态 */

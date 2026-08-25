@@ -24,9 +24,9 @@ static void BootUsbHL_EnablePower(void)
     GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
     gpio.GPIO_Mode  = GPIO_Mode_Out_PP;
-    gpio.GPIO_Pin   = GPIO_Pin_1;   /* USB_EN = PA1 (对齐 D3232GZ 参考)*/
+    gpio.GPIO_Pin   = GPIO_Pin_6;   /* USB_EN = PA6 (LED_BLUE), 拉高驱动 D+ 上拉*/
     GPIO_Init(GPIOA, &gpio);
-    GPIO_ResetBits(GPIOA, GPIO_Pin_1);
+    GPIO_ResetBits(GPIOA, GPIO_Pin_6);
 }
 
 static void BootUsbHL_InitClkGpio(void)
@@ -57,8 +57,8 @@ void Boot_Usb_HL_Init(void)
     BootUsbHL_EnablePower();
     BootUsbHL_InitClkGpio();
     USB_Init();
-    /* Sys_Init() 末尾 Sys_EnableUsb(): 拉高 USB_EN=PA1 触发主机枚举*/
-    GPIO_SetBits(GPIOA, GPIO_Pin_1);
+    /* Sys_Init() 末尾 Sys_EnableUsb(): 拉高 USB_EN=PA6 触发主机枚举*/
+    GPIO_SetBits(GPIOA, GPIO_Pin_6);
 }
 
 void Boot_Usb_HL_DeInit(void)

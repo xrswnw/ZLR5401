@@ -3,7 +3,7 @@
  * 1) Sys_CfgClock - PLL + USBCLKConfig(PLL/1.5=48M)
  * 2) Sys_CfgPeriphClk - 开 USB 时钟 (RCC_APB1Periph_USB)
  * 3) Sys_DisableInt - cpsid i (可选, 初始化前关中断)
- * 4) Sys_CtrlIOInit - GPIO_PinRemapConfig(JTAGDisable) + USB_EN=PA1
+ * 4) Sys_CtrlIOInit - GPIO_PinRemapConfig(JTAGDisable) + USB_EN=PA6 (LED_BLUE)
  * 5) USB_InitInterface - PA11/12 AF_PP
  * 6) USB_ConfigInt - NVIC USB_LP_CAN1_RX0
  * 7) USB_Init - 触发 CustomHID_init -> PowerOn
@@ -54,7 +54,7 @@ static void App_Usb_HL_GpioInit(void)
     /* JTAG 释放 PB3/PB4/PA15, 保留 SWD (Sys_CtrlIOInit)*/
     GPIO_PinRemapConfig(GPIO_Remap_SWJ_JTAGDisable, ENABLE);
 
-    /* USB_EN: PC9 推挽输出, 下拉关闭 USB (D+ 上拉断开)*/
+    /* USB_EN: PA6 (LED_BLUE) 推挽输出, 下拉关闭 USB (D+ 上拉断开)*/
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
     gpio.GPIO_Mode  = GPIO_Mode_Out_PP;
     gpio.GPIO_Pin   = USB_EN_GPIO_PIN;
@@ -143,7 +143,7 @@ void App_Usb_HL_Init(uint32_t reg_base)
     USB_Init();
 
     /* Sys_Init() 末尾 Sys_EnableUsb():
-     * 拉高 USB_EN=PA1 激活 D+ 上拉电阻, 主机开始枚举。
+     * 拉高 USB_EN=PA6 激活 D+ 上拉电阻, 主机开始枚举。
      * 必须在 USB_Init 完成 + NVIC 准备好之后, 否则主机收到无效状态。*/
     GPIO_SetBits(USB_EN_GPIO_PORT, USB_EN_GPIO_PIN);
 }

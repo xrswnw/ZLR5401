@@ -9,7 +9,7 @@
 /* =====================================================================
  * 新增外设硬件抽象层 (骨架, 见原理图)
  *   光电接口 (TLP181): MCU_IR1_DET = PC4 (输入, 检测红外/光电)
- *   行程开关:  MCU_KEY_UP=PC8 (输入), MCU_KEY_DOWN=PC9 (输入)
+ *   行程开关:  MCU_KEY_UP=PC8 (输入), MCU_KEY_DOWN=PC9 (输入, 已恢复)
  *   蜂鸣器:    MCU_BEEP5V0_CTL=PC12 (输出, 高电平响)
  *   调试串口:  UART4 TX=PC10 (AF_PP), RX=PC11 (输入浮空)
  *   RCC: GPIOB/GPIOC(APB2) + UART4(APB1) 由 System_PeriphClkInit 统一开启。
@@ -41,17 +41,15 @@ static void gpio_cfg_output(GPIO_TypeDef *port, uint16_t pin)
 
 void App_NewPeriph_Init(void)
 {
-    /* 输入: 光电 PC4, 上行程 PC8 (高电平有效)
-     * 下行程 KEY_DOWN=PC9 已改作 USB_EN, 不再作为输入配置 */
+    /* 输入: 光电 PC4, 上行程 PC8, 下行程 PC9 (高电平有效) */
     gpio_cfg_input(IR_DET_GPIO_PORT,     IR_DET_GPIO_PIN);
     gpio_cfg_input(KEY_UP_GPIO_PORT,     KEY_UP_GPIO_PIN);
-    /* 下行程 KEY_DOWN=PC9 已改作 USB_EN, 输入配置暂禁用 */
-    /* gpio_cfg_input(KEY_DOWN_GPIO_PORT, KEY_DOWN_GPIO_PIN); */
+    gpio_cfg_input(KEY_DOWN_GPIO_PORT,   KEY_DOWN_GPIO_PIN);
 
     /* 输出: 蜂鸣器 PC12 (高电平响) */
     gpio_cfg_output(BEEP_GPIO_PORT, BEEP_GPIO_PIN);
 
-    /* 调试串口 UART4 (PC10 已改作 USB_EN, 默认关闭; APP_DEBUG_SERIAL_EN=0 时跳过)*/
+    /* 调试串口 UART4 (PC10/11 已改作 UHF, 默认关闭; APP_DEBUG_SERIAL_EN=0 时跳过)*/
 #if APP_DEBUG_SERIAL_EN
     App_NewPeriph_DebugInit();
 #endif
@@ -66,11 +64,10 @@ uint8_t App_NewPeriph_ReadKeyUp(void)
 {
     return (GPIO_ReadInputDataBit(KEY_UP_GPIO_PORT, KEY_UP_GPIO_PIN) != RESET) ? 1u : 0u;
 }
-/* 下行程 KEY_DOWN=PC9 已改作 USB_EN, 读取函数暂禁用 */
-/* uint8_t App_NewPeriph_ReadKeyDown(void)
+uint8_t App_NewPeriph_ReadKeyDown(void)
 {
     return (GPIO_ReadInputDataBit(KEY_DOWN_GPIO_PORT, KEY_DOWN_GPIO_PIN) != RESET) ? 1u : 0u;
-} */
+}
 
 /* ---- 蜂鸣器 (PC12, 高电平响) ---- */
 void App_NewPeriph_Beep(uint8_t on)

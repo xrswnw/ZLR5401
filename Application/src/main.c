@@ -52,7 +52,7 @@ void System_Init(void)
     /* 6.5 新增外设: 光电/行程开关/蜂鸣器 GPIO + 调试串口 (骨架)*/
     App_NewPeriph_Init();
 
-    /* 7. USB HID (USB_EN=PA1 使能, AF_PP 配置 PA11/12 + GPIO_SetBits USB_EN)*/
+    /* 7. USB HID (USB_EN=PA6/LED_BLUE 使能, AF_PP 配置 PA11/12 + GPIO_SetBits USB_EN)*/
     App_Usb_Init();
 
     /* 8.4 参数区加载: 主区/影子区 CRC 失败时回落到默认值并写回 flash*/
