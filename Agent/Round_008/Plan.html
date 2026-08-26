@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_008 — ZLR5401 开锁器业务逻辑校对 · 约束映射 × 状态机审计</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1040px; margin:0 auto; padding:24px 28px 60px;}
+  .toc{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 22px;
+       box-shadow:0 1px 4px rgba(11,42,74,.06);}
+  .toc b{color:var(--navy);}
+  .toc ol{margin:8px 0 0; padding-left:20px;}
+  .toc li{margin:3px 0; font-size:14px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:40px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13.5px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:13px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:13px; line-height:1.5;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-left:5px solid var(--sky);
+        border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .ok{border-left:5px solid var(--green);}
+  .warn{border-left:5px solid var(--gold);}
+  .bad{border-left:5px solid var(--red);}
+  .tag{display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px;
+       color:#fff; background:var(--blue); margin-right:4px;}
+  .tag.g{background:var(--green);}
+  .tag.y{background:var(--gold);}
+  .tag.r{background:var(--red);}
+  .tag.b{background:#5b7a9a;}
+  ul,ol{font-size:14.5px;}
+  li{margin:4px 0;}
+  .flow{display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px; margin:10px 0;}
+  .flow .step{background:#fff; border:1.5px solid var(--blue); color:var(--blue);
+              border-radius:6px; padding:3px 10px; font-weight:600;}
+  .flow .arrow{color:var(--muted);}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+        color:var(--muted); font-size:12px; text-align:center;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>ZLR5401 开锁器业务逻辑校对 · 约束映射 × 状态机审计</h1>
+  <div class="sub">Agent/Round_008 &nbsp;·&nbsp; 2026-08-26 &nbsp;·&nbsp; 依据《常州亚森·约束/Link.txt + Plan.html》· 只校对不改码 &nbsp;·&nbsp; 待审查</div>
+</div>
+
+<div class="wrap">
+
+<div class="toc"><b>目录</b>
+  <ol>
+    <li>校验目标与范围</li>
+    <li>约束原义逐条解读（Link.txt 运行逻辑）</li>
+    <li>实现↔约束 对照总表（符合/偏离/缺失）</li>
+    <li>状态机审计（当前实现字面核对）</li>
+    <li>发现的问题与风险（按严重度）</li>
+    <li>对照《Plan.html》扩展建议的落实情况</li>
+    <li>整改计划（待执行，分 P0/P1/P2）</li>
+    <li>验证方案</li>
+    <li>结论</li>
+  </ol>
+</div>
+
+<h2>1. 校验目标与范围</h2>
+<div class="card">
+  <b>目标</b>：以《常州亚森/约束/Link.txt》的运行逻辑为唯一业务基准，对当前已实现的
+  <code>App_Locker（开锁器业务编排）</code> + <code>App_UHF（硬标签 EPC）</code> +
+  <code>App_AM（软标解码器）</code> + <code>App_Stepper（升降）</code> 做逐条比对，
+  审计<b>业务逻辑</b>与<b>状态机管理</b>是否与约束一致、有无漏洞。
+</div>
+<div class="card warn"><b>范围声明</b>：本轮只做"校对分析 + 生成计划/报告"，<b>不改动任何已实现功能</b>。
+所提整改项均为待审阅计划，不自动执行。</div>
+<p>被审文件：<code>Application/src/App_Locker.c/.h</code>、<code>App_UHF.c/.h</code>、
+<code>App_AM.c/.h</code>、<code>App_Stepper.c</code>、<code>App_MotorTest.c</code>、
+<code>App_Dispatch.c</code>、<code>main.c</code>。</p>
+
+<h2>2. 约束原义逐条解读（Link.txt 运行逻辑）</h2>
+<table>
+  <tr><th>#</th><th>约束原文</th><th>解读为可校验需求</th><th>关键参数</th></tr>
+  <tr><td>R1</td><td>客户付款 → 上位机把结账标签 EPC 传给开锁器</td><td>上位机经 USB 下发「硬标签 EPC 清单 + 软标数量」</td><td>EPC 清单、软标数 N</td></tr>
+  <tr><td>R2</td><td>开锁器接收硬标签 EPC 与软标数量</td><td>可配置/追加清单，持有多条 EPC</td><td>清单上限 16</td></tr>
+  <tr><td>R3</td><td>客户把标签放到开锁器上，光电触发</td><td>光电/读卡触发，单个标签处理</td><td>UHF 盘点</td></tr>
+  <tr><td>R4</td><td>比对硬标签 EPC 与上位机 EPC：一致&nbsp;→&nbsp;亮绿灯升起开锁；不一致&nbsp;→&nbsp;红灯闪烁且不升起；比对结果均回传</td><td>匹配→升 + 绿；不匹配→不升 + 红灯闪；结果事件上报</td><td>EPC 精确比对</td></tr>
+  <tr><td>R5</td><td>硬标签开锁预留 2 分钟，每多一个标签 +30s</td><td>保持窗口 = 2min + (总标签数m−1)×30s</td><td>2min 基础 / +30s</td></tr>
+  <tr><td>R6</td><td>读到不同 EPC 且解锁数量 n 达硬标签数 m（m==n）→ 硬标签解锁结束，进软标</td><td>hardMatched==hardCount 时进入软标阶段</td><td>m==n</td></tr>
+  <tr><td>R7</td><td>硬标签完成后解锁解码器使用，每个软标对应一次解码数量</td><td>软标阶段可消耗解码次数</td><td>softCount / softUsed</td></tr>
+  <tr><td>R8</td><td>次数用完后结账完成</td><td>softUsed==softCount → DONE + 上报</td><td>softUsed==softCount</td></tr>
+</table>
+
+<h2>3. 实现 ↔ 约束 对照总表</h2>
+<table>
+  <tr><th>约束</th><th>实现位置</th><th>状态</th><th>说明</th></tr>
+  <tr><td>R1 上位机下发 EPC</td><td>FC_LOCKER_CTRL / CONFIGURE+ADD</td><td><span class="tag g">符合</span></td><td>CONFIGURE 清空并设软标数，ADD 逐条追加硬 EPC</td></tr>
+  <tr><td>R2 接收清单</td><td>App_Locker_Configure / AddTag</td><td><span class="tag g">符合</span></td><td>容量 16，ADD 可累积</td></tr>
+  <tr><td>R3 光电触发</td><td>UHF Inventory + TagTake (轮询)</td><td><span class="tag y">部分</span></td><td>无真光电触发，靠 UHF 缓冲轮询；<code>NotifyTag</code> 为空占位（详见 P2-3）</td></tr>
+  <tr><td>R4 比对/升降/回传</td><td>locker_process_configured</td><td><span class="tag g">符合</span></td><td>匹配→rise+EVT_MATCH_OK；不匹配→ERR 闪+EVT_MISMATCH</td></tr>
+  <tr><td>R5 2min+30s*n</td><td>Start / match 内</td><td><span class="tag y">部分</span></td><td>公式对，但<b>匹配时窗口被整体重置</b>（见 P1-2），与"预留给全部标签"语义不一致</td></tr>
+  <tr><td>R6 m==n 进软标</td><td>hardMatched>=hardCount</td><td><span class="tag g">符合</span></td><td>超标量 > 处理安全</td></tr>
+  <tr><td>R7 软标解码消耗</td><td>StopDecode / CONSUME_SOFT</td><td><span class="tag y">部分</span></td><td>依赖上位机逐条 0x06 手动消耗，未与 AM 解码器事件联动（见 P2-1）</td></tr>
+  <tr><td>R8 次数尽结账完成</td><td>softUsed>=softCount→DONE</td><td><span class="tag g">符合</span></td><td>DONE 后 5s 回 IDLE</td></tr>
+</table>
+
+<h2>4. 状态机审计（当前实现字面核对）</h2>
+<h3>4.1 业务状态机 <code>App_Locker</code></h3>
+<div class="flow">
+  <span class="step">LOCKER_IDLE</span><span class="arrow">→CONFIGURE/START→</span>
+  <span class="step">LOCKER_CONFIGURED</span><span class="arrow">m==n→</span>
+  <span class="step">LOCKER_SOFT_DECODE</span><span class="arrow">次数尽→</span>
+  <span class="step">LOCKER_DONE</span><span class="arrow">→5s→</span>
+  <span class="step">LOCKER_IDLE</span>
+</div>
+<div class="flow">
+  <span class="step">CONFIGURED/SOFT</span><span class="arrow">超时/取消→</span><span class="step">IDLE</span>
+  <span class="step">任意（链路）</span><span class="arrow">FAULT→</span><span class="step">LOCKER_FAULT→清障→IDLE</span>
+</div>
+<table>
+  <tr><th>状态</th><th>入口动作</th><th>本拍处理</th><th>出口</th><th>核对</th></tr>
+  <tr><td>IDLE</td><td>降磁块 + Err 灭</td><td>空</td><td>—</td><td>注：LOCKER_UNLOCK_HOLD 已定义但<b>恒未用</b>，实际用 CONFIGURED 承载保持态</td></tr>
+  <tr><td>CONFIGURED</td><td>上电 UHF+Inventory，设窗口</td><td>故障→FAULT；UHF 空闲→再 Inventory；TagTake→比对</td><td>m==n→SOFT；超时→Cancel；FAULT</td><td>匹配/不匹配各分支齐</td></tr>
+  <tr><td>SOFT_DECODE</td><td>解窗口（holdDeadline=0）</td><td>Err 保持灭</td><td>超时→Cancel；次数尽→DONE</td><td>软阶段无主动超时（见 P1-3）</td></tr>
+  <tr><td>DONE</td><td>设 5s 回 IDLE 窗口</td><td>Err 灭</td><td>5s→Cancel(正常归位)</td><td>OK</td></tr>
+  <tr><td>FAULT</td><td>降磁块 + Err 常亮</td><td>—</td><td>ClearFault→IDLE</td><td>FAULT 仅在 UHF 链路断/ERROR 进入</td></tr>
+</table>
+<p><b>审计结论</b>：状态集合 {IDLE, CONFIGURED, SOFT_DECODE, DONE, FAULT} 覆盖约束主流程；
+但 <code>LOCKER_UNLOCK_HOLD</code> 为死状态（可清理或按设计并入 CONFIGURED，见 P2-5）。</p>
+
+<h3>4.2 支撑模块状态机</h3>
+<table>
+  <tr><th>模块</th><th>状态机</th><th>与业务衔接</th><th>审计</th></tr>
+  <tr><td>App_UHF</td><td>IDLE↔READY↔INVENTORY/READ/WRITE↔ERROR</td><td>Locker 靠 <code>IsBusy/TagTake</code> 消费标签流</td><td>链路断→ERROR 联动业务 FAULT，正确</td></tr>
+  <tr><td>App_AM</td><td>链路 0=正常 / 超时掉线</td><td>软标仅经 <code>EventCount</code> 上报，未喂给业务</td><td>AM 掉线不回业务（见 P2-1）</td></tr>
+  <tr><td>App_Stepper</td><td>IDLE↔RUN↔FAULT + 健康监控</td><td>rise/lower 同步 Move</td><td>升降安全（DC 磁制动/堵转/限时）</td></tr>
+  <tr><td>App_MotorTest</td><td>IDLE↔TEST*（独立）</td><td>仅 TEST 指令占用电机</td><td>与 Locker 分时，冲突需上层规避</td></tr>
+</table>
+
+<h2>5. 发现的问题与风险（按严重度）</h2>
+<h3>5.1 高（P0）— 与硬约束语义冲突</h3>
+<table>
+  <tr><th>#</th><th>问题</th><th>证据</th><th>影响</th></tr>
+  <tr><td>P0-1</td><td><b>必备件：离线/清单有效期语义空缺</b>。约束隐含"结账后此窗口内要放好标签"，但无清单到期、关店清空策略（Plan §6.1#9、§6.3#3）</td><td>CONFIGURED 无到点强制回 IDLE；Cancel 仅指令触发</td><td>无人值守时清单常驻，安全/业务歧义</td></tr>
+</table>
+<h3>5.2 中（P1）— 语义偏差</h3>
+<table>
+  <tr><th>#</th><th>问题</th><th>证据</th><th>影响</th></tr>
+  <tr><td>P1-1</td><td><b>软标阶段无超时</b>：进入 SOFT_DECODE 已清窗口，若上位机不再消耗，将永久停留</td><td><code>locker_process_soft</code> 仅检查 holdDeadline（已被清零）</td><td>软标阶段失去安全边界</td></tr>
+  <tr><td>P1-2</td><td><b>R5 窗口语义偏差</b>：每次匹配都重置 holdDeadline，等价"每匹配一张 +2min 顺延"，非"预留总时长"</td><td><code>locker_process_configured</code> 匹配分支重算 win</td><td>多标签时总开锁时长超出约束意图</td></tr>
+  <tr><td>P1-3</td><td><b>FAULT 进不了 IDLE</b>：故障后仅 <code>App_Stepper_ClearFault</code> 链路侧，无"恢复后自动/显式回 IDLE"入口被 Locker 使用</td><td>LOCKER_FAULT 无 process 恢复判定</td><td>故障态需上位机干预才能恢复</td></tr>
+  <tr><td>P1-4</td><td><b>反作弊缺失（Plan §3.2 重点）</b>：磁块升起后对"当前 EPC 摘换非清单标签"无高频重校验降块</td><td>配置态只在 TagTake 有且匹配时升，升后不再复核</td><td>存在"先真标签升起、再偷换"漏洞</td></tr>
+</table>
+<h3>5.3 低（P2）— 增强/对齐</h3>
+<table>
+  <tr><th>#</th><th>问题</th><th>证据</th><th>影响</th></tr>
+  <tr><td>P2-1</td><td>软标解码未与 AM 事件联动：软标阶段应"检测到标签→自动消耗一次解码次数"</td><td><code>App_AM_GetEventCount</code> 未被业务消费</td><td>当前只能上位机手动 0x06，不达"自动解锁解码器"</td></tr>
+  <tr><td>P2-2</td><td>绿灯/红灯语义由 Locker 手动改，未走 RGB/LED 状态机统一</td><td>Locker 直接用 LedHl_EOn/EOff</td><td>多状态指示灯叠置时易乱（关键读卡可再细分）</td></tr>
+  <tr><td>P2-3</td><td>光电触发占位：<code>App_Locker_NotifyTag</code> 为空</td><td>App_Locker.c:183</td><td>R3 的"光电触发"未真正落地</td></tr>
+  <tr><td>P2-4</td><td>清单"重复 EPC"未去重：同一 EPC 两条会被当成两个待解锁项</td><td>AddTag 不查重</td><td>罕见但会造成 m 虚高、n 永远差一</td></tr>
+  <tr><td>P2-5</td><td>死状态 <code>LOCKER_UNLOCK_HOLD</code> 恒未用 + 注释栈与代码不一致</td><td>App_Locker.h:41</td><td>维护成本，非功能故障</td></tr>
+  <tr><td>P2-6</td><td>行程测试与业务电机互斥无保护：TEST 运行时 Locker 置于 IDLE，但无封锁</td><td>main.c 两 Process 顺次</td><td>并发时电机归属需上层协调（暂可接受）</td></tr>
+</table>
+
+<h2>6. 对照《Plan.html》扩展建议的落实情况</h2>
+<table>
+  <tr><th>Plan §6.2/6.3 建议</th><th>落实现状</th></tr>
+  <tr><td>看门狗 + 异常复位</td><td><span class="tag y">未启用</span> USE_IWDG=0（按此前用户指示暂不启用）；喂狗调用保留</td></tr>
+  <tr><td>协议 CRC + 重传</td><td><span class="tag g">有</span> HID 帧校验已实现</td></tr>
+  <tr><td>电机驱动优化/PWM 软启停</td><td><span class="tag g">超预期</span> TIM4 硬件 STEP + S 型加减速 + DC 磁制动</td></tr>
+  <tr><td>离线/清单过期策略</td><td><span class="tag r">缺失</span> 对应 P0-1</td></tr>
+  <tr><td>反作弊下降延迟</td><td><span class="tag r">缺失</span> 对应 P1-4</td></tr>
+  <tr><td>事件日志可追溯</td><td><span class="tag y">部分</span> 事件环形缓冲有，无断电持久化</td></tr>
+  <tr><td>RFID 轮询频率（升起高频/空闲低频）</td><td><span class="tag y">未差异化</span> 恒频 Inventory</td></tr>
+  <tr><td>多标签防碰撞</td><td><span class="tag y">部分</span> UHF 缓冲 16 深可缓冲，业务逐个取</td></tr>
+</table>
+
+<h2>7. 整改计划（待执行，分 P0/P1/P2）</h2>
+<p>以下均为<b>计划</b>，需用户审阅后再执行。已实现功能默认不动。</p>
+
+<h3>P0 — 必修（与约束安全语义相关）</h3>
+<ol>
+  <li><b>清单有效期 / 关店清空</b>：CONFIGURED 增加"到点强制回 IDLE + 上报清单过期事件"；新增上位机"清清单"子命令。 <span class="tag">需求确认</span></li>
+</ol>
+
+<h3>P1 — 应修（语义偏差）</h3>
+<ol>
+  <li><b>软标阶段超时</b>：进入 SOFT_DECODE 时设软标门槛窗口（如沿用 2min 或新增可配），到点 Cancel。</li>
+  <li><b>R5 窗口语义</b>：改为"总窗口固定从 START 起算"，匹配不重置整体窗口（或仅做微步刷新防异常）。 <span class="tag">需求确认</span></li>
+  <li><b>FAULT 自恢复</b>：LOCKER_FAULT 增加链路恢复探测，恢复后自动回 IDLE（或经上位机确认）。</li>
+  <li><b>反作弊</b>：磁块升起后维持高频 Inventory，一旦"当前 EPC 不在待解锁/已解锁清单"立即降块 + 上报异常（对齐 Plan §3.2 下降延迟核心指标）。</li>
+</ol>
+
+<h3>P2 — 增强/对齐</h3>
+<ol>
+  <li><b>软标自动消耗</b>：软标阶段用 <code>App_AM_GetEventCount</code> 增量驱动一次自动解码 + <code>StopDecode</code>，替代仅手动 0x06。</li>
+  <li><b>灯控收敛</b>：把 Locker 的绿/红动作收敛到统一状态指示层，避免多状态互踩。</li>
+  <li><b>光电触发</b>：给 <code>App_Locker_NotifyTag</code> 接真光电/读卡硬件（若硬件已具备）。</li>
+  <li><b>EPC 去重 + 查重</b>：ADD 时按 EPC 去重，m 计数用去重后集合。</li>
+  <li><b>清理死状态</b>：删除 <code>LOCKER_UNLOCK_HOLD</code> 或按设计显式并入 CONFIGURED，修正注释。</li>
+  <li><b>电机互斥</b>：MotorTest 运行时 Locker 拒绝 START，或反之加保护。</li>
+</ol>
+
+<div class="card warn"><b>建议优先级</b>：若现场已稳定交付，优先 P1（语义偏差）+ P0 的"清单过期"；
+P1-4 反作弊与 P2-1 软标自动化为业务收益最高的两项。</div>
+
+<h2>8. 验证方案</h2>
+<table>
+  <tr><th>项</th><th>方法</th><th>通过标准</th></tr>
+  <tr><td>状态迁移回归</td><td>上位机协议：CONFIGURE/ADD/START → 放置标签 → 查询 QUERY/GET_EVENT</td><td>状态沿 IDLE→CONFIGURED→SOFT→DONE→IDLE；事件码正确</td></tr>
+  <tr><td>R5 窗口</td><td>多标签清单实测从 START 到超时回降时长</td><td>= 2min + (m−1)×30s（按选定语义）</td></tr>
+  <tr><td>软标自动消耗</td><td>软标阶段放软标，观察软Used 自增</td><td>每放一次 +1，达 N → DONE</td></tr>
+  <tr><td>反作弊</td><td>升起后换非清单标签</td><td>降块 + 上报异常（延迟 ≤ 指标）</td></tr>
+  <tr><td>故障恢复</td><td>断 UHF/USB 再恢复</td><td>FAULT→自动/确认回 IDLE</td></tr>
+</table>
+
+<h2>9. 结论</h2>
+<div class="card ok">
+  <b>总体判定</b>：核心业务主流程（R1–R8 比对/升降/软标/结账）已按约束实现，状态机覆盖完整、结构清晰。
+  发现的 1 个 P0（清单有效期）、4 个 P1（软标超时 / R5 窗口语义 / FAULT 恢复 / 反作弊）、
+  6 个 P2（软标自动化 / 灯控 / 光电 / EPC 去重 / 死状态 / 电机互斥）均为<b>可增量修正项</b>，
+  不影响当前主流程交付。整改计划待审阅，本轮不改码。
+</div>
+
+<div class="foot">ZLR5401 · Agent/Round_008 · 业务逻辑校对（约束映射 × 状态机审计）· 只校对不改码 · 2026-08-26 · 待审查</div>
+</div>
+</body>
+</html>
