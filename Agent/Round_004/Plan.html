@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Round_004 — ZLR5401 USB 扩展一路 CDC 日志口(虚拟串口 VCP)· 实施计划</title>
+<style>
+:root{
+  --blue:#2563eb; --blue-l:#3b82f6; --blue-bg:#eff6ff;
+  --purple:#7c3aed; --purple-l:#8b5cf6; --purple-bg:#f5f3ff;
+  --ink:#1e293b; --ink2:#475569; --line:#e2e8f0; --bg:#f8fafc;
+  --ok:#16a34a; --ok-bg:#f0fdf4; --warn:#b45309; --warn-bg:#fffbeb; --bad:#dc2626; --bad-bg:#fef2f2;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.55}
+header{background:linear-gradient(120deg,var(--blue) 0%,var(--purple) 100%);color:#fff;padding:28px 40px;border-bottom:4px solid #fff}
+header h1{margin:0 0 6px;font-size:24px}header p{margin:2px 0;opacity:.95;font-size:13px}
+main{max-width:1080px;margin:0 auto;padding:28px 24px}
+section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:22px 26px;margin:18px 0;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+h2{font-size:18px;margin:0 0 14px;padding-left:12px;border-left:4px solid var(--purple);color:var(--ink)}
+h3{font-size:15px;margin:18px 0 8px;color:var(--ink)}
+.hl-blue{background:var(--blue-bg);border-left:4px solid var(--blue);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-purple{background:var(--purple-bg);border-left:4px solid var(--purple);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-ok{background:var(--ok-bg);border-left:4px solid var(--ok);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-warn{background:var(--warn-bg);border-left:4px solid var(--warn);padding:10px 14px;border-radius:6px;margin:8px 0}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;vertical-align:middle;white-space:nowrap}
+.b-ok{background:var(--ok-bg);color:var(--ok);border:1px solid #bbf7d0}
+.b-warn{background:var(--warn-bg);color:var(--warn);border:1px solid #fde68a}
+.b-bad{background:var(--bad-bg);color:var(--bad);border:1px solid #fecaca}
+.b-blue{background:var(--blue-bg);color:var(--blue);border:1px solid #bfdbfe}
+.b-purple{background:var(--purple-bg);color:var(--purple);border:1px solid #ddd6fe}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:10px 0}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:linear-gradient(120deg,var(--blue-bg),var(--purple-bg));font-weight:600;color:var(--ink)}
+code{background:#f1f5f9;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-family:Consolas,monospace;font-size:12.5px}
+pre{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+pre code{background:transparent;border:none;color:inherit;padding:0}
+pre .c{color:#64748b}pre .r{color:#f87171}pre .g{color:#4ade80}pre .y{color:#facc15}pre .b{color:#93c5fd}
+.verdict{font-size:14px;font-weight:600;padding:10px 16px;border-radius:8px;margin:12px 0}
+.v-ok{background:var(--ok-bg);color:var(--ok);border:1px solid #bbf7d0}
+.v-warn{background:var(--warn-bg);color:var(--warn);border:1px solid #fde68a}
+.v-bad{background:var(--bad-bg);color:var(--bad);border:1px solid #fecaca}
+.flow{display:flex;flex-wrap:wrap;gap:8px;align-items:center;font-size:12.5px}
+.flow .step{background:#fff;border:1.5px solid var(--purple-l);color:var(--purple);border-radius:6px;padding:4px 10px;font-weight:600}
+.flow .arrow{color:var(--ink2)}
+ul,ol{padding-left:22px;margin:8px 0}li{margin:3px 0}
+.toc{background:#fff;border:1px solid var(--line);border-radius:12px;padding:18px 26px;margin:14px 0}
+.toc a{color:var(--purple);text-decoration:none}
+.footnote{font-size:11.5px;color:var(--ink2);margin-top:6px}
+</style>
+</head>
+<body>
+<header>
+  <h1>Round_004 — ZLR5401 USB 扩展一路 CDC 日志口(虚拟串口 VCP)</h1>
+  <p>项目:ZLR5401 (STM32F103C8T6/GD32F303RCT6 · USB FS · HID 控制) · 阶段:Round_004 · 产出:本 Plan.html (待审查后执行)</p>
+  <p>前置:当前单接口 CustomHID 设备已实机枚举通过(USB_EN=PC10 方案);HID 控制/数据通道稳定</p>
+</header>
+
+<main>
+
+<section class="toc">
+  <h2 style="border-left-color:var(--blue)">目录</h2>
+  <ol>
+    <li><a href="#s1">需求解读与现状盘点</a></li>
+    <li><a href="#s2">目标设备结构设计</a></li>
+    <li><a href="#s3">描述符设计</a></li>
+    <li><a href="#s4">类请求调度设计(核心)</a></li>
+    <li><a href="#s5">PMA 缓冲重排 + 端点初始化</a></li>
+    <li><a href="#s6">日志发送 API 设计</a></li>
+    <li><a href="#s7">涉及文件清单</a></li>
+    <li><a href="#s8">分步实施清单</a></li>
+    <li><a href="#s9">验证方案</a></li>
+    <li><a href="#s10">风险与规避</a></li>
+    <li><a href="#s11">结论</a></li>
+  </ol>
+</section>
+
+<section id="s1">
+  <h2>1. 需求解读与现状盘点</h2>
+  <div class="hl-blue"><b>需求:</b> 在现有 HID 控制通道之外,扩展一路 <b>CDC(USB 虚拟串口 VCP)</b> 作为<b>日志输出口</b>,替代被停用的 UART4 调试串口 (PC10/11)。</div>
+  <div class="hl-purple"><b>本质:</b> 把当前<b>单接口 CustomHID</b> 设备升级为 <b>HID + CDC 复合(Composite)</b> 设备。HID 继续承担上位机控制/数据通道,CDC 承担调试日志输出。</div>
+
+  <h3>1.1 当前 USB 设备结构(CustomHID,单接口)</h3>
+  <table>
+    <tr><th>项</th><th>当前值</th><th>来源</th></tr>
+    <tr><td>类</td><td>CustomHID(vendor 定义 HID)</td><td>usb_prop.c</td></tr>
+    <tr><td>接口数</td><td>1(IF0 = HID)</td><td>usb_desc.c bNumInterfaces=0x01</td></tr>
+    <tr><td>端点</td><td>EP0(控制)+ EP1 IN(中断64B)+ EP2 OUT(中断64B)</td><td>usb_conf.h EP_NUM=3</td></tr>
+    <tr><td>PMA 缓冲</td><td>BTABLE@0x00 · EP0RX@0x18 · EP0TX@0x58 · EP1TX@0x98 · EP2RX@0xD8</td><td>usb_conf.h</td></tr>
+    <tr><td>数据流向</td><td>EP1 IN 上报(设备→PC)· EP2 OUT 下发(PC→设备)</td><td>usb_conf.h 回调</td></tr>
+    <tr><td>类请求处理</td><td>仅 HID(GET/SET_PROTOCOL,GET_DESCRIPTOR HID/Report)</td><td>usb_prop.c Data/NoData_Setup</td></tr>
+  </table>
+
+  <h3>1.2 关键文件</h3>
+  <table>
+    <tr><th>文件</th><th>作用</th><th>本次是否改</th></tr>
+    <tr><td>STM32_USB/src/usb_prop.c</td><td>设备属性/复位/类请求调度</td><td><b>是(核心)</b></td></tr>
+    <tr><td>STM32_USB/src/usb_desc.c · inc/usb_desc.h</td><td>描述符 + 常量</td><td><b>是(核心)</b></td></tr>
+    <tr><td>STM32_USB/inc/usb_conf.h</td><td>EP_NUM / PMA 地址 / 回调映射</td><td><b>是</b></td></tr>
+    <tr><td>Application/src/App_Usb_HL.c · inc/App_Usb_HL.h</td><td>USB 硬件层:GPIO/NVIC/Init/Transmit</td><td><b>是(CDC 发送 API)</b></td></tr>
+    <tr><td>Application/src/App_Usb.c · inc/App_Usb.h</td><td>USB 应用层封装</td><td><b>是(CDC 日志发送)</b></td></tr>
+    <tr><td>STM32_USB/src/usb_endp.c</td><td>端点回调(当前空/占位)</td><td>视实现(CDC 收发可放 App 层)</td></tr>
+    <tr><td>Application/inc/App_Config.h</td><td>外设宏 / USB VID PID</td><td>视需要(PID 可能不变)</td></tr>
+  </table>
+
+  <h3>1.3 约束与限制</h3>
+  <div class="hl-warn">
+    <ul>
+      <li><b>PMA 共 512B:</b> 端点数受 BTABLE(每端点 4B×方向)与缓冲分配约束。新增 3~4 个端点缓冲须重排地址且不超 512B。</li>
+      <li><b>RAM 20KB:</b> USB FS 收发缓冲在 RAM,CDC 日志缓冲需预留,注意不超限。</li>
+      <li><b>单类属性结构:</b> ST USB FS 库 V2.2.1 的 Device_Property 是一套回调,复合设备须在 <code>Class_Data_Setup/Class_NoData_Setup</code> 里<b>按接口号分发</b>,库内核 usb_core.c <b>无需改</b>。</li>
+      <li><b>枚举不得回归:</b> 改后 HID 控制通道行为不得变化。</li>
+      <li><b>设备描述符需改复合类</b>(bDeviceClass=0xEF Misc,SubClass=0x02,Protocol=0x01),否则 Host 可能不走各接口类。</li>
+    </ul>
+  </div>
+</section>
+
+<section id="s2">
+  <h2>2. 目标设备结构设计</h2>
+  <h3>2.1 复合设备接口规划</h3>
+  <table>
+    <tr><th>接口</th><th>类</th><th>端点</th><th>用途</th></tr>
+    <tr>
+      <td><b>IF0</b></td><td>HID(0x03)</td>
+      <td>EP1 IN(中断64B)<br>EP2 OUT(中断64B)</td>
+      <td>控制通道(保持现状,上位机协议)</td>
+    </tr>
+    <tr>
+      <td><b>IF1</b></td><td>CDC 通信类 ACM(0x02)</td>
+      <td>EP3 IN(通知/中断,16B)</td>
+      <td>CDC 线路编码/控制通知</td>
+    </tr>
+    <tr>
+      <td><b>IF2</b></td><td>CDC 数据类(0x0A)</td>
+      <td>EP4 IN(批量64B)<br>EP5 OUT(批量64B)</td>
+      <td>日志数据:设备→PC 用 EP4 IN</td>
+    </tr>
+  </table>
+  <div class="hl-blue"><b>端点数:</b> EP0 控制 + 5 个数据/通知端点 ⇒ <code>EP_NUM=6</code>(USBPMA 硬件支持 EP0~EP7,本次只用到 EP5)。</div>
+
+  <h3>2.2 逻辑数据流</h3>
+  <pre>上位机协议(HID 控制)  ←→  EP1 IN / EP2 OUT   (IF0 保持原样)
+调试/运行日志          →   App_Log_xxx → CDC 缓冲 → EP4 IN → PC 串口(TTY/USB 串口)
+PC → 设备(CDC 收)     →   EP5 OUT(可选,日志命令下发/流控,首版可只留 TX)</pre>
+  <div class="hl-ok"><b>关键取舍:</b> 日志口只做<b>单向(设备→PC,CDC TX)</b>即可满足"日志输出"诉求。但为确保 VCP 在 Host 端被标准识别,<b>EP5 OUT 仍建好</b>(VCP 需双向描述符才标准),应用层可不消费、只 ACK。</div>
+</section>
+
+<section id="s3">
+  <h2>3. 描述符设计</h2>
+  <h3>3.1 设备描述符</h3>
+  <pre>bLength            = 0x12
+bDescriptorType    = DEVICE
+bcdUSB             = 0x0200
+bDeviceClass       = <b style="color:#f87171">0xEF</b>   (Misc Device / Composite)
+bDeviceSubClass    = <b style="color:#f87171">0x02</b>  (Common)
+bDeviceProtocol    = <b style="color:#f87171">0x01</b>  (IAD + Class code in interface)
+bMaxPacketSize0    = 64
+idVendor / idProduct = 沿用当前(不改 PID,宿主仅需新增枚举)
+bNumConfigurations = 0x01</pre>
+
+  <h3>3.2 配置描述符(IF0 HID + [IAD] + IF1/IF2 CDC)</h3>
+  <p>总长度从 41B 增至约 <b style="color:#7c3aed">0x5A(90B)</b>,需在 usb_desc.h 更新 <code>CUSTOMHID_SIZ_CONFIG_DESC</code>。</p>
+  <pre><span class="c">// 目标布局</span>
+Config(9)  bNumInterfaces=0x03, wTotalLength=&lt;新值&gt;
+├─ IF0 HID(9+9+7+7): 接口 + HID描述符 + EP1 IN(中断64) + EP2 OUT(中断64)  ← 原样保留
+├─ [IAD(8)]  : 关联 IF1+IF2 为 CDC 复合功能 (bFirstInterface=1, bInterfaceCount=2, class=CDC 0x02)
+├─ IF1 CDC Comm(9):
+│   │   bInterfaceClass=0x02, SubClass=0x02(ACM), Protocol=0x00
+│   │   EP3 IN(中断, wMaxPacketSize=0x0010=16B, 通知)
+│   ├─ Functional descriptors(内联在接口描述符后):
+│   │   Header Functional   (5B, bcdCDC 0x0120)
+│   │   Call Mgmt Functional(5B, bCallMgmt=0, bIntf=2)
+│   │   ACM Functional      (4B, 支持 Set/GetLineCoding + SetControlLineState)
+│   │   Union Functional    (5B, bMaster=1, bSlave=2)
+├─ IF2 CDC Data(9+7+7):
+    │   bInterfaceClass=0x0A, SubClass=0x00, Protocol=0x00
+    │   EP4 IN(批量, wMaxPacketSize=64)
+    │   EP5 OUT(批量, wMaxPacketSize=64)</pre>
+
+  <h3>3.3 需新增/更新的描述符常量(usb_desc.h)</h3>
+  <pre>#define CUSTOMHID_SIZ_CONFIG_DESC      &lt;新值=90&gt;
+CUSTOMHID_DeviceDescriptor.bDeviceClass = 0xEF / 0x02 / 0x01
+新增:
+  CDC_Header_Functional_Desc[5]
+  CDC_CallMgmt_Functional_Desc[5]
+  CDC_ACM_Functional_Desc[4]
+  CDC_Union_Functional_Desc[5]
+  CDC_ConfigDescriptor(IF1+IF2 + 端点)
+字符串: 可新增 iInterface 或 CDC 字符串(可选)</pre>
+</section>
+
+<section id="s4">
+  <h2>4. 类请求调度设计(usb_prop.c 核心改动)</h2>
+  <p>ST 库 <code>Data_Setup0 / NoData_Setup0</code> 通过 <code>pProperty-&gt;Class_Data_Setup / Class_NoData_Setup</code> 把类请求交给设备属性层。当前 CustomHID 只处理 HID。改为<b>按 pInformation-&gt;USBwIndex0(接口号)分发</b>:</p>
+
+  <h3>4.1 CustomHID_Data_Setup(数据阶段请求)</h3>
+  <pre>if (USBwIndex0 == 0) {            <span class="c">// IF0 HID</span>
+    GET_DESCRIPTOR(HID / Report) → 原逻辑
+    GET_PROTOCOL              → 原逻辑
+} else if (USBwIndex0 == 1) {     <span class="c">// IF1 CDC Comm</span>
+    GET_LINE_CODING       → 返回 LineCoding[7](communication)
+    GET_COMM_FEATURE/SET  → 按需
+}</pre>
+
+  <h3>4.2 CustomHID_NoData_Setup(无数据阶段请求)</h3>
+  <pre>if (USBwIndex0 == 0) {            <span class="c">// IF0 HID</span>
+    SET_PROTOCOL → 原逻辑
+} else if (USBwIndex0 == 1) {     <span class="c">// IF1 CDC Comm</span>
+    SET_LINE_CODING         → 收 7B LineCoding(115200/8N1)
+    SET_CONTROL_LINE_STATE  → 记录 DTR/RTS(可触发"已打开"事件)
+}</pre>
+  <div class="hl-blue">需在 usb_prop.c 增加 LineCoding 全局缓冲与标准 CDC 请求号宏:<code>GET_LINE_CODING=0x21 · SET_LINE_CODING=0x20 · SET_CONTROL_LINE_STATE=0x22</code>。</div>
+</section>
+
+<section id="s5">
+  <h2>5. PMA 缓冲重排 + 端点初始化</h2>
+  <h3>5.1 PMA 缓冲重排(usb_conf.h)</h3>
+  <p>当前占到 0x118 附近。重排以容纳 EP3/EP4/EP5,保证 <b>起始地址 32 位对齐且互不重叠、总占用 &lt; 512B</b>。</p>
+  <pre>BTABLE    @ 0x000  (8 端点×2 方向×4B = 32B  →  0x00~0x20)
+EP0 RX    @ 0x020  (64B  → 0x020~0x060)
+EP0 TX    @ 0x060  (64B  → 0x060~0x0A0)
+EP1 TX    @ 0x0A0  (64B, HID IN)
+EP2 RX    @ 0x0E0  (64B, HID OUT)
+EP3 TX    @ 0x120  (16B, CDC 通知 IN)
+EP4 TX    @ 0x130  (64B, CDC 数据 IN)
+EP5 RX    @ 0x170  (64B, CDC 数据 OUT)
+合计约 0x1B0 = 432B  &lt;  512B  ✔</pre>
+  <div class="footnote">具体数值在实现时按 <code>USB_FRAME_LEN=64</code> 与 BTABLE 对齐复核;PMA 需 ≥ 4B 对齐。</div>
+
+  <h3>5.2 usb_conf.h 端点/回调配置</h3>
+  <pre><span class="c">/* EP_NUM 3 → 6 */</span>
+#define EP_NUM  (6)
+
+<span class="c">/* 回调映射 */</span>
+#define EP3_IN_Callback   CDC_NotifyIn_User    <span class="c">/* 通知 IN 完成(可空)*/</span>
+#define EP4_IN_Callback   CDC_DataIn_User      <span class="c">/* 日志发送完成 → 清 CDC TxBusy*/</span>
+#define EP5_OUT_Callback  CDC_DataOut_User     <span class="c">/* PC→设备(可选消费)*/</span>
+#define EP4_OUT_Callback  NOP_Process
+#define EP5_IN_Callback   NOP_Process</pre>
+
+  <h3>5.3 CustomHID_Reset 增加 CDC 端点配置</h3>
+  <pre><span class="c">/* 现有 EP0/EP1/EP2 不变 */</span>
+SetEPType(ENDP3,EP_INTERRUPT); SetEPTxAddr(ENDP3,ENDP3_TXADDR);
+SetEPTxCount(ENDP3,0x10);      SetEPTxStatus(ENDP3,EP_TX_NAK);
+SetEPType(ENDP4,EP_BULK);      SetEPTxAddr(ENDP4,ENDP4_TXADDR);
+SetEPTxCount(ENDP4,USB_FRAME_LEN); SetEPTxStatus(ENDP4,EP_TX_NAK);
+SetEPType(ENDP5,EP_BULK);      SetEPRxAddr(ENDP5,ENDP5_RXADDR);
+SetEPRxCount(ENDP5,USB_FRAME_LEN); SetEPRxStatus(ENDP5,EP_RX_VALID);</pre>
+</section>
+
+<section id="s6">
+  <h2>6. 日志发送 API 设计(App 侧)</h2>
+
+  <h3>6.1 硬件层(App_Usb_HL.c / .h)</h3>
+  <pre><span class="c">/* CDC 日志发送(TX, 设备→PC)*/</span>
+uint8_t App_Usb_HL_CdcIsTxBusy(void);
+uint8_t App_Usb_HL_CdcSend(const uint8_t *data, uint16_t len);
+   <span class="c">// 内部: 环形缓冲排队 → 非忙时 UserToPMABufferCopy(ENDP4) → SetEPTxValid(ENDP4)
+   //        由 CDC_DataIn_User 清忙并递进缓冲</span>
+<span class="c">/* CDC 状态: 由 SET_CONTROL_LINE_STATE 的 DTR 置位 */</span>
+uint8_t App_Usb_HL_CdcIsOpened(void);</pre>
+
+  <h3>6.2 应用层(App_Usb.c)增加日志打印</h3>
+  <pre>void App_Usb_LogPutStr(const char *s);
+void App_Usb_LogPrintf(const char *fmt, ...);   <span class="c">// 可选, 无 float 支持</span></pre>
+
+  <h3>6.3 日志缓冲</h3>
+  <div class="hl-warn"><b>建议:</b> CDC TX 用<b>环形缓冲(512B~1KB)</b>,由主循环/发送完成中断排出。日志量大时按行/分组切包到 ≤64B 边界。<b>RAM 预算</b>在 20KB 内,追加 ≤1.5KB 可接受。发送用中断驱动,主循环只投递不阻塞。</div>
+</section>
+
+<section id="s7">
+  <h2>7. 涉及文件清单</h2>
+  <table>
+    <tr><th>文件</th><th>改动类型</th><th>关键点</th></tr>
+    <tr><td>STM32_USB/src/usb_desc.c / inc/usb_desc.h</td><td>修改</td><td>复合设备/配置描述符 + 新增 CDC 描述符数组与常量 + SIZ_CONFIG_DESC</td></tr>
+    <tr><td>STM32_USB/src/usb_prop.c</td><td>修改</td><td>Reset 增加 EP3/4/5 · 类请求按接口号分发 · LineCoding 缓冲</td></tr>
+    <tr><td>STM32_USB/inc/usb_conf.h</td><td>修改</td><td>EP_NUM=6 · EP3/4/5 地址与回调映射 · PMA 重排</td></tr>
+    <tr><td>Application/src/App_Usb_HL.c / inc/App_Usb_HL.h</td><td>修改</td><td>CDC TX 环形缓冲 + CdcSend/CdcIsTxBusy/CdcIsOpened + CDC_DataIn_User</td></tr>
+    <tr><td>Application/src/App_Usb.c / inc/App_Usb.h</td><td>修改</td><td>App_Usb_LogPutStr / App_Usb_LogPrintf</td></tr>
+    <tr><td>Application/inc/App_Config.h</td><td>视需要</td><td>PID/宏(通常不变)</td></tr>
+    <tr><td>STM32_USB/src/usb_endp.c</td><td>视实现</td><td>CDC 收发可放 App 层</td></tr>
+  </table>
+  <p><b>不改的:</b> 库内核 <code>usb_core.c</code> / Bootloader / 共享 HID 逻辑(IF0 保留最小改动)。</p>
+</section>
+
+<section id="s8">
+  <h2>8. 分步实施清单(待审阅后执行)</h2>
+
+  <h3>实施顺序</h3>
+  <div class="flow">
+    <span class="step">步骤1 描述符</span><span class="arrow">→</span>
+    <span class="step">步骤2 配置</span><span class="arrow">→</span>
+    <span class="step">步骤3 属性层</span><span class="arrow">→</span>
+    <span class="step">步骤4 端点回调+发送</span><span class="arrow">→</span>
+    <span class="step">步骤5 集成联调</span>
+  </div>
+
+  <ol>
+    <li><b>备份:</b> 执行 <code>./backup.sh "Round_004 USB 扩展 CDC 日志口"</code>(全局规则必做)。</li>
+    <li><b>步骤1 — 描述符(usb_desc.h / usb_desc.c):</b> 设备描述符类改复合(0xEF/0x02/0x01);更新 config 描述符(原 IF0 保留 + IAD + IF1 CDC Comm 含 functional descriptors + EP3 通知 + IF2 CDC Data EP4/EP5);更新 <code>CUSTOMHID_SIZ_CONFIG_DESC</code>;新增 CDC 描述符数组与常量。<br>
+    <span class="badge b-blue">验证</span> 描述符字节数/类型/wTotalLength 自洽(抓包 / lsusb -v 复核)。</li>
+    <li><b>步骤2 — 配置(usb_conf.h):</b> <code>EP_NUM=6</code>;新增 ENDP3/4/5 地址宏,重排 EP1/EP2 无冲突;加 EP3/4/5 回调映射。 <span class="badge b-blue">验证</span> 编译通过,无宏/未定义错误。</li>
+    <li><b>步骤3 — 属性层(usb_prop.c):</b> Reset 保留 EP0/1/2 + 新增 EP3/4/5 配置;Data/NoData_Setup 按接口号分发 CDC 请求;增加 LineCoding 缓冲。 <span class="badge b-blue">验证</span> HID 枚举与协议依旧,编译通过。</li>
+    <li><b>步骤4 — 端点回调 + HL 发送:</b> App_Usb_HL.c 实现 CDC TX 环形缓冲、<code>CdcSend/CdcIsTxBusy/CdcIsOpened</code>、CDC_DataIn_User 完成回调;App_Usb.c 提供 <code>App_Usb_LogPutStr</code>。 <span class="badge b-blue">验证</span> 编译通过。</li>
+    <li><b>步骤5 — 集成与联调(烧录实机):</b> build + flash_all;确认 HID 仍被上位机枚举(不回归);确认 CDC 虚拟串口出现(Mac: /dev/tty.usbmodem*);串口助手 115200 打开,收集日志验证。 <span class="badge b-blue">验证</span> 见 §9 验证表。</li>
+  </ol>
+</section>
+
+<section id="s9">
+  <h2>9. 验证方案</h2>
+  <table>
+    <tr><th>检查项</th><th>方法</th><th>通过标准</th></tr>
+    <tr><td>HID 枚举不回归</td><td>上位机协议工具(现有)</td><td>HID 控制/数据通道正常</td></tr>
+    <tr><td>CDC 枚举</td><td>Mac 系统报告→USB / dmesg / ls /dev/tty.usbmodem*</td><td>出现虚拟串口设备</td></tr>
+    <tr><td>日志输出</td><td>串口助手打开 CDC,触发日志</td><td>收到日志文本,无丢帧</td></tr>
+    <tr><td>线路编码</td><td>SET_LINE_CODING 115200-8N1</td><td>VCP 正常打开/关闭</td></tr>
+    <tr><td>连续大流量</td><td>长时间跑日志(若干 KB)</td><td>环形缓冲不溢出、不死锁</td></tr>
+    <tr><td>RAM 占用</td><td>arm-none-eabi-size / map</td><td>未超 20KB</td></tr>
+    <tr><td>PMA 不越界</td><td>地址分配核对 + BDM 读端点寄存器</td><td>各端点缓冲不重叠</td></tr>
+  </table>
+</section>
+
+<section id="s10">
+  <h2>10. 风险与规避</h2>
+  <table>
+    <tr><th>风险</th><th>严重度</th><th>规避</th></tr>
+    <tr>
+      <td>描述符长度/类型错误导致枚举失败</td>
+      <td><span class="badge b-bad">高</span></td>
+      <td>抓包/lsusb 逐字段核对;先在 config 描述符加 CDC 数据接口分步验证。</td>
+    </tr>
+    <tr>
+      <td>复合设备下 Host 类驱动要求 IAD/正确 union</td>
+      <td><span class="badge b-warn">中</span></td>
+      <td>严格按 ACM 标准 functional desc;Mac 对 vendor 复合较宽松。</td>
+    </tr>
+    <tr>
+      <td>PMA 地址配错引起缓冲漂移/数据错乱</td>
+      <td><span class="badge b-warn">中</span></td>
+      <td>§5 地址表逐项复核 + 实机抓包。</td>
+    </tr>
+    <tr>
+      <td>类请求分发改动影响 HID 控制</td>
+      <td><span class="badge b-warn">中</span></td>
+      <td>USBwIndex0==0 分支保持原 HID 逻辑不动,最小改动。</td>
+    </tr>
+    <tr>
+      <td>日志高频触发主循环阻塞</td>
+      <td><span class="badge b-warn">中</span></td>
+      <td>CDC 发送用环形缓冲 + 中断驱动,主循环只投递不阻塞。</td>
+    </tr>
+    <tr>
+      <td>RAM 超限</td>
+      <td><span class="badge b-warn">中</span></td>
+      <td>控制日志缓冲 ≤1.5KB,必要时减小。</td>
+    </tr>
+  </table>
+</section>
+
+<section id="s11">
+  <h2>11. 结论</h2>
+  <div class="verdict v-ok">该改动可行。核心是 usb_prop.c(类请求分发)+ usb_desc.c/.h(复合描述符)+ usb_conf.h(端点/PMA)+ App_Usb_HL(CDC 发送 API),不触碰库内核 usb_core.c,不动 Bootloader。</div>
+  <div class="footnote">ZLR5401 · Stage_004 · 计划文档生成于 2026-08-23 · 待审阅,未执行。</div>
+</section>
+
+</main>
+</body>
+</html>

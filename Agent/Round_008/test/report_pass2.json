@@ -1,0 +1,588 @@
+{
+  "generated": "2026-08-26 23:33:49",
+  "phase": "all",
+  "destructive": false,
+  "total": 72,
+  "pass": 60,
+  "fail": 0,
+  "skip": 7,
+  "inconclusive": 5,
+  "results": [
+    {
+      "name": "A1",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "handshake frame header/payload correct: 53770100050001c5692f26",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "empty: ok",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "motor: ok",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "uhf: ok",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "locker: ok",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "rgb: ok",
+      "evidence": []
+    },
+    {
+      "name": "A3",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "0x01->0xFE, 0x0A->0xF5, 0x0D->0xF2",
+      "evidence": []
+    },
+    {
+      "name": "B1",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B2",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B3",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B4",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B5",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B6",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "broadcast answered on 0x0F func=fe",
+      "evidence": []
+    },
+    {
+      "name": "B7",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "silent for unknown FC and device still alive",
+      "evidence": []
+    },
+    {
+      "name": "B8",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "EXIT_BOOT ignored in App; device alive",
+      "evidence": []
+    },
+    {
+      "name": "C1",
+      "section": "C",
+      "layer": "C",
+      "verdict": "PASS",
+      "message": "status=0 layer=1 protoVer=2 baud=115200",
+      "evidence": []
+    },
+    {
+      "name": "C2",
+      "section": "C",
+      "layer": "C",
+      "verdict": "PASS",
+      "message": "uidHash matches UID (0x3d21b5f1)",
+      "evidence": []
+    },
+    {
+      "name": "C3",
+      "section": "C",
+      "layer": "C",
+      "verdict": "PASS",
+      "message": "UID/upgradeCount/status stable (UID 0ed9373038330b0039353739)",
+      "evidence": []
+    },
+    {
+      "name": "D1",
+      "section": "D",
+      "layer": "D",
+      "verdict": "PASS",
+      "message": "addr=1 hw=b'C8T6_V1.0' sw=b'ZLR5401_V1.0'",
+      "evidence": []
+    },
+    {
+      "name": "D2",
+      "section": "D",
+      "layer": "D",
+      "verdict": "PASS",
+      "message": "layer=1 (App); DEVICE_INFO valid",
+      "evidence": []
+    },
+    {
+      "name": "E2",
+      "section": "E",
+      "layer": "E",
+      "verdict": "PASS",
+      "message": "err=1 (RESET_PARAM_ERR); device alive after param-err",
+      "evidence": []
+    },
+    {
+      "name": "E1",
+      "section": "E",
+      "layer": "E",
+      "verdict": "SKIP",
+      "message": "skipped (needs --destructive)",
+      "evidence": []
+    },
+    {
+      "name": "F1",
+      "section": "F",
+      "layer": "F",
+      "verdict": "SKIP",
+      "message": "skipped (needs --destructive)",
+      "evidence": []
+    },
+    {
+      "name": "F2",
+      "section": "F",
+      "layer": "F",
+      "verdict": "SKIP",
+      "message": "skipped (needs --destructive)",
+      "evidence": []
+    },
+    {
+      "name": "J1",
+      "section": "J",
+      "layer": "J",
+      "verdict": "PASS",
+      "message": "mask echo 0x00",
+      "evidence": []
+    },
+    {
+      "name": "J2",
+      "section": "J",
+      "layer": "J",
+      "verdict": "PASS",
+      "message": "mask echo 0x07",
+      "evidence": []
+    },
+    {
+      "name": "J4",
+      "section": "J",
+      "layer": "J",
+      "verdict": "PASS",
+      "message": "mask echo 0x01",
+      "evidence": []
+    },
+    {
+      "name": "J3",
+      "section": "J",
+      "layer": "J",
+      "verdict": "PASS",
+      "message": "err=1 (PARAM)",
+      "evidence": []
+    },
+    {
+      "name": "G3",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=1",
+      "evidence": []
+    },
+    {
+      "name": "G2",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=1",
+      "evidence": []
+    },
+    {
+      "name": "G1",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "stepsDone advanced by ~150",
+      "evidence": []
+    },
+    {
+      "name": "G4",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "G5",
+      "section": "G",
+      "layer": "G",
+      "verdict": "INCONCLUSIVE",
+      "message": "accepted err=0 — firmware does not range-check (doc gap)",
+      "evidence": []
+    },
+    {
+      "name": "G6a",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "G6b",
+      "section": "G",
+      "layer": "G",
+      "verdict": "INCONCLUSIVE",
+      "message": "accepted err=0 — doc gap",
+      "evidence": []
+    },
+    {
+      "name": "G7",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "G8",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "state=0 fault=0x0 diag1=0 diag2=0",
+      "evidence": []
+    },
+    {
+      "name": "G9",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "olov=0 thresh=400 trq=4095 reason=1",
+      "evidence": []
+    },
+    {
+      "name": "G10",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "startCount 768->1024, runSec 65536->65536",
+      "evidence": []
+    },
+    {
+      "name": "G11",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "G13",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "rejected (PARAM)",
+      "evidence": []
+    },
+    {
+      "name": "G12",
+      "section": "G",
+      "layer": "G",
+      "verdict": "SKIP",
+      "message": "skipped (physical motor travel gated by --no-motor-test)",
+      "evidence": []
+    },
+    {
+      "name": "G14",
+      "section": "G",
+      "layer": "G",
+      "verdict": "SKIP",
+      "message": "skipped (physical motor travel gated)",
+      "evidence": []
+    },
+    {
+      "name": "H1",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "OPEN ok",
+      "evidence": []
+    },
+    {
+      "name": "H2",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "power=25 ant=0 chk=1 sess=0 tgt=0 q=0 band=1",
+      "evidence": []
+    },
+    {
+      "name": "H4",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "err=1 (PARAM)",
+      "evidence": []
+    },
+    {
+      "name": "H3",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "power echo 20, q echo 4",
+      "evidence": []
+    },
+    {
+      "name": "H16",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "err=3 (NOT_READY)",
+      "evidence": []
+    },
+    {
+      "name": "H6",
+      "section": "H",
+      "layer": "H",
+      "verdict": "INCONCLUSIVE",
+      "message": "OK count=65280 (tags present)",
+      "evidence": []
+    },
+    {
+      "name": "H5",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "count=1 records parsed",
+      "evidence": []
+    },
+    {
+      "name": "H9",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "total=0 records",
+      "evidence": []
+    },
+    {
+      "name": "H7",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "err=1",
+      "evidence": []
+    },
+    {
+      "name": "H8",
+      "section": "H",
+      "layer": "H",
+      "verdict": "INCONCLUSIVE",
+      "message": "read err=2",
+      "evidence": []
+    },
+    {
+      "name": "H10",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "state=4 link=0 powered=1 antOK=1 lastErr=0",
+      "evidence": []
+    },
+    {
+      "name": "H11",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "antOK=1 RL=110 VSWR=178",
+      "evidence": []
+    },
+    {
+      "name": "H12",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "scan start/get/stop ok",
+      "evidence": []
+    },
+    {
+      "name": "H13",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "len=46",
+      "evidence": []
+    },
+    {
+      "name": "H14",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "H15",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "I2",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "err=2",
+      "evidence": []
+    },
+    {
+      "name": "I1",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "hm=0 sc=2 su=0",
+      "evidence": []
+    },
+    {
+      "name": "I3",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "I4",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "err=2",
+      "evidence": []
+    },
+    {
+      "name": "I3b",
+      "section": "I",
+      "layer": "I",
+      "verdict": "INCONCLUSIVE",
+      "message": "err=0 (firmware truncates to 12; doc says <=12)",
+      "evidence": []
+    },
+    {
+      "name": "I6",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "state=1 hm=0 sc=2 su=0",
+      "evidence": []
+    },
+    {
+      "name": "I5",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "state=1 (CONFIGURED)",
+      "evidence": []
+    },
+    {
+      "name": "I7",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "NO_EVENT",
+      "evidence": []
+    },
+    {
+      "name": "I8",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "err=1",
+      "evidence": []
+    },
+    {
+      "name": "I9",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "state=0",
+      "evidence": []
+    },
+    {
+      "name": "I10",
+      "section": "I",
+      "layer": "I",
+      "verdict": "SKIP",
+      "message": "skipped (physical magnet lift gated by --no-locker-motion)",
+      "evidence": []
+    },
+    {
+      "name": "I11",
+      "section": "I",
+      "layer": "I",
+      "verdict": "SKIP",
+      "message": "skipped (physical magnet lift gated)",
+      "evidence": []
+    },
+    {
+      "name": "I12",
+      "section": "I",
+      "layer": "I",
+      "verdict": "PASS",
+      "message": "responsive after storm; state=5",
+      "evidence": []
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "precheck": "PASS",
+  "smoke": null,
+  "inject": [
+    {
+      "case": "U5",
+      "desc": "连续满速批量",
+      "verdict": "PASS",
+      "detail": "burst no-reorder, VERIFY OK, back to App"
+    },
+    {
+      "case": "U6",
+      "desc": "重复/乱序发送",
+      "verdict": "FAIL",
+      "detail": "dup lost #1111"
+    }
+  ],
+  "baseline": [],
+  "overall": "FAIL"
+}

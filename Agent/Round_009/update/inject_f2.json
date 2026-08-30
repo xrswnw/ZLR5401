@@ -1,0 +1,32 @@
+{
+  "precheck": "PASS",
+  "smoke": null,
+  "inject": [
+    {
+      "case": "F3",
+      "desc": "错CRC固件→VERIFY拒",
+      "verdict": "FAIL",
+      "detail": "expected CRC_MISMATCH(1), got 0; unrecovered"
+    },
+    {
+      "case": "F4",
+      "desc": "提交前软复位仍BOOT",
+      "verdict": "PASS",
+      "detail": "reset before commit kept Boot/UPG; recovered ok=True"
+    },
+    {
+      "case": "F5",
+      "desc": "擦后即复位可重写",
+      "verdict": "PASS",
+      "detail": "erase-only leaves Boot/UPG; restart START rewrote ok=True"
+    },
+    {
+      "case": "F7",
+      "desc": "提交后复位直入APP",
+      "verdict": "PASS",
+      "detail": "after commit, FC_RESET boots straight to App"
+    }
+  ],
+  "baseline": [],
+  "overall": "FAIL"
+}

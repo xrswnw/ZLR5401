@@ -40,6 +40,7 @@ set(SOURCES
   src/App_Iwdg_HL.c
   src/App_Led_HL.c
   src/App_RgbLed_HL.c
+  src/App_RgbLed_Pattern.c
   src/App_Param_HL.c
   src/App_SysTick_HL.c
   src/App_Usb.c
@@ -54,8 +55,10 @@ set(SOURCES
   src/App_AM.c
   src/App_AM_HL.c
   src/App_Locker.c
+  src/App_LockerOneShot.c
   src/App_NewPeriph_HL.c
   src/App_MotorTest.c
+  src/App_MotorHoming.c
   src/App_BootSelfTest.c
   Drv8434S/drv8434s.c
   App_startup_hd.s

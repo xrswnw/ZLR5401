@@ -7,14 +7,14 @@
 #include "stm32f10x_usart.h"
 
 /* =====================================================================
- * UHF 模块硬件抽象层 — UART4 驱动 + 电源/IO 控制 + EX10 0xFF 帧收发
+ * UHF 模块硬件抽象层 — USART3 驱动 + 电源/IO 控制 + EX10 0xFF 帧收发
  *
  * 引脚 (见原理图):
- *   UART4_TX = PC10, UART4_RX = PC11  (AF_PP)
+ *   USART3_TX = PB10, USART3_RX = PB11  (AF_PP)
  *   UHF_EN     = PB12 (输出, 高电平上电)
  *   UHF_OUT2   = PB13, UHF_IN1 = PB14, UHF_IN2 = PB15 (模块 IO, 推挽输出)
  *   UHF_NRST   = PC6 (输出, 低=复位), UHF_OUT1 = PC7 (输出)
- * 时钟: UART4 在 APB1 (36MHz), GPIOB + GPIOC 由 System_PeriphClkInit 统一开启。
+ * 时钟: USART3 在 APB1 (36MHz), GPIOB + GPIOC 由 System_PeriphClkInit 统一开启。
  * ===================================================================== */
 
 /* ---------- 引脚 (按 App_Config.h / 原理图) ---------- */
@@ -40,14 +40,34 @@ static volatile uint16_t s_rxTail;
 /* ---------- 发送状态 ---------- */
 static volatile uint8_t  s_txBusy;
 
+/* Round_050 诊断: 最近收帧的原始 Data Length 与 cmd */
+static volatile uint16_t s_lastRawDataLen;
+static volatile uint8_t  s_lastRawCmd;
+void UHF_HL_GetRawLast(uint16_t *datalen, uint8_t *cmd)
+{
+    if (datalen) *datalen = s_lastRawDataLen;
+    if (cmd)     *cmd     = s_lastRawCmd;
+}
+
+/* Round_050 诊断: 快照接收环内容 (含满/空). 返回已写入字节数. */
+uint16_t UHF_HL_DumpRx(uint8_t *out, uint16_t maxlen)
+{
+    uint16_t h = (uint16_t)s_rxHead, t = s_rxTail, n = 0;
+    while (t != h && n < maxlen) {
+        out[n++] = (uint8_t)s_rxBuf[t];
+        t = (uint16_t)((t + 1) % UHF_HL_RX_BUF_SIZE);
+    }
+    return n;
+}
+
 void UHF_HL_Init(void)
 {
     GPIO_InitTypeDef gpio;
     USART_InitTypeDef usart;
 
-    /* 时钟: GPIOB + GPIOC (APB2), UART4 (APB1) */
+    /* 时钟: GPIOB + GPIOC (APB2), USART3 (APB1) */
     RCC_APB2PeriphClockCmd(RCC_APB2Periph_GPIOB | RCC_APB2Periph_GPIOC, ENABLE);
-    RCC_APB1PeriphClockCmd(RCC_APB1Periph_UART4, ENABLE);
+    RCC_APB1PeriphClockCmd(RCC_APB1Periph_USART3, ENABLE);
 
     /* UHF_EN: 推挽输出, 默认低 (模块不上电) */
     GPIO_StructInit(&gpio);
@@ -73,17 +93,17 @@ void UHF_HL_Init(void)
     GPIO_SetBits(UHF_HL_NRST_PORT, UHF_HL_NRST_PIN);     /* NRST 高=运行 */
     GPIO_ResetBits(UHF_HL_NRST_PORT, UHF_HL_OUT1_PIN);
 
-    /* UART4 TX=PC10 (AF_PP), RX=PC11 (输入浮空) */
+    /* USART3 TX=PB10 (AF_PP), RX=PB11 (输入浮空) */
     GPIO_StructInit(&gpio);
     gpio.GPIO_Pin   = GPIO_Pin_10;
     gpio.GPIO_Mode  = GPIO_Mode_AF_PP;
     gpio.GPIO_Speed = GPIO_Speed_50MHz;
-    GPIO_Init(GPIOC, &gpio);
+    GPIO_Init(GPIOB, &gpio);
 
     GPIO_StructInit(&gpio);
     gpio.GPIO_Pin  = GPIO_Pin_11;
     gpio.GPIO_Mode = GPIO_Mode_IN_FLOATING;
-    GPIO_Init(GPIOC, &gpio);
+    GPIO_Init(GPIOB, &gpio);
 
     USART_StructInit(&usart);
     usart.USART_BaudRate            = UHF_HL_BAUD;
@@ -92,39 +112,39 @@ void UHF_HL_Init(void)
     usart.USART_Parity              = USART_Parity_No;
     usart.USART_Mode                = USART_Mode_Rx | USART_Mode_Tx;
     usart.USART_HardwareFlowControl = USART_HardwareFlowControl_None;
-    USART_Init(UART4, &usart);
+    USART_Init(USART3, &usart);
 
     /* 收中断: 每字节进中断写入环形缓冲 */
-    USART_ITConfig(UART4, USART_IT_RXNE, ENABLE);
-    NVIC_SetPriority(UART4_IRQn, 3);
-    NVIC_EnableIRQ(UART4_IRQn);
+    USART_ITConfig(USART3, USART_IT_RXNE, ENABLE);
+    NVIC_SetPriority(USART3_IRQn, 3);
+    NVIC_EnableIRQ(USART3_IRQn);
 
-    USART_Cmd(UART4, ENABLE);
+    USART_Cmd(USART3, ENABLE);
 
     s_rxHead = 0; s_rxTail = 0; s_txBusy = 0;
 }
 
 void UHF_HL_DeInit(void)
 {
-    USART_Cmd(UART4, DISABLE);
-    NVIC_DisableIRQ(UART4_IRQn);
-    USART_DeInit(UART4);
+    USART_Cmd(USART3, DISABLE);
+    NVIC_DisableIRQ(USART3_IRQn);
+    USART_DeInit(USART3);
     GPIO_ResetBits(UHF_HL_EN_PORT, UHF_HL_EN_PIN);
 }
 
-/* UART4 接收中断: RXNE -> 环形缓冲 (覆盖旧数据, 无阻塞) */
-void UART4_IRQHandler(void)
+/* USART3 接收中断: RXNE -> 环形缓冲 (覆盖旧数据, 无阻塞) */
+void USART3_IRQHandler(void)
 {
-    if (USART_GetITStatus(UART4, USART_IT_RXNE) != RESET) {
-        uint8_t b = (uint8_t)(UART4->DR & 0xFF);
+    if (USART_GetITStatus(USART3, USART_IT_RXNE) != RESET) {
+        uint8_t b = (uint8_t)(USART3->DR & 0xFF);
         uint16_t next = (uint16_t)((s_rxHead + 1) % UHF_HL_RX_BUF_SIZE);
         if (next != s_rxTail) {                 /* 非满才写入 */
             s_rxBuf[s_rxHead] = b;
             s_rxHead = next;
         }
     }
-    if (USART_GetITStatus(UART4, USART_IT_TXE) != RESET) {
-        USART_ClearITPendingBit(UART4, USART_IT_TXE);
+    if (USART_GetITStatus(USART3, USART_IT_TXE) != RESET) {
+        USART_ClearITPendingBit(USART3, USART_IT_TXE);
     }
 }
 
@@ -145,10 +165,10 @@ void UHF_HL_SetAntenna(uint8_t idx)
 static int uart_send_byte(uint8_t b, uint32_t timeoutMs)
 {
     uint32_t t0 = SysTickHl_GetMs();
-    while (USART_GetFlagStatus(UART4, USART_FLAG_TXE) == RESET) {
+    while (USART_GetFlagStatus(USART3, USART_FLAG_TXE) == RESET) {
         if ((SysTickHl_GetMs() - t0) >= timeoutMs) return -1;
     }
-    USART_SendData(UART4, b);
+    USART_SendData(USART3, b);
     return 0;
 }
 
@@ -186,7 +206,7 @@ void UHF_HL_SendFrame(uint8_t cmd, const uint8_t *data, uint16_t len)
 
     /* 等待 TDR 完全移位送出 (TC) */
     t0 = SysTickHl_GetMs();
-    while (USART_GetFlagStatus(UART4, USART_FLAG_TC) == RESET) {
+    while (USART_GetFlagStatus(USART3, USART_FLAG_TC) == RESET) {
         if ((SysTickHl_GetMs() - t0) >= 100u) break;
     }
     s_txBusy = 0;
@@ -253,8 +273,12 @@ int UHF_HL_RecvFrame(uint8_t *cmd, uint16_t *status,
 
         if (cmd)    *cmd = tmp[2];
         if (status) *status = (uint16_t)((tmp[3] << 8) | tmp[4]);
-        /* 数据 = tmp[5 .. total-3-1] */
-        uint16_t dlen = dataLen - 2u;
+        s_lastRawDataLen = dataLen;
+        s_lastRawCmd     = tmp[2];
+        /* Data = tmp[5 .. total-3-1]; 即响应 Data 字段 (不含 2 字节 Status Code).
+         * 注: 帧内 Data Length 只计实际 Data 字段, 不含 Status Code (见协议 3.1),
+         * 故响应 Data = dataLen 字节, 不再减 2. */
+        uint16_t dlen = dataLen;
         if (dlen > UHF_HL_DATA_MAX) dlen = UHF_HL_DATA_MAX;
         if (data && dlen) for (uint16_t i = 0; i < dlen; i++) data[i] = tmp[5 + i];
         if (len) *len = dlen;
@@ -275,14 +299,21 @@ int UHF_HL_Transact(uint8_t cmd, const uint8_t *tx, uint16_t txLen,
     UHF_HL_RxFlush();
 
     UHF_HL_SendFrame(cmd, tx, txLen);
-    int r = UHF_HL_RecvFrame(&respCmd, &respStatus, rx, &respLen, timeoutMs);
+    /* cmd 不符的响应帧 = 被中止操作的迟到回包 (如中止扫描后模块补发的 0x22
+     * 响应), 丢弃并继续在剩余时限内等本请求的响应, 不立即判链路故障 */
+    uint32_t t0 = SysTickHl_GetMs();
+    int r;
+    for (;;) {
+        uint32_t elapsed = SysTickHl_GetMs() - t0;
+        if (elapsed >= timeoutMs) { r = UHF_HL_LINK_TIMEOUT; break; }
+        respLen = 0;
+        r = UHF_HL_RecvFrame(&respCmd, &respStatus, rx, &respLen, timeoutMs - elapsed);
+        if (r != 0) break;
+        if (respCmd == cmd) break;
+    }
     if (r != 0) {
         if (rxLen) *rxLen = 0;
         return r;
-    }
-    if (respCmd != cmd) {
-        if (rxLen) *rxLen = 0;
-        return UHF_HL_LINK_BAD_CRC;
     }
     if (rxStatus) *rxStatus = respStatus;
     if (rxLen)    *rxLen = respLen;
@@ -330,7 +361,7 @@ void UHF_HL_SendExt(uint16_t subCmd, const uint8_t *data, uint16_t len)
     (void)uart_send_byte((uint8_t)(crc & 0xFF), 50);
 
     t0 = SysTickHl_GetMs();
-    while (USART_GetFlagStatus(UART4, USART_FLAG_TC) == RESET) {
+    while (USART_GetFlagStatus(USART3, USART_FLAG_TC) == RESET) {
         if ((SysTickHl_GetMs() - t0) >= 100u) break;
     }
     s_txBusy = 0;

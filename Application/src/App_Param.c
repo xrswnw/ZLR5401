@@ -255,6 +255,7 @@ void AmParam_Default(AMUserCfg_t *cfg)
     cfg->phaseSync   = 0u;
     cfg->decodeVolt  = 1u;
     cfg->mode        = 0u;
+    cfg->mainsFreq   = 0u;
 }
 
 int AmParam_Load(AMUserCfg_t *cfg)
@@ -273,6 +274,7 @@ int AmParam_Load(AMUserCfg_t *cfg)
         cfg->phaseSync   = (uint16_t)(((uint16_t)u[12] << 8) | u[13]);
         cfg->decodeVolt  = u[14];
         cfg->mode        = u[15];
+        cfg->mainsFreq   = u[16];   /* v1 追加字段, 旧记录为 0 */
         return 0;
     }
     return -1;
@@ -299,5 +301,6 @@ int AmParam_Save(const AMUserCfg_t *cfg)
     u[13] = (uint8_t)(cfg->phaseSync & 0xFF);
     u[14] = cfg->decodeVolt;
     u[15] = cfg->mode;
+    u[16] = cfg->mainsFreq;
     return ParamSave(&g_sParam);
 }

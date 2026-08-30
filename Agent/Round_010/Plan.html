@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_010 — RGB 三色灯带解锁流程状态指示 设计方案</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1060px; margin:0 auto; padding:24px 28px 60px;}
+  .toc{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 22px;
+       box-shadow:0 1px 4px rgba(11,42,74,.06);}
+  .toc b{color:var(--navy);}
+  .toc ol{margin:8px 0 0; padding-left:20px;}
+  .toc li{margin:3px 0; font-size:14px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:40px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:12.5px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:12.5px; line-height:1.55;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-left:5px solid var(--sky);
+        border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .ok{border-left:5px solid var(--green);}
+  .warn{border-left:5px solid var(--gold);}
+  .bad{border-left:5px solid var(--red);}
+  .tag{display:inline-block; padding:1px 8px; border-radius:10px; font-size:11.5px;
+       color:#fff; background:var(--blue); margin-right:4px;}
+  .tag.g{background:var(--green);}
+  .tag.y{background:var(--gold);}
+  .tag.r{background:var(--red);}
+  .tag.b{background:#5b7a9a;}
+  .tag.p{background:#8e44ad;}
+  ul,ol{font-size:14px;}
+  li{margin:4px 0;}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+        color:var(--muted); font-size:12px; text-align:center;}
+  .flow{display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px; margin:10px 0;}
+  .flow .step{background:#fff; border:1.5px solid var(--blue); color:var(--blue);
+              border-radius:6px; padding:3px 10px; font-weight:600;}
+  .flow .arrow{color:var(--muted);}
+  .dot{display:inline-block; width:12px; height:12px; border-radius:3px;
+       vertical-align:-1px; margin-right:5px; border:1px solid rgba(0,0,0,.2);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>Round_010 — RGB 三色灯带 · 解锁流程状态指示设计方案</h1>
+  <div class="sub">ZLR5401 开锁器 · 纯方案轮（不改代码）· 2026-08-30 · 依据 Agent/Round_010/Demand.md</div>
+</div>
+<div class="wrap">
+
+<div class="toc">
+<b>目录</b>
+<ol>
+  <li>背景与需求</li>
+  <li>解锁相关流程总览（现状代码梳理）</li>
+  <li>现有灯光指示盘点与问题</li>
+  <li>用户视角分析（普通人需要知道什么）</li>
+  <li>灯语设计方案（颜色语义 / 状态映射 / 降级 / 优先级）</li>
+  <li>实现方案（新模块 + 集成点）</li>
+  <li>验证方案</li>
+  <li>风险与待决策点</li>
+  <li>相关建议</li>
+  <li>范围边界（本轮不做的事）</li>
+</ol>
+</div>
+
+<h2>1. 背景与需求</h2>
+<p>设备实际外设灯带为 <b>RGB 三色（高电平点亮，无调光）</b>，可组合出 <b>7 种亮色 + 熄灭 = 8 种状态</b>：
+红、绿、蓝、黄(红+绿)、青(绿+蓝)、紫/粉红(红+蓝)、白(红+绿+蓝)、灭。</p>
+<p>当前固定逻辑仅为需求约定的两条：<b>硬标签匹配 → 绿灯常亮 + 升起开锁</b>；<b>失配 → 红灯闪烁且不升起</b>。本方案要把灯带扩展为整个解锁流程的<b>状态指示器</b>，以<b>不懂设备的普通人</b>的直觉为最高优先：直观、简洁、一眼看懂"现在轮到我做什么 / 我做对了没 / 完事了没 / 是不是坏了"。</p>
+<div class="card warn">
+<b>硬件前提（影响全方案）：</b>蓝灯位 <code>PA7</code> 仅为<b>占位</b>（原蓝脚 PA6 已改作 USB_EN，板上尚未接蓝色 LED），
+当前物理可见的颜色只有 <b>红(PA5)、绿(PA4)、黄(红+绿)</b> 三种。
+所有用到蓝分量的图样（白/青/紫）均附<b>无蓝灯降级表</b>（见 5.3），并强烈建议先补齐蓝灯硬件（见第 9 节）。
+</div>
+
+<h2>2. 解锁相关流程总览</h2>
+
+<h3>2.1 流程 A：Locker 结账编排（主业务，非阻塞状态机）</h3>
+<p>代码：<code>App_Locker.c</code>，主循环 <code>App_Locker_Process()</code> 驱动。上位机下发「硬标签 EPC 清单（m 个）+ 软标数量（N）」后 START 激活：</p>
+<div class="flow">
+  <span class="step">IDLE 待机</span><span class="arrow">→</span>
+  <span class="step">CONFIGURED 扫描比对</span><span class="arrow">→(首匹配)</span>
+  <span class="step">UNLOCK_HOLD 升起保持</span><span class="arrow">→(m==n)</span>
+  <span class="step">SOFT_DECODE 软标解码</span><span class="arrow">→(N 用尽)</span>
+  <span class="step">DONE 结账完成(5s)</span><span class="arrow">→</span>
+  <span class="step">LOWERING 回降</span><span class="arrow">→</span>
+  <span class="step">IDLE</span>
+</div>
+<ul>
+  <li><b>CONFIGURED / UNLOCK_HOLD 中</b>：UHF 连续盘点 → 每读到一张标签与清单比对：
+    清单内且未解锁 → <code>MATCH_OK</code>（首张立即寻触升起至 KEY_UP）；清单内已解锁 → 静默忽略；<b>清单外 → <code>MISMATCH</code>（红闪 3s，不升起）</b>。</li>
+  <li><b>SOFT_DECODE</b>：磁块保持升起，等待软标（AM 解码器/红外侧）逐个消耗解码次数，上位机 <code>CONSUME_SOFT</code> 或消磁事件驱动；兜底窗口 5min。</li>
+  <li><b>任意运行态</b>：阶段超时 / <code>CANCEL</code> → LOWERING 回降 → IDLE；电机/链路故障 → <b>FAULT（ERR 常亮，CANCEL 可退出）</b>。</li>
+</ul>
+
+<h3>2.2 流程 B：OneShot 单标签同步开锁（协议触发，阻塞式）</h3>
+<p>代码：<code>App_LockerOneShot.c</code>，上位机一条命令发起的"同步"流程，与流程 A 互斥：</p>
+<div class="flow">
+  <span class="step">PRECHK 前置检查</span><span class="arrow">→</span>
+  <span class="step">UHF_READY</span><span class="arrow">→</span>
+  <span class="step">INVENTORY 盘点比对</span><span class="arrow">→(匹配)</span>
+  <span class="step">RISE 升起</span><span class="arrow">→</span>
+  <span class="step">HOLD 保持监控</span><span class="arrow">→(移走/消磁/超时)</span>
+  <span class="step">LOWER 回降</span><span class="arrow">→</span>
+  <span class="step">完成</span>
+</div>
+<ul>
+  <li>盘点无标签 / EPC 失配 → 立即回帧结束（<code>NO_TAG</code> / <code>MISMATCH</code>），不升起。</li>
+  <li>HOLD 段期望标签在场持续监控，结束原因：标签移走 / 标签被换 / 消磁完成 / 保持超时 / UHF 失联 / CANCEL。</li>
+  <li>电机段失败统一走"安全回退至 KEY_DOWN"后上报（`MOTOR_FAULT`/`MOTOR_TIMEOUT`）。</li>
+</ul>
+
+<h3>2.3 周边状态（也会影响用户观感）</h3>
+<table>
+<tr><th>状态</th><th>来源</th><th>持续时间</th><th>用户是否需要感知</th></tr>
+<tr><td>上电回零 Homing</td><td><code>App_MotorHoming_Run()</code>（main 启动阻塞，≤3 次重试）</td><td>数秒</td><td>不需要，但"开机有点动静"能增加信心</td></tr>
+<tr><td>上电自检 POST</td><td><code>App_BootSelfTest_Run()</code>（蜂鸣 500ms）</td><td>0.5s</td><td>需要（"活了吗"）</td></tr>
+<tr><td>行程开关错误（锁存）</td><td><code>App_Stepper_GetSwitchErr()</code> 位0/位1</td><td>锁存至清除</td><td><b>维修级</b>，须最显眼（现有黄/粉红 500ms 闪）</td></tr>
+<tr><td>行程测试 MotorTest</td><td><code>App_MotorTest</code>（TEST 指令触发）</td><td>测试期间</td><td>维修级，普通用户不可见最好</td></tr>
+<tr><td>IR 光电检测 + 蜂鸣</td><td><code>App_IrBuzzer_Process()</code>（PC4 高→100ms 周期响）</td><td>触发期间</td><td>已有独立表达，不动</td></tr>
+<tr><td>UHF 单独读写/扫描（协议直控）</td><td><code>App_UHF</code> INVENTORY/READ/WRITE/SCAN</td><td>操作期间</td><td>维修/上位机侧，低优先</td></tr>
+<tr><td>AM 消磁事件（成功/失败）</td><td><code>App_AM_GetDeactState()</code>（cmd17 突发分类）</td><td>事件瞬态</td><td>软标阶段核心反馈</td></tr>
+</table>
+
+<h2>3. 现有灯光指示盘点与问题</h2>
+
+<h3>3.1 灯光硬件资源</h3>
+<table>
+<tr><th>灯</th><th>引脚</th><th>驱动能力</th><th>现职责</th></tr>
+<tr><td>RUN 呼吸灯</td><td>PA2（TIM3 软 PWM）</td><td>可调光（伽马²呼吸 3s 周期）</td><td>常驻心跳"设备活着"，与业务无关</td></tr>
+<tr><td>ERR 灯</td><td>PA3（GPIO）</td><td>仅亮/灭</td><td>MISMATCH 红 3s 闪 / FAULT 常亮 / 按键诊断闪</td></tr>
+<tr><td>RGB 灯带</td><td>G=PA4, R=PA5, B=PA7(占位)</td><td>仅亮/灭（无调光）</td><td>行程开关错误 黄/粉红 500ms 闪（唯一用户）</td></tr>
+</table>
+
+<h3>3.2 现状与问题</h3>
+<table>
+<tr><th>#</th><th>问题</th><th>位置 / 说明</th></tr>
+<tr><td>P1</td><td><b>RGB 仲裁缺失</b>：无行程错误时 <code>AppLed_SwitchErrProcess()</code> 每个主循环拍把 RGB 强制清零</td><td><code>App_Led.c:138</code> — 任何其他来源设置的灯语在一个主循环周期（毫秒级）内即被抹掉，当前 RGB 实际只有"行程错误"一种表现</td></tr>
+<tr><td>P2</td><td><b>上位机 RGB 命令形同虚设</b>：<code>FC_RGB_CTRL/RGB_CMD_SET</code> 直接 <code>RgbLedHl_Set()</code>，随即被 P1 清零</td><td><code>App_Dispatch.c:969</code> — 调试用设色命令无法保持</td></tr>
+<tr><td>P3</td><td><b>蓝通道无硬件</b></td><td>PA7 占位无 LED → 白/青/紫/粉红均不可见；"粉红=下行程错"实际只亮红</td></tr>
+<tr><td>P4</td><td><b>ERR 灯语义混杂</b>：MISMATCH（业务"标签不对"）与 FAULT（设备坏了）共用 ERR 红灯，且与 RGB 红色语义重叠</td><td>普通用户无法区分"我放错了标签"和"机器坏了"</td></tr>
+<tr><td>P5</td><td><b>全程无"进行中"反馈</b>：扫描中/软标等待/回降中 RGB 全灭，与待机无异</td><td>用户不知道设备在等他做什么</td></tr>
+</table>
+
+<h2>4. 用户视角分析（站在什么都不懂的普通人角度）</h2>
+
+<h3>4.1 普通用户只想知道五件事</h3>
+<table>
+<tr><th>用户的问题</th><th>对应设备状态</th><th>现在的回答</th><th>重要性</th></tr>
+<tr><td>"① 设备开着吗、正常吗？"</td><td>IDLE / 健康</td><td>RUN 呼吸（已有，够用）</td><td>高（已有）</td></tr>
+<tr><td>"② 现在轮到我做什么？"</td><td>扫描等待 / 软标等待</td><td><b>没有任何提示（P5）</b></td><td><b>最高</b></td></tr>
+<tr><td>"③ 我刚才做的那下，对了吗？"</td><td>每张标签匹配 / 每次软标消耗</td><td>无逐次反馈（只有事件上报上位机）</td><td><b>高</b></td></tr>
+<tr><td>"④ 全部弄完了？可以走了吗？"</td><td>DONE 结账完成</td><td>无本地反馈</td><td><b>高</b></td></tr>
+<tr><td>"⑤ 是不是坏了？该找谁？"</td><td>FAULT / 行程错误</td><td>ERR 常亮 / 黄闪（可，但语义与 ① 混杂）</td><td>高（基本有）</td></tr>
+</table>
+<p><b>结论：</b>缺口集中在 <b>②③④</b> — 全部是"引导"类反馈；而 ①⑤ 已有基础。灯语设计的重心是<b>引导</b>，不是罗列内部状态机 phase（那是给维修/上位机的，协议查询已有）。</p>
+
+<h3>4.2 简洁性原则（普通人约束）</h3>
+<div class="card">
+<ul>
+  <li>普通人稳定记忆的灯语上限约 <b>3~4 种颜色语义</b>：绿=好/正常、红=不对/坏了、白(蓝缺降级黄)=正在等下一种动作、灭=没事发生。其余一律用<b>闪烁节奏</b>区分，不用新颜色。</li>
+  <li>同一时刻<b>只亮一个图样</b>。绝不用"两种颜色各闪各的"表达两个信息——普通人读不出，维修信息走调试通道。</li>
+  <li>颜色语义必须<b>单调递进</b>：过程中 ≤ 引导色，完成才给绿，错误只给红。绝不在过程中亮绿常亮以外的"奖励色"。</li>
+  <li>动作性反馈（每成功一张闪一下）时长 <b>≤300ms</b>，不与稳态引导冲突。</li>
+</ul>
+</div>
+
+<h2>5. 灯语设计方案</h2>
+
+<h3>5.1 颜色语义总表（8 种状态）</h3>
+<table>
+<tr><th>显示</th><th>掩码</th><th>语义（普通人口径）</th><th>备注</th></tr>
+<tr><td><span class="dot" style="background:#e8e8e8"></span>灭</td><td><code>0</code></td><td>待机/无需关注我</td><td>与 RUN 呼吸并存</td></tr>
+<tr><td><span class="dot" style="background:#2ecc40"></span>绿</td><td><code>G</code></td><td><b>好</b>：匹配成功、开锁中、结账完成</td><td>核心正反馈色</td></tr>
+<tr><td><span class="dot" style="background:#e74c3c"></span>红</td><td><code>R</code></td><td><b>不对</b>：标签失配；<b>坏了</b>：故障（配合闪烁/常亮区分）</td><td>核心负反馈色</td></tr>
+<tr><td><span class="dot" style="background:#f1c40f"></span>黄</td><td><code>G+R</code></td><td>机械复位/回零中（专业信号）；白/青的降级色</td><td>勿用于用户引导主色</td></tr>
+<tr><td><span class="dot" style="background:#ecf0f1;border-color:#999"></span>白</td><td><code>G+R+B</code></td><td><b>正在等软标（红外/消磁）动作</b></td><td><b>需蓝灯硬件</b></td></tr>
+<tr><td><span class="dot" style="background:#22d3ee"></span>青</td><td><code>G+B</code></td><td>正在 EPC 扫描（等你放硬标签）</td><td><b>需蓝灯硬件</b></td></tr>
+<tr><td><span class="dot" style="background:#e879f9"></span>紫/粉红</td><td><code>R+B</code></td><td>下行程开关错误（现有，保留）</td><td><b>需蓝灯硬件</b>（缺蓝时只见红）</td></tr>
+<tr><td><span class="dot" style="background:#3b82f6"></span>蓝</td><td><code>B</code></td><td>不单独使用（保留给硬件自检演示）</td><td>上电自检彩虹步骤用</td></tr>
+</table>
+
+<h3>5.2 完整状态—图样映射表（设计目标）</h3>
+<table>
+<tr><th>序</th><th>场景（状态/事件）</th><th>图样</th><th>用户读作</th><th>优先级</th></tr>
+<tr><td>0</td><td>行程开关错误（上/下，锁存）</td><td>黄 500ms 闪 / 粉红 500ms 闪（两路交替）——<b>沿用现状</b></td><td>"这机器在报修，别用，找工作人员"</td><td><b>L1 维修级（最高）</b></td></tr>
+<tr><td>1</td><td>FAULT（电机/UHF 链路故障）</td><td><b>红常亮</b>（ERR 灯同步常亮）</td><td>"坏了，找工作人员"</td><td>L2</td></tr>
+<tr><td>2</td><td>行程测试 MotorTest 运行</td><td>黄 2Hz 快闪</td><td>（仅维修场景）"测试进行中"</td><td>L3</td></tr>
+<tr><td>3</td><td>上电自检 POST（一次性）</td><td>红→绿→蓝 各 150ms 依次点亮（彩虹自检）后灭</td><td>"它醒了，灯是好的"</td><td>L3（仅开机一次）</td></tr>
+<tr><td>4</td><td>上电回零 Homing（阻塞数秒）</td><td>黄 1s 慢闪（回零完成即结束）</td><td>"开机器有点动静"（可选，见 8.3 决策点）</td><td>L4</td></tr>
+<tr><td>5</td><td><b>EPC 扫描等待硬标签</b>（流程 A：CONFIGURED / UNLOCK_HOLD 盘点轮转；流程 B：INVENTORY 之前 UHF_READY/盘点中）</td><td><b>青色 1s 慢闪</b>（亮 500/灭 500）</td><td><b>"在等我放硬标签"</b>（需求点②）</td><td>L5</td></tr>
+<tr><td>6</td><td><b>单张硬标签匹配成功</b>（<code>MATCH_OK</code> 事件，一次性）</td><td><b>绿色单闪 200ms</b> 后回落青色慢闪</td><td><b>"这张对了"·每对一张给一次正反馈</b>（需求点③）</td><td>闪显叠加（见 5.5）</td></tr>
+<tr><td>7</td><td>首匹配触发升起（M_RISE / OneShot RISE）</td><td><b>绿常亮</b>（升起到位后维持）</td><td>"正在开锁/已开锁"（需求固定逻辑）</td><td>L5</td></tr>
+<tr><td>8</td><td>MISMATCH 失配（不升起）</td><td><b>红 250ms 半周期快闪，持续 3s</b>（沿用现有节奏，迁到 RGB；ERR 灯同步与否见 8.3）</td><td>"这张标签不对，换一张"（需求固定逻辑）</td><td>L5</td></tr>
+<tr><td>9</td><td><b>软标等待</b>（流程 A：SOFT_DECODE；流程 B：HOLD 段消磁请求中）</td><td><b>白常亮</b>（需求点：等待红外显示白）</td><td><b>"轮到软标签了，放到解码板/红外上"</b>（需求点②）</td><td>L5</td></tr>
+<tr><td>10</td><td><b>单次软标消耗成功</b>（<code>SOFT_USED</code> / AM 消磁成功事件，一次性）</td><td><b>白单闪 200ms</b> 后回落白常亮</td><td><b>"这一个弄好了，还剩 ×× 个"·逐次反馈</b>（需求点③）</td><td>闪显叠加</td></tr>
+<tr><td>11</td><td>AM 消磁失败事件（一次性）</td><td>红双闪（250ms×2）后回落白常亮</td><td>"这个软标没消掉，重放/换一个"</td><td>闪显叠加</td></tr>
+<tr><td>12</td><td><b>DONE 结账完成</b>（停留 5s）</td><td><b>绿三连闪</b>（亮 300/灭 300 ×3）后转灭，随 LOWERING</td><td><b>"全部完成，可以走了"</b>（需求点④）</td><td>L5</td></tr>
+<tr><td>13</td><td>LOWERING 回降中（含 CANCEL/超时回退段）</td><td>灭</td><td>无需关注（机械自行复位）</td><td>L5</td></tr>
+<tr><td>14</td><td>OneShot 电机段失败安全回退中</td><td>黄 2Hz 快闪（回退完成即结束）</td><td>"正在安全复位，稍等"</td><td>L5</td></tr>
+<tr><td>15</td><td>IDLE 待机 / 无任务</td><td>灭（RUN 呼吸已有"活着"表达）</td><td>正常，不用管</td><td>L6（最低稳态）</td></tr>
+<tr><td>16</td><td>上位机 <code>FC_RGB_CTRL</code> 手动设色（调试）</td><td>按命令掩码常亮（仅 IDLE 接受；10s 无续命自动回收，见 8.3）</td><td>（仅测试用）</td><td>L5.5（手动覆盖）</td></tr>
+</table>
+
+<h4>5.2.1 主线时序示例（流程 A 完整结账）</h4>
+<div class="flow">
+  <span class="step" style="border-color:#22d3ee;color:#0891b2">青慢闪·等你放硬标签</span><span class="arrow">→</span>
+  <span class="step" style="border-color:#2ecc40;color:#1e8e5a">绿闪×1·这张对了</span><span class="arrow">→</span>
+  <span class="step" style="border-color:#2ecc40;color:#1e8e5a">绿常亮·开锁中</span><span class="arrow">→</span>
+  <span class="step" style="border-color:#ecf0f1;color:#666">白常亮·轮到软标</span><span class="arrow">→</span>
+  <span class="step" style="border-color:#ecf0f1;color:#666">白闪×N·逐个完成</span><span class="arrow">→</span>
+  <span class="step" style="border-color:#2ecc40;color:#1e8e5a">绿三连闪·结账完成</span><span class="arrow">→</span>
+  <span class="step" style="border-color:#999;color:#777">灭·回降复位</span>
+</div>
+<p>失配插曲（任意扫描段）：<span class="dot" style="background:#e74c3c"></span>红快闪 3s → 回到青慢闪，磁块始终不动。</p>
+
+<h3>5.3 无蓝灯降级表（当前硬件实际可见效果）</h3>
+<table>
+<tr><th>目标图样</th><th>无蓝灯时降级</th><th>说明</th></tr>
+<tr><td>白常亮（软标等待）</td><td><b>黄慢闪 1s</b>（区别于黄常亮的"维修中"）</td><td>黄=红+绿同亮，PA7 缺席正好只剩黄</td></tr>
+<tr><td>白单闪（软标消耗）</td><td>黄单闪 200ms</td><td>同上</td></tr>
+<tr><td>青慢闪（扫描等待）</td><td><b>绿慢闪 1s</b></td><td>绿慢闪=等；绿常亮=已开锁，节奏区分</td></tr>
+<tr><td>粉红 500ms 闪（下行程错，现状）</td><td>只见红 500ms 闪（现状即如此）</td><td>与"红=失配"混淆风险低：行程错误为持续锁存且常驻，失配只闪 3s</td></tr>
+<tr><td>POST 蓝步骤 150ms</td><td>跳过蓝步骤（红→绿）</td><td>同时顺带验证蓝灯硬件是否已补</td></tr>
+</table>
+<p>降级表在代码中以<b>编译期双色表</b>实现（<code>RGB_HAS_BLUE</code> 宏开关，补上蓝灯硬件后置 1 即全量生效，无须重写逻辑）。</p>
+
+<h3>5.4 优先级仲裁（解决 P1/P2）</h3>
+<p>全部图样收编进<b>唯一的仲裁器</b>，每拍（~10ms）按以下顺序取"当前应显示图样"，直接写 <code>RgbLedHl_Set()</code>：</p>
+<table>
+<tr><th>优先级</th><th>来源</th><th>说明</th></tr>
+<tr><td>L1</td><td>行程开关错误（<code>App_Stepper_GetSwitchErr()</code>）</td><td>保留现有黄/粉红逻辑原样迁入</td></tr>
+<tr><td>L2</td><td>FAULT / 红常亮</td><td>Locker FAULT 态 + OneShot 电机失败后置位</td></tr>
+<tr><td>L3</td><td>维修/自检一次性（MotorTest 黄闪、POST 彩虹、Homing 黄慢闪）</td><td>一次性图样自带时限</td></tr>
+<tr><td>L5</td><td>业务稳态（Locker / OneShot 当前状态映射）</td><td>两流程互斥（前置检查保证），不会竞争</td></tr>
+<tr><td>L5.5</td><td>手动覆盖（<code>FC_RGB_CTRL</code>，仅 IDLE，10s 回收）</td><td>调试用途</td></tr>
+<tr><td>L6</td><td>OFF（默认）</td><td>所有来源都无请求时灭</td></tr>
+</table>
+<p>稳态请求以<b>申请—持有</b>方式表达：各流程在状态迁移点调用 <code>App_RgbLedPat_Set(图样ID)</code>，仲裁器只看"当前最高优先级的持有者"。</p>
+
+<h3>5.5 一次性闪显（事件叠加）机制</h3>
+<p>"每匹配一张闪一下绿"这类<b>瞬时确认</b>不能打断稳态引导（青慢闪/白常亮），设计为叠加闪显队列（深度 1）：</p>
+<ul>
+<li>事件发生 → 记录 <code>s_flashPat</code>（图样）+ <code>s_flashUntilMs</code>（now+200~900ms，N 连闪按图样时长算）；</li>
+<li>闪显窗口内仲裁器优先输出闪显图样，窗口结束自动回落稳态；</li>
+<li>新事件在闪显进行中到来 → 覆盖旧闪显重新计时（同类事件高频时表现为连续快闪，恰好是"连续成功"的直观表达）；</li>
+<li>MISMATCH 的"3s 红闪"也用同一机制（时长 3s），与现状行为一致。</li>
+</ul>
+
+<h2>6. 实现方案（代码骨架，供审阅，本轮不落地）</h2>
+
+<h3>6.1 新模块 <code>App_RgbLed_Pattern</code></h3>
+<pre><code>Application/inc/App_RgbLed_Pattern.h
+Application/src/App_RgbLed_Pattern.c
+
+/* 图样 ID（仲裁输入，编号即优先级组） */
+enum {
+    RGBPAT_OFF = 0,          /* L6 默认 */
+    RGBPAT_MANUAL,           /* L5.5 上位机手动(仅IDLE, 10s回收) */
+    RGBPAT_SCAN_WAIT,        /* L5 青慢闪 / 降级绿慢闪 */
+    RGBPAT_RISE_HOLD_GREEN,  /* L5 绿常亮 (升起/保持) */
+    RGBPAT_SOFT_WAIT_WHITE,  /* L5 白常亮 / 降级黄慢闪 */
+    RGBPAT_HOMING_SLOW,      /* L4 黄1s慢闪 */
+    RGBPAT_TEST_FAST,        /* L3 黄2Hz (MotorTest/安全回退) */
+    RGBPAT_FAULT_SOLID,      /* L2 红常亮 */
+    RGBPAT_SWERR,            /* L1 行程错误(沿用旧逻辑) */
+    /* 一次性闪显(独立通道, 叠加在任意稳态上) */
+    RGBFLASH_MATCH_OK,       /* 绿200ms */
+    RGBFLASH_SOFT_OK,        /* 白200ms / 黄200ms */
+    RGBFLASH_SOFT_FAIL,      /* 红双闪 */
+    RGBFLASH_MISMATCH_3S,    /* 红3s快闪(迁移现有逻辑) */
+    RGBFLASH_DONE_3GREEN,    /* 绿三连闪 */
+};
+
+void App_RgbLedPat_Init(void);
+void App_RgbLedPat_Tick(void);      /* 主循环 + one_pump 每~10ms 调用 */
+void App_RgbLedPat_Set(uint8_t id); /* 稳态申请/撤销(OFF) */
+void App_RgbLedPat_Flash(uint8_t id); /* 一次性闪显入队 */
+void App_RgbLedPat_Manual(uint8_t mask, uint8_t holdSec); /* FC_RGB_CTRL 入口 */
+</code></pre>
+
+<h3>6.2 图样引擎（纯查表，无调光）</h3>
+<pre><code>/* 图样描述: 周期内亮/灭掩码序列, 简化为 (onMask, offMask, periodMs, dutyPct, repeatCnt) */
+static const PatDesc_t s_patTab[] = {
+    /* id                 onMask      offMask  period duty rep */
+    [RGBPAT_SCAN_WAIT]  = { C_CYAN,    0,      1000, 50,  0 /*∞*/ },
+    [RGBPAT_SOFT_WAIT_WHITE] = { C_WHITE, 0,    0,    100, 0 },
+    ...
+};
+void App_RgbLedPat_Tick(void)
+{
+    uint32_t now = SysTickHl_GetMs();
+    /* 推进相位(整秒回绕安全: 差值式) */
+    /* 1) L1 行程错误: 读 App_Stepper_GetSwitchErr(), 迁移 App_Led.c 旧逻辑 */
+    /* 2) 闪显窗口有效 -> 输出闪显图样 */
+    /* 3) 否则取最高优先级稳态持有者 -> 输出 */
+    RgbLedHl_Set(currentOn ? maskOn : maskOff);
+}
+</code></pre>
+
+<h3>6.3 集成点改动清单（文件级，全部为下轮实施内容）</h3>
+<table>
+<tr><th>文件</th><th>改动</th><th>性质</th></tr>
+<tr><td><code>App_RgbLed_Pattern.c</code>（新增）</td><td>仲裁器 + 图样表 + 闪显队列</td><td>新模块 ~150 行</td></tr>
+<tr><td><code>main.c</code></td><td>初始化处加 <code>App_RgbLedPat_Init()</code>；主循环用 <code>App_RgbLedPat_Tick()</code> <b>替换</b> <code>AppLed_SwitchErrProcess()</code>（逻辑已迁入）</td><td>两行级</td></tr>
+<tr><td><code>App_Locker.c</code></td><td><code>set_state()</code> 处按状态映射设图样（CONFIGURED/HOLD→SCAN_WAIT，RISE 完成后→GREEN，SOFT→WHITE，DONE→闪显 DONE 后 OFF，FAULT→FAULT_SOLID）；<code>evr_push(MATCH_OK/SOFT_USED)</code> 处加闪显；<code>red_blink_maintain()</code> 删除、由闪显通道取代</td><td>中</td></tr>
+<tr><td><code>App_LockerOneShot.c</code></td><td><code>one_pump()</code> 内加 <code>App_RgbLedPat_Tick()</code>；<code>s_phase</code> 迁移点设图样（INVENTORY→SCAN_WAIT，RISE→GREEN，HOLD→WHITE，电机失败回退→TEST_FAST）</td><td>小</td></tr>
+<tr><td><code>App_Dispatch.c</code></td><td><code>FC_RGB_CTRL/RGB_CMD_SET</code> 改走 <code>App_RgbLedPat_Manual()</code>（修 P2，协议帧格式不变）</td><td>小</td></tr>
+<tr><td><code>App_MotorTest.c</code> / <code>App_MotorHoming.c</code></td><td>运行期申请 TEST_FAST / HOMING_SLOW</td><td>小</td></tr>
+<tr><td><code>App_BootSelfTest.c</code></td><td>POST 加彩虹一次性图样（红→绿→蓝各 150ms）</td><td>小</td></tr>
+<tr><td><code>App_Config.h</code></td><td>新增 <code>RGB_HAS_BLUE</code>（0=当前硬件，1=补蓝灯后）、手动覆盖时长等参数宏</td><td>小</td></tr>
+</table>
+
+<h2>7. 验证方案（下轮实施后执行）</h2>
+<table>
+<tr><th>#</th><th>用例</th><th>期望</th></tr>
+<tr><td>V1</td><td>上电观察（≤10s 内）</td><td>POST 彩虹 → Homing 黄慢闪 → IDLE 灭 + RUN 呼吸</td></tr>
+<tr><td>V2</td><td>CONFIGURE+START 后不放标签</td><td>青慢闪持续（无蓝时绿慢闪），首匹配前磁块不动</td></tr>
+<tr><td>V3</td><td>放入清单内标签一张一张取走</td><td>每张绿单闪一次；首张起绿常亮+升起</td></tr>
+<tr><td>V4</td><td>放入清单外标签</td><td>红快闪 3s，不升起，之后回青慢闪</td></tr>
+<tr><td>V5</td><td>软标阶段逐个消磁（AM cmd17 单帧事件）</td><td>白常亮中每成功一个白单闪；全部用尽绿三连闪后灭</td></tr>
+<tr><td>V6</td><td>状态查询协议 <code>LOCKER_SUB_QUERY</code> 全程核对</td><td>灯语与状态机一致（同拍无错位）</td></tr>
+<tr><td>V7</td><td>触发 FAULT（如断开 UHF 模块）</td><td>红常亮覆盖业务图样；CANCEL 后回 IDLE 灭</td></tr>
+<tr><td>V8</td><td>置位行程开关错误（维修模式）</td><td>黄/粉红 500ms 闪压过一切图样；清零后恢复</td></tr>
+<tr><td>V9</td><td>上位机 <code>FC_RGB_CTRL</code> 设色（IDLE 与运行中各试）</td><td>IDLE 下持续 10s 后自动回收；运行中直接回 BUSY/PARAM（拒绝）</td></tr>
+<tr><td>V10</td><td>OneShot 全流程（含 CANCEL 打断与电机失败回退）</td><td>阻塞期间图样照常推进（one_pump 内 Tick 生效）；回退段黄快闪</td></tr>
+<tr><td>V11</td><td>长时间老化（1h 待机+RUN 呼吸）</td><td>无异常重启（IWDG 正常喂狗）、灯语无漂移</td></tr>
+</table>
+
+<h2>8. 风险与待决策点</h2>
+<table>
+<tr><th>#</th><th>风险/决策点</th><th>建议</th></tr>
+<tr><td>R1</td><td><b>蓝灯硬件缺失</b>（P3）：白/青/紫全部不可见，本方案三个核心引导图样都依赖蓝分量</td><td>两步走：先按降级表上线（绿慢闪/黄慢闪/黄闪，直觉性已够 80%），同时尽快补 PA7 蓝灯硬件，置 <code>RGB_HAS_BLUE=1</code> 后白/青全量生效</td></tr>
+<tr><td>D1</td><td><b>MISMATCH 时 ERR 灯(PA3) 是否同步红闪</b>：现状 ERR 闪 3s；若 RGB 红闪已足够，ERR 保持灭可把"ERR=设备级故障"语义让干净（修 P4）</td><td>建议：MISMATCH 只用 RGB 红；FAULT 才 ERR 常亮 + RGB 红常亮。<b>需用户确认（属行为变更）</b></td></tr>
+<tr><td>D2</td><td><b>手动设色回收策略</b>：10s 自动回收 vs 仅 IDLE 可设 vs 运行中拒绝</td><td>建议取"仅 IDLE + 10s 回收"（V9 口径），兼顾调试便利与业务安全</td></tr>
+<tr><td>D3</td><td><b>Homing 黄慢闪是否保留</td><td>保留（成本低、增加"开机自检"信心）；若嫌开机灯语过多可与 POST 二选一</td></tr>
+<tr><td>R2</td><td>OneShot 阻塞期间主循环停转：图样推进依赖 <code>one_pump()</code> 加 Tick，漏加则该流程内灯语冻结</td><td>实施时 <code>one_pump</code> 第一行即 Tick；MotorHoming 阻塞回零同理（回零段直接黄常亮即可，不闪，规避节拍依赖）</td></tr>
+<tr><td>R3</td><td>绿慢闪（降级扫描）与绿常亮（已开锁）仅节奏之差，色弱用户可能误读</td><td>绿慢闪周期取 1.5s 加大节奏差；补蓝灯后即消（青 vs 绿不同色）</td></tr>
+<tr><td>R4</td><td>闪显队列深度 1：极快连续事件互相覆盖</td><td>可接受——表现为连续快闪即"连续成功"直觉；不加深队列（保持简单）</td></tr>
+</table>
+
+<h2>9. 相关建议（需求允许范围内）</h2>
+<div class="card ok">
+<ul>
+<li><b>补齐蓝灯硬件（最优先建议）</b>：PA7 已预留，一颗蓝 LED 即可解锁白/青/紫三色。当前 8 色理论只有红/绿/黄 3 色可见，"等待红外=白色"的需求在硬件补齐前只能以黄/绿降级呈现。</li>
+<li><b>完成提示加一声蜂鸣</b>：结账完成时绿三连闪 + 蜂鸣"滴"一声（板载 PC12 蜂鸣器与 IR 检测逻辑已存在）。对普通人，<b>听觉的"完事了"比任何灯都直观</b>，且不强依赖蓝灯硬件。软标逐个成功如也配轻"嗒"声，收银节奏感极佳。</li>
+<li><b>RUN 呼吸灯维持现状</b>：专职"活着"心跳，不参与业务灯语——避免普通人在多个灯之间无所适从（三灯分工：RUN=活着，ERR=坏了，RGB=业务引导）。</li>
+<li><b>灯语表印在设备机身贴纸/说明书</b>：普通人 3 句话讲完——"绿色=正常，红色=不对，白/黄=正在处理中"。硬件无论怎么降级，这三句始终成立。</li>
+<li><b>协议侧零改动</b>：灯语纯本地，全部状态/事件本就经 <code>LOCKER_SUB_QUERY/GET_EVENT</code> 上报，上位机可视化与本地灯语互不依赖，可独立演进。</li>
+</ul>
+</div>
+
+<h2>10. 范围边界（本方案不做的事）</h2>
+<ul>
+<li>不改动 <code>RgbLedHl</code> 硬件层、不加 PWM 调光（灯带为开关型，呼吸交给 RUN 灯）。</li>
+<li>不改动协议帧格式（<code>FC_RGB_CTRL</code> 语义微调仅实现层，帧不变）。</li>
+<li>不处理 IR 光电+蜂鸣逻辑（已独立存在）；不处理 Boot 侧 LED（Boot 阶段无 RGB 需求）。</li>
+<li>不实现"剩余数量进度条"类花样（单色灯带无像素，闪烁计数普通人读不了；剩余数经上位机/事件查询）。</li>
+<li>本轮<b>只出方案不改代码</b>；实施按第 6 节清单另起一轮。</li>
+</ul>
+
+<div class="foot">
+ZLR5401 · Round_010 · 本文档为设计方案（未执行）· 依据 App_Locker.c / App_LockerOneShot.c / App_Led.c / App_RgbLed_HL.c / App_Config.h 现状梳理 · 2026-08-30
+</div>
+</div>
+</body>
+</html>

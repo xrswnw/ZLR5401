@@ -1,0 +1,38 @@
+{
+  "precheck": "PASS",
+  "smoke": null,
+  "inject": [
+    {
+      "case": "F3",
+      "desc": "错CRC固件→VERIFY拒",
+      "verdict": "FAIL",
+      "detail": "expected CRC_MISMATCH(1), got 0; unrecovered"
+    },
+    {
+      "case": "F4",
+      "desc": "提交前软复位仍BOOT",
+      "verdict": "FAIL",
+      "detail": "not in Boot after reset-before-exec"
+    },
+    {
+      "case": "F5",
+      "desc": "擦后即复位可重写",
+      "verdict": "FAIL",
+      "detail": "not in Boot after erase-only reset"
+    },
+    {
+      "case": "F6",
+      "desc": "损坏镜像EXIT拒绝",
+      "verdict": "PASS",
+      "detail": "EXIT_BOOT err=1 refused(True); recovered to App"
+    },
+    {
+      "case": "F7",
+      "desc": "提交后复位直入APP",
+      "verdict": "FAIL",
+      "detail": "after commit, FC_RESET boots straight to App"
+    }
+  ],
+  "baseline": [],
+  "overall": "FAIL"
+}

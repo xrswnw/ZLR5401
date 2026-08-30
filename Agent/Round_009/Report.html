@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_009 闭环 HID 更新测试报告</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif; margin: 24px auto; max-width: 980px; padding: 0 20px; color: #222; line-height: 1.55; }
+  h1 { border-bottom: 3px solid #2c7; padding-bottom: 10px; }
+  h2 { border-bottom: 1px solid #ccc; padding-bottom: 6px; margin-top: 28px; }
+  h3 { margin-bottom: 6px; }
+  table { border-collapse: collapse; width: 100%; margin: 10px 0; font-size: 14px; }
+  th, td { border: 1px solid #ccc; padding: 6px 8px; text-align: left; vertical-align: top; }
+  th { background: #f2f2f2; }
+  .pass { color: #0a0; font-weight: 700; }
+  .fail { color: #c00; font-weight: 700; }
+  .ok { background: #eaf7ea; }
+  .warn { background: #fff7e0; }
+  .code { font-family: Menlo, Consolas, monospace; font-size: 13px; background: #f6f6f6; padding: 1px 4px; border-radius: 3px; }
+  .box { border: 1px solid #ccc; border-radius: 6px; padding: 12px 16px; margin: 12px 0; background: #fafafa; }
+  .summary-box { border: 2px solid #2c7; border-radius: 8px; padding: 16px 20px; margin: 16px 0; background: #f2fdf5; }
+  code { font-family: Menlo, Consolas, monospace; }
+  .small { font-size: 12px; color: #666; }
+  ul { margin: 6px 0; padding-left: 22px; }
+</style>
+</head>
+<body>
+
+<h1>Round_009 — 闭环 HID 更新测试报告</h1>
+<p class="small">生成时间：2026-08-27 · 设备 GD32F303RCT6 (App+Boot 双固件) · 传输 USB HID · 协议自定义帧 CRC32</p>
+
+<div class="summary-box">
+  <b>总判定：<span class="pass">整体通过 (PASS)</span></b>
+  <ul>
+    <li>连续 <b>20 轮</b>完整更新<b>全部成功</b>，无一次失败；upgradeCount 从 40 推进到 60 (+20)。</li>
+    <li>故障注入 <b>F1–F7 (7/7)</b> 全部通过。</li>
+    <li>现场 USB 不稳 <b>U1–U7 (7/7)</b> 全部通过。</li>
+    <li>更新失败/中断时设备<b>始终停留 BOOT</b>，可随时重试继续更新（已验证）。</li>
+  </ul>
+</div>
+
+<h2>1. 测试范围与目标</h2>
+<p>基于 <span class="code">Agent/Round_009/Demand.md</span>：自研写在主机侧运行、通过 HID 拉取更新并回写的闭环更新测试。目标：</p>
+<ul>
+  <li>连续至少 20 次完整更新无误（已做 20+ 次，含早期用例阶段共 ~40+ 次）。</li>
+  <li>纵使更新失败，设备也<span class="pass">停留在 BOOT</span>，可继续尝试更新。</li>
+  <li>将现场可能出现的异常（USB 不稳、丢包、乱序、重复、慢速、拔插等）纳入注入测试。</li>
+</ul>
+
+<h2>2. 更新方案（主机客户端 zlr_updater）</h2>
+<p>闭环流程完全基于 Boot 侧既有协议，不改变设备端时序，仅由主机驱动：</p>
+<ol>
+  <li><b>EN_BOOT (FC_EN 0x02)</b>：App→写 UPG→软复位换固件到 BOOT。等待重枚举+握手 layer=0。</li>
+  <li><b>UPGRADE_START (0x03)</b>：16B 头(Size/CRC/FwVer/BindVerify)+校验级别；Boot 整区擦除。结果码校验 (RESULT_OK=0)。</li>
+  <li><b>FW_DATA (0x04)</b>：按 48B 分块；帧 = seq(2)/addrOffset(2)/data；带块级重试（容忍瞬态丢响应/丢帧，设备幂等写）。</li>
+  <li><b>UPGRADE_VERIFY (0x05)</b>：Boot 对整区重算 CRC + 尺寸 + 向量校验，返回 0 才继续。</li>
+  <li><b>UPGRADE_EXEC (0x06)</b>：两步提交（RUN 最后写）→ 软复位回 App。握手 layer=1。</li>
+  <li><b>upgradeCount 校验</b>：升级前后读取，要求 <b>after = before + 1</b>，作为“真实提交落地”的强证据。</li>
+</ol>
+<p>全套脚本：<span class="code">Agent/Round_009/update/</span>（conf / zlr_updater / fw_crc / fault_inject / loop_run）。复用 <span class="code">Agent/Round_008/test/zlr</span> 的 HID/frame/crc32 基础设施。</p>
+
+<h2>3. 测试期间发现并修复的一个固件健壮性问题</h2>
+<h3>3.1 现象</h3>
+<p>U6（重复/乱序发送）用例在固件改动前失败：DATA 块在 <span class="code">#1111 offset=0xD050</span> 处被设备回 <span class="code">DATA_ADDR_ERR(3)</span>，后续所有块被拒。</p>
+<h3>3.2 根因</h3>
+<p>原 <span class="code">Boot_Dispatch.c</span> 的 DATA 处理以<b>累计字节数</b>计进度：</p>
+<ul>
+  <li><span class="code">if (State != IAP_ERASED) → DATA_ADDR_ERR</span>（[Boot_Dispatch.c:117]）；</li>
+  <li>每写一块 <span class="code">Written += dataLen</span>，一旦 <span class="code">Written &gt;= FwSize</span> 即置 <span class="code">IAP_DATA_DONE</span>（:160-162）。</li>
+</ul>
+<p>因此当主机因现场不稳而对同一块<b>重复投递</b>时，`Written` 被重复累加，可能在整个镜像尚未投递完时就越过 `FwSize`，随后所有合法块都被当作非 `IAP_ERASED` 而拒绝。这是<b>写入进度测量方式</b>在“重复/重传”输入下不具幂等性的固件缺口。</p>
+<h3>3.3 修复</h3>
+<p>将进度改为<b>“最高已覆盖地址”</b>（max-covered）计数，使重复/乱序重发幂等：</p>
+<pre class="code">/* 以最高已覆盖地址(counting)计进度，使重复/乱序重发幂等 */
+uint32_t covered = target + dataLen - APP_FLASH_ORIGIN;
+if (covered &gt; g_sIap.Written) g_sIap.Written = covered;
+if (g_sIap.Written &gt;= g_sIap.FwSize) g_sIap.State = IAP_DATA_DONE;</pre>
+<p>VERIFY 处的完成判据 <span class="code">Written == FwSize</span>（:176）在该方案下依旧正确成立。修改仅此一处，位于 <span class="code">Bootloader/src/Boot_Dispatch.c</span>。已重新编译烧录 BOOT，全量回归通过（§4、§5）。</p>
+
+<h2>4. 故障注入 F1–F7</h2>
+<table>
+<tr><th>用例</th><th>场景</th><th>预期</th><th>结果</th></tr>
+<tr><td>F1</td><td>DATA 中途故意丢一块，重发补上</td><td>重发成功</td><td class="pass">PASS</td></tr>
+<tr><td>F2</td><td>发一个帧级 CRC 坏块（静默丢弃），重发正确块</td><td>重发成功</td><td class="pass">PASS</td></tr>
+<tr class="warn"><td>F3</td><td>上传 CRC 错的固件（START 报原 CRC）→ VERIFY 拒</td><td>VERIFY=CRC_MISMATCH，留 Boot，正确固件可恢复</td><td class="pass">PASS</td></tr>
+<tr><td>F4</td><td>START 后、EXEC 提交前软复位（提交前中断）</td><td>仍 Boot/UPG，可重写</td><td class="pass">PASS</td></tr>
+<tr><td>F5</td><td>START 擦除后不写数据即复位</td><td>仍 UPG 留 Boot，START 可重写</td><td class="pass">PASS</td></tr>
+<tr><td>F6</td><td>损坏镜像下 EXIT_BOOT 拒绝复位</td><td>拒复位、仍留 Boot、正确固件恢复</td><td class="pass">PASS</td></tr>
+<tr><td>F7</td><td>EXEC 成功后软复位，验证已持久提交</td><td>直接回 App</td><td class="pass">PASS</td></tr>
+</table>
+<p class="small">F3–F6 均使用“每个用正确固件完整重跑恢复”的策略；判定依据 include 设备停留 Boot / 回落角色、以及重跑后 upgradeCount 正确 +1。</p>
+
+<h2>5. 现场 USB 不稳 U1–U7</h2>
+<table>
+<tr><th>用例</th><th>场景</th><th>预期</th><th>结果</th></tr>
+<tr><td>U1</td><td>随机“丢响应/丢包”（3 块首投递被丢）</td><td>重发补上，成功</td><td class="pass">PASS</td></tr>
+<tr><td>U2</td><td>块间随机 10~500ms 延迟（链路慢/主机卡）</td><td>完整上传成功</td><td class="pass">PASS</td></tr>
+<tr><td>U3</td><td>升级中途中止 USB 重枚举（拔插）</td><td>仍 Boot/UPG，重跑成功</td><td class="pass">PASS</td></tr>
+<tr><td>U4</td><td>某块响应超时（不回应）→ 主机超时重发</td><td>继续成功</td><td class="pass">PASS</td></tr>
+<tr><td>U5</td><td>连续满速批量发包（无间隔）</td><td>不丢序，VERIFY 过，回 App</td><td class="pass">PASS</td></tr>
+<tr class="ok"><td>U6</td><td>某些块重复发送（重复/乱序，幂等写）</td><td>最终 VERIFY 通过</td><td class="pass">PASS</td></tr>
+<tr><td>U7</td><td>超长 FwSize 被 START 拒（UPG_NO_SPACE）留 Boot</td><td>拒、留 Boot，正常固件恢复</td><td class="pass">PASS</td></tr>
+</table>
+<p class="small">U2 注入累计延迟约 101.6s，仍成功，说明协议对“慢链路”无同步时钟约束、以超时+重发稳健收敛。</p>
+
+<h2>6. 连续 20 轮基线</h2>
+<table>
+<tr><th>轮次</th><th>结果</th><th>升级前→后 upgradeCount</th><th>耗时</th></tr>
+<tr><td>1–20</td><td class="pass">全部 PASS</td><td>40 → 41 … 59 → 60</td><td>~89.3s/轮</td></tr>
+</table>
+<p>20/20 成功。每轮均验证 <span class="code">after == before + 1</span>，即 20 个独立、已持久落地的完整升级。升级过程中无中途错误；即便引入能触发失败的注入，设备也都可恢复。</p>
+
+<h2>7. 总往返计数统计</h2>
+<table>
+<tr><th>测试阶段</th><th>upgradeCount 增量</th><th>说明</th></tr>
+<tr><td>早期用例/复位排查</td><td>0 → 26</td><td>ST++/注入前的多轮实测</td></tr>
+<tr><td>注入修正前（U6 失败）</td><td>26</td><td>该轮未提交</td></tr>
+<tr><td>固件修复 + 全注入回归</td><td>26 → 40</td><td>F1–F7 + U1–U7 各含完整更新/恢复</td></tr>
+<tr><td>20 轮基线</td><td>40 → 60</td><td>20 次连续完整更新</td></tr>
+</table>
+
+<h2>8. 结论与建议</h2>
+<div class="box">
+<h3>结论</h3>
+<ul>
+  <li>HID 闭环更新链路<b>稳定可靠</b>：20 轮连续完整更新零失败，提交计数严格 +1。</li>
+  <li>固件容错在<b>所有可预见的失败/中断场景</b>下都满足“失败则停留 BOOT、可重试重写”的核心要求（F1–F7、U1–U7 全过）。</li>
+  <li>过程发现并修复 1 处真实固件健壮性缺口（DATA 进度累计不幂等，详见 §3），修改后无副作用、全量回归通过。</li>
+</ul>
+<h3>建议（可选，非阻塞）</h3>
+<ul>
+  <li>可考虑让主机在 START 后发送第 0 块时带一个“同步/复位 IAP 会话”意图，进一步缩短异常后的恢复路径（当前已足够，仅为锦上添花）。</li>
+  <li>如现场允许，可将块尺寸由 48B 提至 HID 数据区上限 52B，减少总帧数约 8%（传输时间相应缩短）。</li>
+  <li>升级前建议主机先读一次 upgradeCount 并与上位机侧记录比对，作为“已烧录版本/固件标识”的附加校验手段。</li>
+</ul>
+</div>
+
+<p class="small">脚本位于 <span class="code">Agent/Round_009/update/</span>；原始数据见 <span class="code">update_report.json</span> 与各阶段 json。<br>固件改动：<span class="code">Bootloader/src/Boot_Dispatch.c</span>（DATA 进度改为 max-covered、幂等）。</p>
+
+</body>
+</html>

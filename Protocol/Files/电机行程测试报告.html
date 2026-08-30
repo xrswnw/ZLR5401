@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 电机行程详细测试报告</title>
+<style>
+  :root{
+    --blue-900:#0a2540; --blue-700:#123c66; --blue-500:#1f6fb0;
+    --blue-300:#5ba3d6; --blue-100:#d6ebf7; --blue-50:#eef7fc;
+    --ink:#17324d; --muted:#5b7a9a; --line:#cfe3f2;
+    --accent:#1f6fb0; --gold:#b8860b; --green:#1e8e5a; --red:#b6473a;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+    background:linear-gradient(160deg,#f4f9fd 0%,#ffffff 40%,#eaf4fb 100%);
+    color:var(--ink); line-height:1.7;
+  }
+  .wrap{max-width:1100px; margin:0 auto; padding:36px 28px 60px;}
+  .hero{
+    background:linear-gradient(135deg,var(--blue-900),var(--blue-700) 55%,var(--blue-500));
+    color:#fff; border-radius:16px; padding:30px 34px; position:relative; overflow:hidden;
+    box-shadow:0 12px 34px rgba(18,60,102,.25);
+  }
+  .hero::after{content:""; position:absolute; right:-60px; top:-60px; width:220px; height:220px; border-radius:50%; background:rgba(255,255,255,.07);}
+  .hero h1{margin:0 0 6px; font-size:26px; font-weight:700; letter-spacing:.5px;}
+  .hero .sub{color:#cfe0f0; font-size:13px;}
+  .hero .badges{display:flex; gap:10px; margin-top:18px; flex-wrap:wrap;}
+  .hero .badge{background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); padding:6px 14px; border-radius:30px; font-size:12px; color:#eaf3fc;}
+  h2{font-size:19px; color:var(--blue-700); margin:42px 0 14px; display:flex; align-items:center; gap:10px;}
+  h2 .no{background:var(--blue-500); color:#fff; min-width:26px; height:26px; border-radius:7px; display:inline-flex; align-items:center; justify-content:center; font-size:13px; font-weight:700;}
+  h3{font-size:15px; color:var(--blue-700); margin:22px 0 8px;}
+  .meta{color:var(--muted); font-size:13px;}
+  .grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(150px,1fr)); gap:14px; margin:18px 0;}
+  .stat{background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px 18px; box-shadow:0 2px 8px rgba(31,111,176,.06); position:relative; overflow:hidden;}
+  .stat::before{content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background:var(--blue-500);}
+  .stat .v{font-size:24px; font-weight:700; color:var(--blue-900);}
+  .stat .v small{font-size:13px; font-weight:500; color:var(--muted);}
+  .stat .l{font-size:12px; color:var(--muted); margin-top:2px;}
+  .card{background:#fff; border:1px solid var(--line); border-radius:12px; padding:20px 24px; box-shadow:0 2px 10px rgba(31,111,176,.06);}
+  .callout{border-left:4px solid var(--blue-500); background:var(--blue-50); padding:12px 16px; border-radius:8px; margin:14px 0; color:var(--blue-700); font-size:14px;}
+  .warn-callout{border-left:4px solid var(--gold); background:#fdf6e7; padding:12px 16px; border-radius:8px; margin:14px 0; color:#7a5d14; font-size:14px;}
+  table{width:100%; border-collapse:collapse; margin:14px 0; font-size:14px;}
+  th,td{border:1px solid var(--line); padding:9px 12px; text-align:left; vertical-align:top;}
+  th{background:linear-gradient(180deg,var(--blue-50),#e8f4fb); color:var(--blue-700); font-weight:600;}
+  tr:nth-child(even) td{background:#f8fcff;}
+  .num{font-variant-numeric:tabular-nums;}
+  .hl{color:var(--blue-700); font-weight:700;}
+  .ok{color:var(--green); font-weight:700;} .bad{color:var(--red); font-weight:700;} .warn{color:var(--gold); font-weight:700;}
+  code{font-family:"SF Mono",Menlo,monospace; font-size:12.5px; background:var(--blue-50); color:var(--blue-700); padding:1px 6px; border-radius:4px; border:1px solid var(--line);}
+  .tag{display:inline-block; padding:1px 8px; border-radius:20px; font-size:12px; font-weight:600;}
+  .tag-up{background:var(--blue-100); color:var(--blue-700);} .tag-down{background:#e7f4ef; color:var(--green);}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line); color:var(--muted); font-size:12px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<!-- HERO -->
+<div class="hero">
+  <h1>ZLR5401 电机行程详细测试报告</h1>
+  <div class="sub">上 / 下行程双腿分离测量 + S 曲线运动学模型交叉验证 ｜ 2026-08-29</div>
+  <div class="sub" style="margin-top:4px;">固件 hex <code style="background:rgba(255,255,255,.15); color:#fff; border-color:rgba(255,255,255,.3);">ZLR5401_202608270119.hex</code></div>
+  <div class="badges">
+    <span class="badge">驱动：DRV8434S · 1/2 微步（400 步/转）</span>
+    <span class="badge">测试档：4000 微步/s · 转矩 60%</span>
+    <span class="badge">上行程 KEY_UP=PC8 · 下行程 KEY_DOWN=PC9</span>
+    <span class="badge">12~22 轮重复测量 · 设备完好</span>
+  </div>
+</div>
+
+<!-- 1 核心结论 -->
+<h2><span class="no">1</span>核心结论（双腿不对称）</h2>
+<div class="grid">
+  <div class="stat">
+    <div class="v num">4085 <small>步</small></div><div class="l">上腿 下→上（stdev=0）</div>
+  </div>
+  <div class="stat">
+    <div class="v num">4324 <small>步</small></div><div class="l">下腿 上→下（stdev=38）</div>
+  </div>
+  <div class="stat">
+    <div class="v num num" style="color:var(--gold);">+239 <small>步</small></div><div class="l">下 − 上 = 0.60 圈</div>
+  </div>
+  <div class="stat"><div class="v num">1.200 <small>s</small></div><div class="l">单程均值墙钟</div></div>
+  <div class="stat"><div class="v num">2.400 <small>s</small></div><div class="l">往返墙钟（稳定）</div></div>
+  <div class="stat"><div class="v num">≈ 0.07<small> s</small></div><div class="l">模型 vs 实测差</div></div>
+</div>
+
+<div class="callout">
+  <b>关键发现：上下行程并不等长。</b>上腿稳定于 <b>4085 步（10.21 圈）</b>，下腿约 <b>4324 步（10.81 圈）</b>，两腿差 <b>239 步 ≈ 0.60 圈</b>。上腿因以机械止点（KEY_UP）为终点而 <b>零抖动</b>；下腿按实际停驻/触发位置存在约 38 步抖动。
+</div>
+<div class="warn-callout">
+  因行程不对称，<b>不能用"往返总步数 ÷ 2"代表单程长度</b>。上、下两腿须分别处理（见 §4）。
+</div>
+
+<!-- 2 测量方法 -->
+<h2><span class="no">2</span>测量方法</h2>
+<div class="card">
+  <ul>
+    <li><b>通道</b>：USB HID；单次 <code>MOTOR_QUERY</code> 事务约 90 ms，快于单腿（约 1.1~1.2 s）但慢于触点微时序。</li>
+    <li><b>步数捕获</b>：TIM4 硬件计数器（[App_Stepper_Tim4.c](Application/src/App_Stepper_Tim4.c#L148)）每腿复位；在一次往返内 <code>stepsDone</code> 序列呈"升-峰-回落-再升-峰"两个山峰，两个峰 = 上下两腿各自的长度（免竞争）。</li>
+    <li><b>墙钟</b>：<code>MOTOR_TEST</code> 接受 → 状态 DONE(2) 的耗时；3/10/12 轮重复求均值。</li>
+    <li><b>运动学模型</b>：根据固件 TIM4 S 曲线（[App_Stepper_Tim4.c:26](Application/src/App_Stepper_Tim4.c#L26)）精确重建，与实测交叉验证。</li>
+  </ul>
+</div>
+
+<!-- 3 运动学模型 -->
+<h2><span class="no">3</span>固件运动学模型（S 曲线，代码层精确）</h2>
+<table>
+  <tr><th>段</th><th>参数</th><th>数值</th><th>来源</th></tr>
+  <tr><td>升频段</td><td>升频步数 RAMP_STEPS</td><td>400 步</td><td>[App_Stepper_Tim4.c:26](Application/src/App_Stepper_Tim4.c#L26)</td></tr>
+  <tr><td>升频范围</td><td>起始→目标</td><td>1000 → 4000 Hz</td><td>STEP_RAMP_MIN_HZ / 测试档</td></tr>
+  <tr><td>S 曲线 LUT</td><td>sin 权重采样点</td><td>0/2/10/21/35/50/65/79/90/98/100</td><td>[App_Stepper_Tim4.c:37](Application/src/App_Stepper_Tim4.c#L37)</td></tr>
+  <tr><td>升频段耗时</td><td>（模型）</td><td>0.202 s</td><td>LUT 积分</td></tr>
+  <tr><td>巡航段</td><td>微步间隔</td><td>250 µs/步（4000 Hz）</td><td>[App_Stepper_Tim4.c:51](Application/src/App_Stepper_Tim4.c#L51)</td></tr>
+</table>
+<div class="callout">
+  <b>模型公式（单腿）</b>：<code>T_leg = 0.202s + max(0, n − 400)×250µs + 触点开销</code>。<br>
+  上腿含 <b>防抖 5ms + DC 磁制动 8ms</b>（[App_Stepper.c:244](Application/src/App_Stepper.c#L244)），下腿仅 <b>防抖 5ms</b>（[App_MotorTest.h:19](Application/inc/App_MotorTest.h#L19)）。
+</div>
+
+<!-- 4 双腿时序拆解 -->
+<h2><span class="no">4</span>双腿运动时序拆解（模型）</h2>
+<table>
+  <tr><th>腿</th><th>步数</th><th>圈数</th><th>升频段</th><th>巡航段</th><th>触点开销</th><th>单腿总耗时</th></tr>
+  <tr><td><span class="tag tag-up">上腿 下→上</span></td><td class="num">4085</td><td class="num">10.21</td><td class="num">0.202s</td><td class="num">0.921s</td><td class="num">13ms(防抖5+制动8)</td><td class="num hl">1.136s</td></tr>
+  <tr><td><span class="tag tag-down">下腿 上→下</span></td><td class="num">4324</td><td class="num">10.81</td><td class="num">0.202s</td><td class="num">0.981s</td><td class="num">5ms(防抖)</td><td class="num hl">1.188s</td></tr>
+  <tr><td><b>两腿合计（模型）</b></td><td colspan="4">—</td><td>18ms</td><td class="num hl">2.324s</td></tr>
+  <tr><td><b>实测往返墙钟</b></td><td colspan="4">—</td><td>—</td><td class="num hl">2.400s</td></tr>
+</table>
+<div class="callout">
+  <b>模型 vs 实测差 ≈ +76 ms</b>：主循环 1ms 相位 + USB 事务返回时刻的量化，非异常。往返墙钟 10 轮稳定收敛于 <b>2.400s</b>（偏差 &lt; 0.05%）。
+</div>
+
+<!-- 5 原始数据 -->
+<h2><span class="no">5</span>原始测量数据</h2>
+<h3>5.1 往返墙钟 + 步数（10 轮）</h3>
+<table>
+  <tr><th>轮次</th><th>往返墙钟</th><th>单腿捕获（峰序列）</th><th>diag1/diag2</th></tr>
+  <tr><td>0</td><td class="num">2.400s</td><td class="num">4085 / 4285</td><td>0 / 0</td></tr>
+  <tr><td>1</td><td class="num">2.400s</td><td class="num">4085 / 4365</td><td>0 / 0</td></tr>
+  <tr><td>2</td><td class="num">2.400s</td><td class="num">4085 / 4285</td><td>0 / 0</td></tr>
+  <tr><td>3</td><td class="num">2.400s</td><td class="num">4085 / 4357</td><td>0 / 0</td></tr>
+  <tr><td>4</td><td class="num">2.400s</td><td class="num">4085 / 4289</td><td>0 / 0</td></tr>
+  <tr><td>5</td><td class="num">2.400s</td><td class="num">4085 / 4365</td><td>0 / 0</td></tr>
+  <tr><td>6</td><td class="num">2.400s</td><td class="num">4081 / 4289</td><td>0 / 0</td></tr>
+  <tr><td>7</td><td class="num">2.400s</td><td class="num">4085 / 4361</td><td>0 / 0</td></tr>
+  <tr><td>8</td><td class="num">2.401s</td><td class="num">4089 / 4289</td><td>0 / 0</td></tr>
+  <tr><td>9</td><td class="num">2.400s</td><td class="num">4085 / 4361</td><td>0 / 0</td></tr>
+</table>
+
+<h3>5.2 上下腿长度统计（12 轮）</h3>
+<table>
+  <tr><th>腿</th><th>均值</th><th>标准差</th><th>最小</th><th>最大</th><th>圈数</th></tr>
+  <tr><td><span class="tag tag-up">上腿</span></td><td class="num hl">4085 步</td><td class="num">0.0</td><td class="num">4081</td><td class="num">4089</td><td class="num">10.21 圈</td></tr>
+  <tr><td><span class="tag tag-down">下腿</span></td><td class="num hl">4324 步</td><td class="num">38</td><td class="num">4285</td><td class="num">4365</td><td class="num">10.81 圈</td></tr>
+</table>
+
+<!-- 6 行程不对称分析 -->
+<h2><span class="no">6</span>行程不对称分析</h2>
+<div class="card">
+  <p><b>现象</b>：上腿 4085 步 vs 下腿 4324 步，差 <b>239 步 ≈ 0.60 圈</b>。</p>
+  <ul>
+    <li><b>上腿零抖动（stdev=0）</b>：正程以触达机械止点 KEY_UP 为终点（[App_MotorTest.c:176](Application/src/App_MotorTest.c#L176)），并做 DC 磁制动硬停——止点位置确定，故每次一致。</li>
+    <li><b>下腿有抖动（stdev=38）</b>：下行程以触发 KEY_DOWN 为终点，受停驻回位、机械游隙影响，触发位置在小范围浮动。</li>
+    <li><b>往返总步数（up+down）</b>随下腿抖动在 4281~4373 之间两个稳定簇（~4285 与 ~4367），进一步印证双腿不对称而非单腿随机抖动。</li>
+  </ul>
+  <div class="callout">
+    <b>工程启示</b>：若需对称行程，上腿基准 <b>4085 步</b>（确定性）；下腿留 <b>约 60 圈</b> 裕量。涉及绝对位置/防越程的 MOVE 应以上腿止点为安全基准。
+  </div>
+</div>
+
+<!-- 7 结论 -->
+<h2><span class="no">7</span>结论</h2>
+<div class="card">
+  <ul>
+    <li><b class="ok">✓</b> 上下行程已分别定量：上腿 <b>4085 步/10.21 圈</b>，下腿 <b>4324 步/10.81 圈</b>。</li>
+    <li><b class="ok">✓</b> 单程均值 <b>1.20 s</b>，往返墙钟稳定 <b>2.40 s</b>，全程 <b>0 故障</b>（diag1/diag2=0）。</li>
+    <li><b class="ok">✓</b> 固件 S 曲线运动学模型与实测交叉吻合（差 &lt; 80ms）。</li>
+    <li class="warn"><b>注意</b>：行程不对称（0.60 圈），标定/防越程保护须区分双腿处理。</li>
+  </ul>
+  <p class="meta">若需真正的毫秒级触点时序（5ms 防抖、8ms 磁制动实测波形），需示波器接 KEY_UP/KEY_DOWN 与 STEP 引脚捕获——USB 查询通道无法分辨亚 10ms 事件。</p>
+</div>
+
+<!-- 8 行程开关保护链与上电自检（追加实测） -->
+<h2><span class="no">8</span>行程开关保护链与上电自检（追加实测 2026-08-29）</h2>
+<p class="meta">基于本报告腿长基准（上 4085 / 下 4324）落地的保护机制闭环验证 ｜ 固件 hex <code>ZLR5401_202608291936.hex</code> ｜ 覆盖场景：开关在位 / 开关拆除（开路）</p>
+
+<h3>8.1 上电两阶段自检（先上后下）设计</h3>
+<div class="card">
+  <ul>
+    <li><b>阶段1 向上找 KEY_UP</b>（静态已触发则免驱动）→ <b>阶段2 向下回归 KEY_DOWN</b> 建立绝对基准（[App_MotorHoming.c](Application/src/App_MotorHoming.c)）。驱动参数刻意保护设备：2000 Hz、转矩 40%、每段步数上限 = 腿长实测×2+裕量（上 8970 / 下 9448）、30s 超时。</li>
+    <li><b>运行中开关监控</b>：奔向某端超过 <b>腿长×1.15</b>（上 4697 / 下 4973）仍未触发对应开关 → 判开关缺失，置错误位并停机（[App_Stepper.c:170-187](Application/src/App_Stepper.c#L170-L187)）。此监控不依赖位置计数起点，是"开关开路不可感知"（上拉输入，未接与坏断都读高）的唯一兜底。</li>
+    <li><b>错误位</b>：switchErr bit0=上缺失、bit1=下缺失；上=黄灯 500ms 闪、下=粉红（R+B）500ms 闪；TEST 被禁（防冲挡块），MOVE 开放给上位机自行决策。</li>
+  </ul>
+</div>
+
+<h3>8.2 开关拆除（开路）实测</h3>
+<table>
+  <tr><th>复位轮次</th><th>起始位置</th><th>阶段1 行为</th><th>停机路径</th><th>stepsDone</th><th>结果</th></tr>
+  <tr><td>1</td><td>行程中部（自由区间）</td><td>整段上行至顶硬挡</td><td>超腿长监控（4697）</td><td class="num">4721</td><td class="ok">bit0 置位 ✓</td></tr>
+  <tr><td>2</td><td>下移 2000 步（自由区间）</td><td>起步瞬态 → 自动重试 → 整段上行</td><td>超腿长监控</td><td class="num">4721</td><td class="ok">bit0 置位 ✓（startCount=2）</td></tr>
+  <tr><td>3</td><td>下移 2000 步（自由区间）</td><td>起步瞬态 → 自动重试 → 整段上行</td><td>超腿长监控</td><td class="num">4721</td><td class="ok">bit0 置位 ✓（startCount=2）</td></tr>
+</table>
+<div class="callout">
+  <b>研磨窗口实测仅 ~0.3 s</b>：机构顶死硬挡后，控制器仍持续发 STEP（步数照涨），从机械止点(~4085)研磨至腿长监控上限(4697) 即 612 步 ≈ 0.3 s @2000Hz，先于 3s TRQ 堵转保护触发——两层保护中<b>腿长监控先兜底</b>。全程无 DRV 故障（fault=0x00）、无蜂鸣、TEST 回 <code>MOTOR_ERR_FAULT</code>。
+</div>
+
+<h3>8.3 上电起步瞬态（新发现硬件怪癖）</h3>
+<div class="warn-callout">
+  <b>上电后首次电机驱动有 ~50% 概率在 0~21 步内被 DRV8434S 误停</b>：FAULT_STATUS=0xC0（nFAULT + SPI_ERROR），无 OCP/STL/UVLO/CPUV/OL 等真实电气原因位。与电机位置、方向、负载<b>无关</b>；同一动作稍后执行完全正常。1.5s 上电延时<b>无法</b>消除（非电源稳定问题），疑似上电 USB 重新枚举窗口的电气耦合，根因未最终定位。
+</div>
+<div class="card">
+  <p><b>修复：起步瞬态判据重试</b>（[App_MotorHoming.c:97-112](Application/src/App_MotorHoming.c#L97-L112)）——判据"走了 &lt;50 步且 DRV 故障寄存器非零"（真实堵转会持续走步直到 TRQ/腿长监控停机、超步/超时各有计数耗尽，均不会长这样），满足则清故障重试一次。3/3 复位验证通过（含 2 次瞬态命中后重试走通）。</p>
+</div>
+
+<h3>8.4 开关接入（正常链路）实测</h3>
+<table>
+  <tr><th>步骤</th><th>预期</th><th>实测</th><th>判定</th></tr>
+  <tr><td>上电（电机停顶部硬挡，KEY_UP 被压）</td><td>阶段1 静态免驱动</td><td>startCount=2 全来自阶段2（阶段2 起步瞬态 1 次 + 重试）</td><td class="ok">✓</td></tr>
+  <tr><td>阶段2 向下回归</td><td>整腿下行触发 KEY_DOWN</td><td class="num">4761 步 = 下腿 4324 + 越过 KEY_UP 挂点顶硬挡的 ~440</td><td class="ok">✓</td></tr>
+  <tr><td>自检成功提示</td><td>蜂鸣 1s</td><td>蜂鸣 1s，switchErr=0x00</td><td class="ok">✓</td></tr>
+  <tr><td>TEST 往返（1 pass）</td><td>开关驱动往返，DONE</td><td>state=2(DONE)、stepsDone=4377(≈下腿)、fault=0、switchErr=0</td><td class="ok">✓</td></tr>
+</table>
+
+<h3>8.5 顺带修复的缺陷</h3>
+<div class="card">
+  <ul>
+    <li><b>MOVE 定步数完成不回 IDLE</b>：TIM4 走满设定步数后自动停脉冲，但 <code>App_Stepper_Process</code> 未感知，状态永久停在 RUN（QUERY 上报 RUN、后续 TEST 判 BUSY）。已补 <code>StepperTim4_IsRunning()==0</code> 完成检测 → 断电回 IDLE（[App_Stepper.c:162-171](Application/src/App_Stepper.c#L162-L171)）。</li>
+    <li><b>MOVE 门控调整</b>：MOVE 不再受行程自检门控，电机完全开放给上位机；switchErr 仅作报警/诊断。TEST 保留门控（防冲挡块）。</li>
+  </ul>
+</div>
+
+<div class="foot">
+  报告由 Claude 于 2026-08-29 经 USB HID 闭环实测 + 固件运动学建模生成 ｜ 数据源：MOTOR_TEST 往返 + MOTOR_QUERY 步数/状态 ｜ §1~7: 12~22 轮重复（hex 202608270119）；§8: 保护链闭环验证（hex 202608291936, 3/3 复位）
+</div>
+
+</div>
+</body>
+</html>

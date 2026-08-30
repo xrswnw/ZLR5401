@@ -1,0 +1,132 @@
+{
+  "generated": "2026-08-29 18:41:08",
+  "phase": "all",
+  "destructive": false,
+  "total": 15,
+  "pass": 11,
+  "fail": 0,
+  "skip": 2,
+  "inconclusive": 2,
+  "results": [
+    {
+      "name": "G3",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=1",
+      "evidence": []
+    },
+    {
+      "name": "G2",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=1",
+      "evidence": []
+    },
+    {
+      "name": "G1",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "stepsDone advanced by ~150",
+      "evidence": []
+    },
+    {
+      "name": "G4",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "G5",
+      "section": "G",
+      "layer": "G",
+      "verdict": "INCONCLUSIVE",
+      "message": "accepted err=0 — firmware does not range-check (doc gap)",
+      "evidence": []
+    },
+    {
+      "name": "G6a",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "G6b",
+      "section": "G",
+      "layer": "G",
+      "verdict": "INCONCLUSIVE",
+      "message": "accepted err=0 — doc gap",
+      "evidence": []
+    },
+    {
+      "name": "G7",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "G8",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "state=0 fault=0x0 diag1=0 diag2=0",
+      "evidence": []
+    },
+    {
+      "name": "G9",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "olov=0 thresh=400 trq=4095 reason=1",
+      "evidence": []
+    },
+    {
+      "name": "G10",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "startCount 5->6, runSec 2->2",
+      "evidence": []
+    },
+    {
+      "name": "G11",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "G13",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "rejected (PARAM)",
+      "evidence": []
+    },
+    {
+      "name": "G12",
+      "section": "G",
+      "layer": "G",
+      "verdict": "SKIP",
+      "message": "skipped (physical motor travel gated by --no-motor-test)",
+      "evidence": []
+    },
+    {
+      "name": "G14",
+      "section": "G",
+      "layer": "G",
+      "verdict": "SKIP",
+      "message": "skipped (physical motor travel gated)",
+      "evidence": []
+    }
+  ]
+}

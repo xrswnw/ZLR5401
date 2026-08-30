@@ -2,8 +2,9 @@
 #include "Boot_Led_HL.h"
 #include "Boot_SysTick_HL.h"
 
-/* 需求: Boot 绿灯 50ms 闪烁 */
-#define BOOT_LED_TOGGLE_MS  50U
+/* 需求: Boot 绿灯快闪. 100ms 翻转 = 5Hz, 人眼可读的快闪;
+ * 50ms(10Hz) 呈现为"半亮/微光"而非闪烁 (上机观感, 2026-08-30 调整) */
+#define BOOT_LED_TOGGLE_MS  100U
 
 static uint32_t s_u32LastToggle;
 

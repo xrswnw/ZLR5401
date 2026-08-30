@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_009 — HID 固件更新流程审查 + 闭环更新测试(≥20次) 设计方案</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:23px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1080px; margin:0 auto; padding:24px 28px 60px;}
+  .toc{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 22px;
+       box-shadow:0 1px 4px rgba(11,42,74,.06);}
+  .toc b{color:var(--navy);}
+  .toc ol{margin:8px 0 0; padding-left:20px;}
+  .toc li{margin:3px 0; font-size:14px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:40px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:12.5px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:12.5px; line-height:1.55;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-left:5px solid var(--sky);
+        border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .ok{border-left:5px solid var(--green);}
+  .warn{border-left:5px solid var(--gold);}
+  .bad{border-left:5px solid var(--red);}
+  .tag{display:inline-block; padding:1px 8px; border-radius:10px; font-size:11.5px;
+       color:#fff; background:var(--blue); margin-right:4px;}
+  .tag.g{background:var(--green);}
+  .tag.y{background:var(--gold);}
+  .tag.r{background:var(--red);}
+  .tag.b{background:#5b7a9a;}
+  .tag.p{background:#8e44ad;}
+  ul,ol{font-size:14px;}
+  li{margin:4px 0;}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+        color:var(--muted); font-size:12px; text-align:center;}
+  .flow{display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px; margin:10px 0;}
+  .flow .step{background:#fff; border:1.5px solid var(--blue); color:var(--blue);
+              border-radius:6px; padding:3px 10px; font-weight:600;}
+  .flow .arrow{color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>ZLR5401 HID 固件更新流程审查 + 闭环更新测试 · 设计方案</h1>
+  <div class="sub">Agent/Round_009 &nbsp;·&nbsp; 2026-08-27 &nbsp;·&nbsp; 更新流程审查 / 闭环测试脚本 / ≥20 次容错更新 / 只出计划，不执行 &nbsp;·&nbsp; 待审查</div>
+</div>
+
+<div class="wrap">
+
+<div class="toc"><b>目录</b>
+  <ol>
+    <li>目标与交付物</li>
+    <li>现有 HID 更新流程审查（结论先行）</li>
+    <li>容错性审计：失败为什么能停留在 BOOT</li>
+    <li>测试方案总体设计（我选定的更新方案）</li>
+    <li>测试脚本架构与文件规划</li>
+    <li>关键难点：固件 CRC 算法必须与 Boot 精确一致</li>
+    <li>测试用例矩阵（20 次基线 + 故障注入）</li>
+    <li>验证判据：如何证明"更新真实生效"</li>
+    <li>执行路线 + 异常→修码→重烧→复测 闭环</li>
+    <li>回滚与恢复预案</li>
+    <li>风险评估</li>
+  </ol>
+</div>
+
+<h2>1. 目标与交付物</h2>
+<div class="card ok">
+<p>响应 Demand.md：#嵌入式 全部 5 点。</p>
+<ul>
+<li><b>#1</b> 审查当前 HID 更新流程（本节 + §2）。</li>
+<li><b>#2</b> 编写 <b>主机侧闭环更新脚本</b>，自建固件经 HID 全流程拉取写入（§4/§5）。</li>
+<li><b>#3</b> <b>≥20 次完整更新无误</b>；并通过故障注入证明<b>更新失败时设备停留在 BOOT 可重试</b>（§7）。</li>
+<li><b>#4</b> 更新方案由我全权决定（§4 给出选定方案与理由）。</li>
+<li><b>#5</b> 闭环测试完成后生成 <b>Report.html</b> 于本文件夹。</li>
+</ul>
+</div>
+<div class="card warn">
+<b>本轮交付时点</b>：本 Plan 仅供审阅，<b>不执行任何改码/烧录</b>。用户审阅通过后执行，全部闭环完成后生成 Report.html。<br>
+本轮为 <b>测试性 / 可验证性</b> 任务，原则上不改动 Boot/App 业务逻辑，只新增主机测试脚本；<b>仅当测试暴露真实固件缺陷时才修码</b>。
+</div>
+
+<h2>2. 现有 HID 更新流程审查（结论先行）</h2>
+<p>已通读 Bootloader 与 App 相关源码，流程与布局如下。</p>
+
+<h3>2.1 Flash 布局（Boot_Config.h:29-37）</h3>
+<table>
+<tr><th>区域</th><th>地址</th><th>大小</th><th>说明</th></tr>
+<tr><td>BOOT</td><td><code>0x08000000</code></td><td>22K</td><td>升级引导 + USB HID</td></tr>
+<tr><td>PARAM</td><td><code>0x08005800</code></td><td>2K(用512)</td><td>参数区（UPG/RUN 标志等），<b>升级不擦除</b></td></tr>
+<tr><td>APP</td><td><code>0x08006000</code></td><td>232K</td><td>应用固件，升级目标</td></tr>
+</table>
+
+<h3>2.2 完整更新时序（当前实现）</h3>
+<div class="flow">
+  <span class="step">App 收到 FC_ENTER_BOOT(0x02)</span><span class="arrow">→</span>
+  <span class="step">写 UPG + 复位</span><span class="arrow">→</span>
+  <span class="step">Boot 识别 UPG → 常驻等待</span><span class="arrow">→</span>
+  <span class="step">FC_UPGRADE_START(0x03) 擦除</span><span class="arrow">→</span>
+  <span class="step">FC_FW_DATA(0x04) 逐块写</span><span class="arrow">→</span>
+  <span class="step">FC_UPGRADE_VERIFY(0x05) CRC/向量</span><span class="arrow">→</span>
+  <span class="step">FC_UPGRADE_EXEC(0x06) 两步提交+复位</span><span class="arrow">→</span>
+  <span class="step">Boot 重校验 → 跳 App</span>
+</div>
+
+<h3>2.3 关键实现点（file:line）</h3>
+<table>
+<tr><th>环节</th><th>位置</th><th>行为</th></tr>
+<tr><td>App 进升级</td><td>App_Dispatch.c:59-75</td><td>写 <code>deviceStatus=UPG</code> → <code>ParamSave</code> → ACK + 50ms → <code>NVIC_SystemReset</code> → 跳 Boot</td></tr>
+<tr><td>Boot 驻留判断</td><td>Boot/main.c:173,178</td><td><code>stayInUpdate = (deviceStatus==UPG)</code>；为真则进 <b>while 无限轮询（永不超时）</b></td></tr>
+<tr><td>IAP 会话续时间窗</td><td>Boot/main.c:185-186</td><td>一旦 <code>g_sIap.State != IAP_IDLE</code>，持续刷新冷启动 2.5s 窗口 → 中途断电<sup>*</sup>不致误跳</td></tr>
+<tr><td>START(0x03)</td><td>Boot_Dispatch.c:55-113</td><td>16B 头（FwSize/FwCrc/FwVer/BindVerify，LE）+ 可选校验级；按需擦页并逐页喂狗</td></tr>
+<tr><td>DATA(0x04)</td><td>Boot_Dispatch.c:115-169</td><td><code>[seq(2) | addrOffset(2) | data]</code>；按 addrOffset 写 4B 字；无块内 CRC（帧级 CRC 兜底）</td></tr>
+<tr><td>VERIFY(0x05)</td><td>Boot_Dispatch.c:171-228</td><td>size → <b>CRC32 整区 →(MID)MSP/Reset 向量 →(FULL)绑定</b>；成功才置 VERIFY_OK</td></tr>
+<tr><td>EXEC(0x06)</td><td>Boot_Dispatch.c:230-265</td><td>需 VERIFY_OK；<b>两步提交</b>：先写 appCrc/appSize/count，<b>最后才写 RUN</b>（提交点）→ 复位</td></tr>
+<tr><td>跳 App 前置校验</td><td>Boot/main.c:14-58 (JumpToApp)</td><td>MSP 掩码 + Reset 向量区间 + <b>CRC 整区复核</b>；任一失败<b>不跳、留 Boot 死循环</b>（main.c:196-202）</td></tr>
+<tr><td>EXIT_BOOT(0x09)</td><td>Boot_Dispatch.c:298-352</td><td>同样校验后清 UPG→RUN → 复位跳 App；失败不复位</td></tr>
+</table>
+<p><sup>*</sup>"断电"在本测试中不可真断电，用 <code>FC_RESET(0x08)</code> 软复位模拟中断场景。</p>
+
+<h2>3. 容错性审计：失败为什么能停留在 BOOT</h2>
+<div class="card ok">
+<p>需求 #3（<b>纵使更新失败也停留 BOOT 可继续更新</b>）在当前固件<b>已具备</b>，四条防线相互独立：</p>
+<ol>
+<li><b>UPG 粘滞</b>：START→VERIFY 全程不改 deviceStatus，仍为 UPG → Boot 常驻（main.c:178 无限轮询）。</li>
+<li><b>IAP 续窗</b>：IAP 会话中每次轮询不断刷新 2.5s 冷启动窗口（main.c:185-186），中途失败/重发不会误跳 App。</li>
+<li><b>两步提交</b>：RUN 是最后写入（EXEC Step2, Boot_Dispatch.c:260）。提交前任何中断 → 仍是 UPG，主机只需重发 START+DATA+VERIFY。</li>
+<li><b>跳前复核</b>：JumpToApp / EXIT_BOOT 在跳 App 前对 App 区做 MSP/向量/CRC 复核；写入损坏则<b>拒绝跳转、死后循环在 BOOT</b>（main.c:196-202）。</li>
+</ol>
+<p><b>结论</b>：固件侧已满足"失败留 BOOT"。本测试的价值在于<b>用真实 HID 链路验证这四条防线</b>，并把"失败注入→确认留 BOOT→重试成功"纳入自动化。</p>
+</div>
+<div class="card">
+<b>本轮我选定的更新方案（需求 #4）</b>：不重写 Boot 升级协议（已足够健壮），专注<b>补齐主机侧闭环与验证</b>——即写一个能自动"进 Boot→上传→校验→提交→确认回到 App→统计升级计数"并带故障注入能力的驱动器。理由：改动最省、风险最低、且能直接论证需求 #3。
+</div>
+
+<h2>4. 测试方案总体设计</h2>
+<h3>4.1 选定的主机驱动器流程（单轮）</h3>
+<div class="flow">
+  <span class="step">握手探测(App? Boot?)</span><span class="arrow">→</span>
+  <span class="step">记 upgradeCount<sub>before</sub></span><span class="arrow">→</span>
+  <span class="step">App→BOOT (ENTER_BOOT)</span><span class="arrow">→</span>
+  <span class="step">等重枚举 + 握手(layer=0)</span><span class="arrow">→</span>
+  <span class="step">START(擦+记录)</span><span class="arrow">→</span>
+  <span class="step">DATA 分块写(≤52B/块)</span><span class="arrow">→</span>
+  <span class="step">VERIFY</span><span class="arrow">→</span>
+  <span class="step">EXEC(两步提交+复位)</span><span class="arrow">→</span>
+  <span class="step">等重枚举 + 握手(layer=1)</span><span class="arrow">→</span>
+  <span class="step">记 upgradeCount<sub>after</sub> = before+1 ✔</span>
+</div>
+<h3>4.2 关键决策与理由</h3>
+<table>
+<tr><th>决策</th><th>选择</th><th>理由</th></tr>
+<tr><td>校验级别</td><td>MID（默认，验证非 0 时显式传 <code>0x02</code>）</td><td>CRC + MSP/Reset 向量已足够；FULL 因绑定与同批固件可重复一致，做一轮附加即可，避免头 16 字节局促</td></tr>
+<tr><td>DATA 块大小</td><td><b>48B</b>（4 对齐、≤52 上限）</td><td>USB 单帧 data≤56，扣 FC_FW_DATA 4B 头 → ≤52；取 48 留余量且按 4B 对齐，减少字写入边界处理</td></tr>
+<tr><td>升级投递物</td><td>复用 <code>Build/app.bin</code>（build_app.sh 产物）</td><td>即线上 OTA 二进制，与 gen_firmware.sh 口径一致；无需新增构建</td></tr>
+<tr><td>成功判据</td><td>握手 layer 从 0→1 + <code>upgradeCount 严格 +1</code></td><td>upgradeCount 由 EXEC 递增并持久化，是"校验+提交+复位+重新运行"的强证据，优于只看能握手</td></tr>
+<tr><td>重枚举策略</td><td>沿用 Round_008 <code>hid_link._reopen</code> 轮询模式</td><td>App/Boot 同 VID:PID，靠握手 layer 区分固件身份</td></tr>
+<tr><td>环境</td><td>仓库 <code>.venv</code>（python + hid）</td><td>Round_008 已验证，无需新增依赖</td></tr>
+</table>
+
+<h2>5. 测试脚本架构与文件规划</h2>
+<div class="card">
+<p>新建 <code>Agent/Round_009/update/</code>，复用 <code>Agent/Round_008/test/zlr/</code>（hid_link / frame / crc32-frame）。</p>
+<pre>
+Agent/Round_009/update/
+├── zlr_updater.py      # 核心：Boot 升级客户端（START/DATA/VERIFY/EXEC/EXIT_BOOT）
+├── fw_crc.py           # 固件镜像 CRC（Bit-reflected-not，见 §6）务必与 Boot Crc32Calc 一致
+├── loop_run.py         # 闭环驱动器：N 轮完整更新 + 每轮校验判据 + 统计
+├── fault_inject.py     # 故障注入场景（丢帧/坏帧/坏CRC/中途软复位/擦后中止）
+├── conf.py             # VID/PID、升级 FC 码、块大小、超时参数
+└── report.py           # 汇总通过/注入结果 → 供 Report.html
+</pre>
+<p><b>升级 FC 码</b>（const.py 未含，新增于 conf.py）：<code>UPGRADE_START=0x03</code> <code>FW_DATA=0x04</code> <code>UPGRADE_VERIFY=0x05</code> <code>UPGRADE_EXEC=0x06</code>，结果码 <code>UPG_NO_SPACE=1</code> <code>ERASE_FAIL=2</code> <code>DATA_FLASH_FAIL=2</code> <code>DATA_ADDR_ERR=3</code> <code>VERIFY_CRC=1</code> <code>VERIFY_SIZE=2</code> <code>VERIFY_VECTOR=3</code> <code>VERIFY_BIND=4</code>。</p>
+</div>
+
+<h2>6. 关键难点：固件 CRC 算法必须与 Boot 精确一致</h2>
+<div class="card bad">
+<p><b>最高风险点</b>。Boot 端 VERIFY 用 <code>Crc32Calc(APP_FLASH_ORIGIN, FwSize)</code>（Boot_Dispatch.c:184）与主机上报 <code>FwCrc32</code> 比对；START 头里 <code>FwCrc32= data[4..7] LE</code>。若主机算出的 CRC 与 Boot 的 <code>Crc32Calc</code>（Boot_Param.c:8-20，<b>bit-reflected-not</b> 变体）不一致，VERIFY 必然恒失败。</p>
+<ul>
+<li>帧校验用 MPEG-2（<code>zlr/crc32.py</code>），<b>不同于</b>固件镜像 CRC —— 二者必须分开实现。</li>
+<li>计划：<b>先以 <code>Crc32Calc</code> 源码为准</b>实现 <code>fw_crc.py</code>，并在脚本内加自检：预先对已知字节串比对 Python 与 Boot 参照值（若不确定，可用校验已知固件的 VERIFY 实际返回值校准）。</li>
+<li>这是脚本正确性第一道闸门，放在 loop_run 前置自检。</li>
+</ul>
+</div>
+<div class="card">
+<b>附加一致性校验</b>：MID 校验还检查 MSP/Reset 向量。app.bin 首位即 MSP（应 0x2000_0000 掩码），[4] 为 Reset 向量（须落于 APP 区）。主机可在上传前静态断言 app.bin 前 8 字节满足，提前拦截"烧错文件"型失误。
+</div>
+
+<h2>7. 测试用例矩阵</h2>
+<h3>7.1 基线：20 次完整更新（需求 #3 主判据）</h3>
+<table>
+<tr><th>轮</th><th>要点</th><th>期望</th></tr>
+<tr><td>1–20</td><td>每轮从头 ENTER_BOOT→上传→VERIFY→EXEC→重回 App，判 upgradeCount+1 且 layer=1</td><td>20/20 通过；任一轮失败即整体 FAIL</td></tr>
+</table>
+<h3>7.2 故障注入（验证"失败留 BOOT 可重试"）</h3>
+<table>
+<tr><th>#</th><th>注入手法</th><th>期望（固件防线）</th></tr>
+<tr><td>F1</td><td>DATA 中途<b>丢 1 帧</b>（跳序/不响应）→ 重发该块继续</td><td>帧级 CRC 不匹配被静默丢弃，状态不破坏；重发后成功（防线 1/2）</td></tr>
+<tr><td>F2</td><td>DATA 发<b>损坏块</b>（帧 CRC 错）</td><td>设备丢弃不写；重发正确块继续</td></tr>
+<tr><td>F3</td><td>上传<b>错 CRC 的固件**</b> → VERIFY 返回 <code>VERIFY_CRC_MISMATCH</code></td><td>设备留在 BOOT、仍 UPG；重发 START 正确固件后成功（防线 1/3）</td></tr>
+<tr><td>F4</td><td>VERIFY 通过后、EXEC 前发送 <code>FC_RESET</code>（模拟提交前中断）</td><td>复位仍 UPG → 停留 BOOT；完整重跑恢复（防线 2/3）</td></tr>
+<tr><td>F5</td><td>擦除后（START 完成）不写数据即重置</td><td>仍 UPG 留 BOOT；重发 START 可重写（防线 2）</td></tr>
+<tr><td>F6</td><td>EXIT_BOOT 在损坏镜像下 → 拒绝复位</td><td>返回错误且不跳 App，留 BOOT（防线 4）</td></tr>
+<tr><td>F7</td><td>EXEC 成功后立即软复位，验证"新固件已持久"</td><td>第二次启动直接回 App（RUN 已提交）</td></tr>
+</table>
+<h3>7.3 现场异常：USB 不稳 / 链路抖动（新增）</h3>
+<p>模拟现场真实 USB 扰动，覆盖需求 #3 的链路层面，而不只是命令层面。每项先注入扰动、随后用正确固件完整重跑确认可恢复。</p>
+<table>
+<tr><th>#</th><th>扰动手法</th><th>期望</th></tr>
+<tr><td>U1</td><td>DATA 阶段<b>随机丢响应帧</b>（部分块不发/不发不求，按块超时）</td><td>块超时→重发同 seq；最终 VERIFY 过、升级成功</td></tr>
+<tr><td>U2</td><td>块间<b>随机插入 10~500ms 延迟 / 主机假死</b></td><td>不受快慢影响，慢速上传仍完整（设备无限等待 UPG）</td></tr>
+<tr><td>U3</td><td>升级<b>中途中止 USB 重新枚举</b>（close+reopen，模拟现场拔插/枚举抖动）</td><td>重枚举后仍在 BOOT(UPG)；重启 START 重跑成功</td></tr>
+<tr><td>U4</td><td><b>响应超时</b>（设备不回应某块，主机等超时后重发）</td><td>超时重试而非误判；重发后继续，最终成功</td></tr>
+<tr><td>U5</td><td><b>连续快速批量发包</b>（无间隔，压迫 USB/批量速率）</td><td>满速写入不丢序、VERIFY 通过（压力测试）</td></tr>
+<tr><td>U6</td><td><b>乱序/重复发包</b>（某块发两次、或提前发下一块）</td><td>末尾以 seq+offset 确定性写入，最终仍 VERIFY 通过</td></tr>
+<tr><td>U7</td><td><b>固件尺寸边缘</b>：非 48 倍剩余块 / 超长（>app 区）边界</td><td>末块正确落位；超长被 START 拒(<code>UPG_NO_SPACE</code>)留 Boot</td></tr>
+</table>
+<p><b>**</b>F3 注入在主机侧对 app.bin 字节做局部翻转并同步改 FwSize/Crc，但<b>不改 MSP/向量</b>，确保命中 CRC 分支而非向量分支，定向验证 CRC 防线。</p>
+<p>每项注入都设置<b>恢复路径</b>：注入导致失败后，脚本继续用正确固件完整重跑一遍，证明"失败后可重试直至成功"。</p>
+
+<h2>8. 验证判据（如何证明更新真实生效）</h2>
+<table>
+<tr><th>层级</th><th>判据</th><th>来源字段</th></tr>
+<tr><td>传输正确</td><td>每块 DATA 回 <code>seq + RESULT_OK</code></td><td>FC_FW_DATA 响应</td></tr>
+<tr><td>整区正确</td><td>VERIFY 回 <code>RESULT_OK</code></td><td>Boot 整区 CRC32 比对</td></tr>
+<tr><td>提交生效</td><td>重枚举后层=1(APP) 且 <code>upgradeCount 由 before→before+1</code></td><td>握手 rsp[19]=layer、rsp[20..23]=upgradeCount(LE)</td></tr>
+<tr><td>固件自证</td><td>FC_DEVICE_INFO 返回 SW=ZLR5401_V1.0 且可握手功能</td><td>FC_DEVICE_INFO / HANDSHAKE</td></tr>
+</table>
+
+<h2>9. 执行路线 + 异常→修码→重烧→复测 闭环</h2>
+<div class="flow">
+  <span class="step">① 写成套脚本</span><span class="arrow">→</span>
+  <span class="step">② 单轮 dry-run（无真烧）自校 CRC</span><span class="arrow">→</span>
+  <span class="step">③ 单次真更新冒烟</span><span class="arrow">→</span>
+  <span class="step">④ 注入用例(7.2) + 现场 USB 异常(7.3)</span><span class="arrow">→</span>
+  <span class="step">⑤ 20 轮基线</span><span class="arrow">→</span>
+  <span class="step">⑥ 汇总结论 → Report.html</span>
+</div>
+<ul>
+<li>任一处暴露<b>固件缺陷</b>：按约束流程 <code>./backup.sh</code> 备份 → 记录变更日志 → 修码 → 重编译 → 烧录（flash_all.sh）→ 重跑对应用例。测试性任务优先不改逻辑，改只发生在确证缺陷时。</li>
+<li>跑 20 轮前先备份（新增脚本、本轮变更前置快照）。</li>
+<li>全部硬验证完成后，才闭合统计生成 Report.html。</li>
+</ul>
+
+<h2>10. 回滚与恢复预案</h2>
+<table>
+<tr><th>故障</th><th>恢复</th></tr>
+<tr><td>测试中途设备失联（既不 App 也不 Boot）</td><td>J-Link SWD 用 <code>flash_all.sh</code> 全量重烧 Boot+App（工具链已有）</td></tr>
+<tr><td>注入用例后停留在 BOOT 无法起身</td><td>用 zlr_updater 重发正确固件完整升级，或 <code>FC_EXIT_BOOT</code> 恢复既有镜像</td></tr>
+<tr><td>升级计数/参数异常</td><td>据 Round_059 等备份还原参数并重跑</td></tr>
+<tr><td>固件损坏且退不出去</td><td>SWD 全量重烧（Boot 不可变区内 22K，App 区重建）</td></tr>
+</table>
+<p>测试全程遵守工程总约束：禁 <code>rm -rf</code>、变更前置 <code>./backup.sh</code>、变更日志、不外改 SDK。</p>
+
+<h2>11. 风险评估</h2>
+<table>
+<tr><th>风险</th><th>等级</th><th>缓解</th></tr>
+<tr><td>固件镜像 CRC 与 Boot 算法不一致 → VERIFY 恒败</td><td>高</td><td>§6 前置自校 + 依据源码 Crc32Calc 实现</td></tr>
+<tr><td>App/Boot 同 VID:PID 重枚举时序抖动</td><td>中</td><td>沿用 _reopen 轮询 + 握手 layer 判定 + 充足超时</td></tr>
+<tr><td>注入用例误把设备"修死"到不可恢复</td><td>中</td><td>回滚预案齐全（SWD 全量重烧兜底）</td></tr>
+<tr><td>升级计数逼近 16bit 回绕（1024→数字大）</td><td>低</td><td>本机仅 Demo 计数，正确性以 +1 相对变化判，不判绝对值</td></tr>
+<tr><td>长时间 20 轮发热/磨损参数页</td><td>低</td><td>每轮 2 次 ParamSave，20 轮可忽略</td></tr>
+</table>
+
+<div class="foot">Round_009 · HID 闭环更新测试方案 · 计划仅供审阅，待执行后生成 Report.html</div>
+</div>
+</body>
+</html>

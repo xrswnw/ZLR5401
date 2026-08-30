@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Round_005 — AM 消磁器 配置暴露 + 工作模式 + 事件监控 · 实施计划（v2 重写）</title>
+<style>
+:root{
+  --blue:#2563eb; --blue-l:#3b82f6; --blue-bg:#eff6ff;
+  --purple:#7c3aed; --purple-l:#8b5cf6; --purple-bg:#f5f3ff;
+  --ink:#1e293b; --ink2:#475569; --line:#e2e8f0; --bg:#f8fafc;
+  --ok:#16a34a; --ok-bg:#f0fdf4; --warn:#b45309; --warn-bg:#fffbeb; --bad:#dc2626; --bad-bg:#fef2f2;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.58}
+header{background:linear-gradient(120deg,var(--blue) 0%,var(--purple) 100%);color:#fff;padding:26px 40px;border-bottom:4px solid #fff}
+header h1{margin:0 0 6px;font-size:23px}header p{margin:2px 0;opacity:.95;font-size:13px}
+main{max-width:1100px;margin:0 auto;padding:26px 22px}
+section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 24px;margin:16px 0;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+h2{font-size:17px;margin:0 0 13px;padding-left:11px;border-left:4px solid var(--purple);color:var(--ink)}
+h3{font-size:14.5px;margin:16px 0 8px;color:var(--ink)}
+.hl-blue{background:var(--blue-bg);border-left:4px solid var(--blue);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-purple{background:var(--purple-bg);border-left:4px solid var(--purple);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-ok{background:var(--ok-bg);border-left:4px solid var(--ok);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-warn{background:var(--warn-bg);border-left:4px solid var(--warn);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-bad{background:var(--bad-bg);border-left:4px solid var(--bad);padding:10px 14px;border-radius:6px;margin:8px 0}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;vertical-align:middle;white-space:nowrap}
+.b-ok{background:var(--ok-bg);color:var(--ok);border:1px solid #bbf7d0}
+.b-warn{background:var(--warn-bg);color:var(--warn);border:1px solid #fde68a}
+.b-bad{background:var(--bad-bg);color:var(--bad);border:1px solid #fecaca}
+.b-blue{background:var(--blue-bg);color:var(--blue);border:1px solid #bfdbfe}
+.b-purple{background:var(--purple-bg);color:var(--purple);border:1px solid #ddd6fe}
+table{width:100%;border-collapse:collapse;font-size:12.8px;margin:10px 0}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:linear-gradient(120deg,var(--blue-bg),var(--purple-bg));font-weight:600}
+code{background:#f1f5f9;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-family:Consolas,monospace;font-size:12.3px}
+pre{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.3px;line-height:1.5}
+pre code{background:transparent;border:none;color:inherit;padding:0}
+pre .g{color:#4ade80}pre .y{color:#facc15}pre .r{color:#f87171}pre .b{color:#93c5fd}pre .dim{color:#64748b}
+.verdict{font-size:14px;font-weight:600;padding:11px 16px;border-radius:8px;margin:12px 0}
+.v-ok{background:var(--ok-bg);color:var(--ok);border:1px solid #bbf7d0}
+.v-warn{background:var(--warn-bg);color:var(--warn);border:1px solid #fde68a}
+ol,ul{margin:6px 0 8px;padding-left:22px}
+li{margin:3px 0}
+.small{font-size:12px;color:var(--ink2)}
+em{color:var(--purple);font-style:normal;font-weight:600}
+</style>
+</head>
+<body>
+<header>
+<h1>Round_005 · AM 消磁器集成 — 配置暴露 + 工作模式 + 事件监控</h1>
+<p>ZLR5401（STM32F103C8T6 / App+Boot） · Round_021 代码基线 · 2026-08-25 · 依据「AM Deactivator Configurator User Manual_20220425」+ live 串口实测</p>
+</header>
+<main>
+
+<section>
+<h2>0. 范围重定位（v2 相对 v1 的关键纠正）</h2>
+<div class="hl-bad">
+<b>设备真实身份：</b>这是 <em>AM EAS 消磁器（Deactivator）</em>，<b>不是读唯一标签 ID 的读写器</b>。
+其业务本质 = 「<em>检测到标签 → 消磁(Deactivate) 或 报警</em>」，不读标签唯一 ID。
+</div>
+<table>
+<tr><th>v1 计划（已作废）</th><th>v2 计划（本次执行）</th></tr>
+<tr><td>把 cmd17 的 5B「ID」当作标签唯一 ID 驱动软标消耗</td><td>cmd17 5B 字段恒 FF×5，是固定占位，<b>不区分标签</b>；只作为「检测到标签」事件</td></tr>
+<tr><td>波形 cmd64 按 4 包重组 400 点→求回波→解 ID</td><td>实时 4 包不可靠（只见 seq0/1）；波形仅作后台可选项，<b>不承载解 ID</b></td></tr>
+<tr><td>0x88 被动解码作为备选读 ID</td><td>固件实测不支持 0x88，<b>禁用</b></td></tr>
+<tr><td>——</td><td><b>新增：</b>参数配置暴露（本地缓存，勿读回）、工作模式可配（0x50）、cmd17 事件监控上报</td></tr>
+</table>
+<div class="hl-ok"><b>结论</b>：本次交付的是「<em>配置 + 模式 + 监控</em>」三件套，不做标签 ID 解码。产品集成若需「检测到标签即触发开锁」，用 cmd17 事件计数即可，无需 ID。</div>
+</section>
+
+<section>
+<h2>1. 目标</h2>
+<ol>
+<li><b>配置暴露</b>：把消磁器全部可配参数（阈值/命中/频率/延迟/长短/零火/相位同步/解码电压/市电）通过自定义协议暴露给上位机 get/set，断电重启保留（持久化）。</li>
+<li><b>工作模式可配置</b>：0x50 模式 0=检测/消磁、1=仅检测、2=待机，独立 get/set，持久化，重启复原。</li>
+<li><b>监控</b>：接收解析 cmd17 主动上报（~1Hz）作为「标签检测事件」，累计计数、标记链路活动；协议层可读状态（事件数、链路、最近时间）。</li>
+</ol>
+</section>
+
+<section>
+<h2>2. 通信事实（live 已验证，实现依据）</h2>
+<table>
+<tr><th>项</th><th>值</th><th>依据</th></tr>
+<tr><td>帧</td><td><code>2A A2 cmd 包数 包次 包长 data… 校验</code></td><td>协议 20211230</td></tr>
+<tr><td>校验</td><td><code>(cmd+包数+包次+包长+data) & 0xFF</code>，<b>不含 2A A2 头</b></td><td>live 实测（先前"含头"为硬伤）</td></tr>
+<tr><td>参数写</td><td>发命令+值，<b>回显</b>同命令</td><td>写 11=1E 回 00 1E</td></tr>
+<tr><td>参数读</td><td>无真读回；发空数据 = <b>写 0</b>，危险</td><td>5 秒后仍回 00 00</td></tr>
+<tr><td>cmd17</td><td>主动上报（非请求-响应）~1Hz；<code>2A A2 17 01 01 07 [5B] [2B] 校验</code>；[5B] 恒 FF×5，后 2B 恒 00 00</td><td>抓包 + live</td></tr>
+<tr><td>cmd64 波形</td><td>请求-响应；4 包×100点+EF FE；无常规校验；实时仅见 seq0/1</td><td>抓包 + live</td></tr>
+<tr><td>0x88 被动解码</td><td>不支持，无响应</td><td>live</td></tr>
+<tr><td>心跳 0x04</td><td>30 分钟一次主动</td><td>手册</td></tr>
+</table>
+<div class="hl-warn"><b>参数读语义（易错）</b>：设备参数为「回显式」，发空数据会把参数写成 0。
+因此 <em>设备端必须本地缓存已写入值</em>，「读配置」返回本地缓存，<b>绝不</b>依赖 0 数据读回。
+当前 <code>App_AM_GetParam</code> 实现（发空数据等回显）是错的，本次改为缓存读取。</div>
+</section>
+
+<section>
+<h2>3. 配置模型</h2>
+<p>复用现有 <code>AppAMConfig_t</code>（App_AM.h）+ <code>AMUserCfg_t</code>（App_Param.h 持久化，userParam 偏移16，magic 'AM'）。补一个 <code>mainsFreq</code>（市电 0x5D：0=50Hz/1=60Hz）字段。</p>
+<table>
+<tr><th>命令</th><th>宏</th><th>字段</th><th>范围</th><th>语义</th></tr>
+<tr><td>0x50</td><td>AM_CMD_MODE</td><td><b>mode</b></td><td>0-2</td><td>0=检测/消磁 1=仅检测 2=待机（<b>工作模式</b>）</td></tr>
+<tr><td>0x11</td><td>AM_CMD_THRESHOLD</td><td>threshold</td><td>0-30</td><td>接收阈值</td></tr>
+<tr><td>0x12</td><td>AM_CMD_HIT_COUNT</td><td>hitCount</td><td>3-8</td><td>命中次数</td></tr>
+<tr><td>0x13</td><td>AM_CMD_FREQ_RANGE</td><td>freqRange</td><td>0-2</td><td>频率范围 宽/中/窄</td></tr>
+<tr><td>0x14</td><td>AM_CMD_RECV_DELAY</td><td>recvDelay</td><td>0-50</td><td>接收延迟（掩藏）</td></tr>
+<tr><td>0x53</td><td>AM_CMD_RECV_LENGTH</td><td>recvLength</td><td>0/1</td><td>接收长短（短=防误报）</td></tr>
+<tr><td>0x51</td><td>AM_CMD_PHASE_INVERT</td><td>phaseInvert</td><td>0/1</td><td>零火翻转（相位移180°）</td></tr>
+<tr><td>0x52</td><td>AM_CMD_PHASE_SYNC</td><td>phaseSync</td><td>0-2000</td><td>相位同步</td></tr>
+<tr><td>0x67</td><td>AM_CMD_DECODE_VOLT</td><td>decodeVolt</td><td>0-2</td><td>解码电压 低/中/高</td></tr>
+<tr><td>0x5D</td><td>AM_CMD_MAINS_FREQ</td><td><b>mainsFreq</b></td><td>0/1</td><td>市电 50/60Hz（<b>新增</b>）</td></tr>
+</table>
+</section>
+
+<section>
+<h2>4. 代码改动</h2>
+<h3>4.1 App_AM_HL.h / App_AM_HL.c — 非阻塞取帧</h3>
+<ul>
+<li>新增 <code>int AM_HL_TryRecvFrame(uint8_t *cmd, uint8_t *data, uint8_t *len);</code> 非阻塞版（复用 <code>am_uart_peek_frame</code>，无超时等待）。</li>
+<li>保留现有 <code>AM_HL_SendFrame/RecvFrame/RxFlush</code>（写参数/链路探测仍阻塞等待回显）。</li>
+</ul>
+<pre><code><span class="dim">// App_AM_HL.h 新增</span>
+int AM_HL_TryRecvFrame(uint8_t *cmd, uint8_t *data, uint8_t *len); <span class="g">// 0=OK, -1=暂无完整帧</span></code></pre>
+<div class="hl-blue"><b>原因</b>：cmd17 被动上报需在 <code>App_AM_Process</code> 主循环里轮询取帧；若用阻塞 RecvFrame 会卡主循环。取到 cmd17 即计数。</div>
+
+<h3>4.2 App_AM.h / App_AM.c — 缓存语义 + 模式 + 监控</h3>
+<ul>
+<li><code>AppAMConfig_t</code> 增加 <code>mainsFreq</code> 字段；<code>APP_AM_CONFIG_DEFAULT</code> 相应补 0。</li>
+<li><code>App_AM_GetParam</code> 改为<b>返回本地缓存</b>（按命令查 s_cfg），不再发空数据读回。返回值语义不变。</li>
+<li><code>App_AM_SetParam</code>：写后回显校验成功，<b>同时更新本地缓存</b>（cmd 与 s_cfg 字段一一映射）。这样回显校验保留，且缓存即真相。</li>
+<li><code>App_AM_SetConfig</code>：逐条下发（含 mainsFreq）；成功后整包写回 s_cfg。</li>
+<li><b>监控</b>：新增
+<pre><code>uint32_t  App_AM_GetEventCount(void);  <span class="g">// 检测到标签事件累计 (cmd17 次数)</span>
+uint32_t  App_AM_GetLastEventMs(void); <span class="g">// 最近一次事件相对上电 ms (0=尚无)</span></code></pre>
+</li>
+<li><code>App_AM_Process</code>：改为有实际逻辑 —— 轮询 <code>AM_HL_TryRecvFrame</code>；收到 <code>cmd=0x17</code> 即 <code>s_evtCount++</code>、记录 <code>s_lastEvtMs</code>、<code>s_link=OK</code>。收到任何合法帧都视为链路活动。</li>
+<li><code>App_AM_Query</code>：修正错误的 <code>AM_CMD_QUERY_ALL(0x3F)</code>（0x3F 无对应命令），改为「探测链路」：若最近收到过 cmd17/合法帧则 OK，否则按超时窗判定。</li>
+</ul>
+
+<h3>4.3 App_CustomProtocol.h — 新增子命令</h3>
+<pre><code><span class="dim">// 追加 (保留原有 0x01..0x05)</span>
+#define AM_SUB_GET_STATUS   0x06 <span class="g">/* data:[cmd] 读监控: [cmd,err,link,evtL,evtH,lastL,lastH] */</span>
+#define AM_SUB_SET_MODE     0x07 <span class="g">/* data:[cmd,mode] 仅切工作模式(持久化) */</span></code></pre>
+
+<h3>4.4 App_Dispatch.c — 新增处理分支</h3>
+<ul>
+<li><code>AM_SUB_SET_CONFIG</code>：解析加读 <code>mainsFreq</code>。<b>版本兼容</b>：<code>dataLen&gt;=15</code> → mode@13,mainsFreq@14；否则 mainsFreq=当前值。</li>
+<li><code>AM_SUB_GET_CONFIG</code>：响应追加 mainsFreq 字节。</li>
+<li><code>AM_SUB_GET_STATUS</code>：打包 link、evtCount、lastEventMs。</li>
+<li><code>AM_SUB_SET_MODE</code>：<code>App_AM_SetParam(0x50, mode)</code> + 持久化模式 + 更新本地缓存。</li>
+<li>main.c 持久化装载处，映射新增 mainsFreq。</li>
+</ul>
+</section>
+
+<section>
+<h2>5. 工作模式业务语义（开锁编排）</h2>
+<div class="hl-purple"><b>约定</b>：模式 0x50 不仅写设备，还影响本机开锁业务流程 ——
+0=检测/消磁（正常：检测到→消磁→开锁/计数）；1=仅检测（检测到→报警/提示，不消磁不开锁）；
+2=待机（远程禁用，锁定不响应）。<b>本次先在上位机侧预留 SET_MODE 接口与文档约定；开锁器业务联动留在后续 Round（App_Locker）</b>。</div>
+</section>
+
+<section>
+<h2>6. 持久化</h2>
+<ul>
+<li>复用 <code>AmParam_Save/Load</code>（magic 'AM'，偏移16）。新增 mainsFreq 字节后负载 17B，仍在 172B userParam 内，无需改 magic/offset；LOAD 缺省补默认 0 保证旧记录兼容。</li>
+<li>写 Flash 时机：<code>AM_SUB_SET_CONFIG</code>（成功）与 <code>AM_SUB_SET_MODE</code>。</li>
+</ul>
+</section>
+
+<section>
+<h2>7. 校验与验收</h2>
+<table>
+<tr><th>项</th><th>方法</th><th>通过标准</th></tr>
+<tr><td>编译</td><td>./build_all.sh</td><td>0 error/0 warning（新增字段全引用）</td></tr>
+<tr><td>配置写→缓存读</td><td>上位机 SET_CONFIG 随机值 → GET_CONFIG 回读</td><td>与所设一致（本地缓存，非读回）</td></tr>
+<tr><td>模式写</td><td>SET_MODE 切 0/1/2</td><td>GET_STATUS 返回 link=OK</td></tr>
+<tr><td>事件监控</td><td>标签靠近检测区 → 观察 GET_STATUS</td><td>evtCount 累增，lastEventMs 刷新；标签移开停止</td></tr>
+<tr><td>掉电持久</td><td>SET_CONFIG 后重启</td><td>GET_CONFIG 复原所设值</td></tr>
+</table>
+<div class="hl-warn"><b>live 注意事项</b>：本机被动监听 cmd17 时不可与上位机同时抢发 0x50/写参数（485 半双工）；事件监控依赖设备周期性主动上报（mode≠待机时才有）。</div>
+</section>
+
+<section>
+<h2>8. 交付物与范围外</h2>
+<h3>交付</h3>
+<ul>
+<li>App_AM_HL：非阻塞取帧。</li>
+<li>App_AM：参数缓存语义、mainsFreq、Process 轮询 cmd17 监控、状态查询接口。</li>
+<li>协议层：GET_STATUS / SET_MODE 子命令、SET/GET_CONFIG 含 mainsFreq。</li>
+<li>App_Param / main.c：持久化含 mainsFreq。</li>
+<li>Report.html 汇总实测结果。</li>
+</ul>
+<h3>范围外（明确不做）</h3>
+<ol>
+<li>标签唯一 ID 解码（设备不具备）。</li>
+<li>波形 cmd64 4 包重组解回波（实时不可靠，非本次目标）。</li>
+<li>0x88 被动解码（固件不支持）。</li>
+</ol>
+</section>
+
+</main>
+</body>
+</html>

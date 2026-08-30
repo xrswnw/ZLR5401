@@ -1,0 +1,7 @@
+{
+  "precheck": "PASS",
+  "smoke": true,
+  "inject": [],
+  "baseline": [],
+  "overall": "PASS"
+}

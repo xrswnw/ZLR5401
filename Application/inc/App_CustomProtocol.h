@@ -41,27 +41,79 @@
 #define FC_AM_CTRL          0x0C   /* AM 解码器控制 (子命令编码, 见下)*/
 #define FC_LOCKER_CTRL      0x0D   /* 开锁器业务编排 (子命令编码, 见下)*/
 #define FC_RGB_CTRL         0x0E   /* RGB 三色灯控制 (见下)*/
+#define FC_SELFTEST_CTRL    0x0F   /* 设备级自检/错误位 (子命令编码, 见下; App 专属, Boot 忽略)*/
+
+/* ---- FC_SELFTEST_CTRL (0x0F) — 设备级自检/锁存错误位 ----
+ * 错误位 16bit 锁存位图 (errBits, bit=1 故障, 高字节在前回传时 L 在前):
+ *   bit0=MOTOR_SPI   DRV8434S SPI 配置回读不一致 (通信/落配置失败)
+ *   bit1=MOTOR_FAULT DRV8434S 器件故障 (FAULT 位)
+ *   bit2=UHF_COMM    UHF Open/Query 通信失败
+ *   bit3=AM_COMM     AM 消磁器 Query 通信失败
+ *   bit4=PARAM_CRC   参数区 CRC 失败回落默认值 (仅上电置位, 探测不刷新)
+ *   bit5=TRAVEL_SW   行程开关缺失/回零失败 (bit0=上 bit1=下)
+ *   bit6~15 预留 (恒 0)
+ * 置位来源: 上电 POST 探测 / 运行期 Locker 故障联动 (UHF链路->bit2,
+ * 未回零->bit5) / 参数区 CRC 失败 (bit4).
+ * bit0~3、bit5 随 RERUN 探测刷新; bit4 只能 CLEAR 手动清. */
+#define SELFTEST_SUB_QUERY  0x01   /* data: [cmd]  读锁存错误位+实时诊断快照 (无阻塞):
+                                        回 [cmd,err,errBitsL,errBitsH,motorCommOk,drvFault,
+                                            uhfLink,amLink,paramCrc,switchErr]
+                                        motorCommOk: 1=DRV8434S SPI 配置回读一致 (实时再读)
+                                        drvFault:    DRV8434S 实时故障寄存器
+                                        uhfLink:     0=正常 1=超时 2=CRC 错误
+                                        amLink:      0=正常 非0=掉线
+                                        paramCrc:    1=上电参数区曾 CRC 失败回落
+                                        switchErr:   行程开关错误位 bit0=上 bit1=下 */
+#define SELFTEST_SUB_RERUN  0x02   /* data: [cmd]  重探外设并刷新锁存位 (阻塞~3s, 须 Locker/OneShot 空闲):
+                                        回 [cmd,err,errBitsL,errBitsH] */
+#define SELFTEST_SUB_CLEAR  0x03   /* data: [cmd,maskL,maskH]  清指定位 (bit 定义同上, 可多选):
+                                        回 [cmd,err,errBitsL,errBitsH] (清后的剩余位图) */
+#define SELFTEST_ERR_OK     0
+#define SELFTEST_ERR_PARAM  1
+#define SELFTEST_ERR_BUSY   2   /* RERUN 时 Locker/OneShot 非空闲 */
 
 /* ---- FC_RGB_CTRL (0x0E) — RGB 三色灯控制 ----
  * data: [mask, reserved]   mask=颜色位掩码(bit0=G,bit1=R,bit2=B, 其余预留), reserved=预留字节.
- * 响应: data[0]=mask(回显), data[1]=err(0=OK). err 值见 RGB_ERR_*. */
+ * 响应: data[0]=mask(回显, err!=OK 时为 0), data[1]=err(0=OK). err 值见 RGB_ERR_*.
+ * 仅设备空闲 (Locker/OneShot/行程测试均不运行) 时接受, 作为手动灯语保持
+ * 10s 自动回收 (业务灯语优先); mask=0 撤销. 运行中回 RGB_ERR_BUSY. */
 #define RGB_CMD_SET          0x01   /* data: [cmd,mask,reserved] */
 #define RGB_ERR_OK           0
 #define RGB_ERR_PARAM        1
+#define RGB_ERR_BUSY         2
 
 /* ---- FC_LOCKER_CTRL (0x0D) 子命令编码 (data[0]) ----
  * 开锁器业务编排状态机 (依《约束/Link.txt》).
  * 所有响应同步: data[0]=cmd, data[1]=err(0=OK). err 值见 LOCKER_ERR_*.
- * 注: 一帧装不下的多硬标签, 可先 LOCKER_SUB_ADD 逐条追加再 START. */
+ * 注: 协议帧 data 上限 PROTO_MAX_DATA=1024 且解析器为流式字节重组,
+ *     单帧可跨多个 HID report; 多硬标签亦可用 LOCKER_SUB_ADD 累积构建. */
 #define LOCKER_SUB_CONFIGURE  0x01   /* data: [cmd,hardCountL,hardCountH,softCountL,softCountH]
                                         (v1 精简: 经 ADD 建清单, 此处仅设软标数/清零) */
 #define LOCKER_SUB_ADD        0x02   /* data: [cmd,epcLen,epc..]  追加一条硬标签 EPC */
 #define LOCKER_SUB_START      0x03   /* data: [cmd]  上电UHF+开扫, 进入可开锁 */
 #define LOCKER_SUB_CANCEL     0x04   /* data: [cmd]  取消, 磁块回降回 IDLE */
-#define LOCKER_SUB_QUERY      0x05   /* data: [cmd]  查询状态/计数: [cmd,err,state,hm,sc,su] */
+#define LOCKER_SUB_QUERY      0x05   /* data: [cmd]  查询状态/计数: [cmd,err,state,hm(2),sc(2),su(2),faultReason]
+                                        state: 0=IDLE 1=CONFIGURED(扫描) 2=UNLOCK_HOLD(已匹配
+                                        升起保持中) 3=SOFT_DECODE 4=DONE 5=FAULT 6=LOWERING;
+                                        faultReason: 最近一次 FAULT 原因诊断码 (0=无, 见
+                                        App_Locker.c locker_enter_fault 注释: 1=UHF链路 2=未回零
+                                        3=seek启动失败 4~6=升寻触失败 7=回降寻触失败 8=回降启动失败) */
 #define LOCKER_SUB_CONSUME_SOFT 0x06 /* data: [cmd]  v1 软标: 上位机上报已解码一次 */
 #define LOCKER_SUB_GET_EVENT  0x07   /* data: [cmd]  取一条上报事件 (见 AppLockerEvent_t) */
-/* 逻辑错误码 (data[1]) */
+#define LOCKER_SUB_ONE_SHOT   0x08   /* data: [cmd,tmoL,tmoH,maxHoldL,maxHoldH,epcLen,epc..,(demagCnt)]
+                                        单标签同步开锁: 一帧全流程 (UHF 就绪+盘点+比对+升 KEY_UP
+                                        +保持期持续盘点监控+回降 KEY_DOWN), 阻塞至完成/失败回帧.
+                                        demagCnt: 消磁标签数, 缺省/0=跳过消磁流程; >0 时保持期
+                                        等待 AM 成功消磁事件数达标(endReason=5)即回降.
+                                        实现: App_LockerOneShot.c; 失败码/结束原因宏定义见
+                                        App_LockerOneShot.h (ONE_ERR_x / ONE_END_x)。
+                                        流程阻塞期间泵循环内嵌协议服务: GET_PROGRESS/CANCEL/
+                                        只读查询放行, 其余子命令及 UHF/AM/MOTOR 控制类回 BUSY */
+#define LOCKER_SUB_GET_PROGRESS 0x09 /* data: [cmd]  流程中拉取进度:
+                                        回 [cmd,err,phase,holdMs(2),steps(2),tagPresent,demagDone,
+                                        epcLen,epc..]  phase 0=无流程 1前置 2UHF就绪 3盘点 4升起
+                                        5保持期 6回降 (ONE_PH_x, 见 App_LockerOneShot.h) */
+/* 逻辑错误码 (data[1]) — 0x01~0x07 子命令用 */
 #define LOCKER_ERR_OK         0
 #define LOCKER_ERR_BUSY       1     /* 非空闲, 需先取消 */
 #define LOCKER_ERR_PARAM      2     /* 参数非法/超上限 */
@@ -90,16 +142,23 @@
  * data: [0]=cmd, 后续参数随 cmd 而定. 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd. */
 #define UHF_SUB_OPEN           0x01   /* data: [cmd]  上电 + 配置下发, 进入 READY */
 #define UHF_SUB_CLOSE          0x02   /* data: [cmd]  停止并下电 */
-#define UHF_SUB_INVENTORY      0x03   /* data: [cmd]  发起一次盘点 */
+#define UHF_SUB_INVENTORY      0x03   /* data: [cmd,timeoutL,timeoutH] 同步盘点: 内部完成
+                                        0x22多标签盘存(timeout,缺省1s)->0x29取回, 标签内联在响应
+                                        返回 [cmd,err,countL,countH,{rssi,epcLen,epc..}...], 无主动上报 */
 #define UHF_SUB_READ_TAG       0x04   /* data: [cmd,epcLen,epc..,bank,addr,cnt]  读标签 */
 #define UHF_SUB_WRITE_TAG      0x05   /* data: [cmd,epcLen,epc..,bank,addr,len,data..]  写标签 */
 #define UHF_SUB_STOP           0x06   /* data: [cmd]  停止当前操作 */
 #define UHF_SUB_QUERY          0x07   /* data: [cmd]  查询链路/状态 */
 #define UHF_SUB_GET_CONFIG     0x08   /* data: [cmd]  读取当前配置 (含 band) */
 #define UHF_SUB_SET_CONFIG     0x09   /* data: [cmd,powerDbm,antenna,checksumEn,session,target,q,(band)]  设置配置 */
-#define UHF_SUB_GET_TAGS       0x0A   /* data: [cmd,(count)]  count=0 取全部; >0 取前 count 条 */
+#define UHF_SUB_GET_TAGS       0x0A   /* data: [cmd,(count)]  count=0 取全部; >0 取前 count 条 (数据面备用) */
 #define UHF_SUB_GET_STATUS     0x0B   /* data: [cmd]  读取状态/错误监控 */
 #define UHF_SUB_CHECK_ANT      0x0C   /* data: [cmd]  主动触发回波检测 */
+#define UHF_SUB_SCAN_START     0x0D   /* data: [cmd,cycleL,cycleH] 启动自动扫描: 连续盘点入缓冲(不主动上报),
+                                        主机用 GET_TAGS 拉取取走 (含 RSSI, 用于识别/测距);
+                                        识别到标签即蜂鸣 50ms 提示; 扫描中 SET_CONFIG 延迟到下一轮盘点前下发 */
+#define UHF_SUB_SCAN_STOP      0x0E   /* data: [cmd]  停止自动扫描并停止当前盘点 */
+#define UHF_SUB_GET_DUMP       0x10   /* data: [cmd]  读取 0x22/0x29 原始字节诊断 (Round_050) */
 /* 运行错误码 (data[1]) */
 #define UHF_ERR_OK             0
 #define UHF_ERR_PARAM          1
@@ -110,7 +169,7 @@
 #define UHF_ERR_TIMEOUT        6
 
 /* ---- FC_AM_CTRL (0x0C) 子命令编码 (data[0]) ----
- * AM 解码器经 USART2 (2A A2 帧) 通信. 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd.
+ * AM 消磁器经 USART1 RS232 (PA9/PA10, 2A A2 帧) 通信. 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd.
  * 值用 16bit (高字节在后) 表示: (dataH<<8)|dataL. */
 #define AM_SUB_GET_CONFIG   0x01   /* data: [cmd]  读取当前配置 */
 #define AM_SUB_SET_CONFIG   0x02   /* data: [cmd, thrH,thrL, hitH,hitL, freq, delayH,delayL,
@@ -118,11 +177,17 @@
 #define AM_SUB_GET_PARAM    0x03   /* data: [cmd, amCmd]  读单个参数 (amCmd 为 AM 命令字, 返回本地缓存) */
 #define AM_SUB_SET_PARAM    0x04   /* data: [cmd, amCmd, valH, valL]  写单个参数 */
 #define AM_SUB_QUERY        0x05   /* data: [cmd]  探测链路 */
-#define AM_SUB_GET_STATUS   0x06   /* data: [cmd]  读监控: [cmd, link, evtL,evtH, lastL,lastH] (自 0x06 起无 err 字段) */
+#define AM_SUB_GET_STATUS   0x06   /* data: [cmd]  读监控 (无 err 字段):
+                                        [cmd,link,evt(4),lastEvtMs(4),deact,deactCnt(4),failCnt(4)]
+                                        deact 0=空闲/1=消磁成功/2=消磁失败;
+                                        cmd17 突发结算: 1帧=成功, ≥2帧连发=失败 (内容恒FF×5无信息) */
 #define AM_SUB_SET_MODE     0x07   /* data: [cmd, mode]  仅切工作模式 (0检测消磁/1仅检测/2待机), 持久化 */
+#define AM_SUB_GET_WAVE     0x08   /* data: [cmd]  触发一次同步波形采集 (0x64, 阻塞~1s): 回 [cmd,err,pointsH,pointsL] */
+#define AM_SUB_GET_WAVE_PAGE 0x09  /* data: [cmd, page]  取一页波形 (48 点/页): 回 [cmd,page,err,pointsH,pointsL,w(≤48)] */
 /* 运行错误码 (data[1]) */
 #define AM_ERR_OK           0
 #define AM_ERR_PARAM        1
+#define AM_ERR_BUSY         2     /* 开锁 0x08 流程进行中, 仅放行 AM_SUB_GET_STATUS */
 #define AM_ERR_LINK         4
 #define AM_ERR_TIMEOUT      6
 

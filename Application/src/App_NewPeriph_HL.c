@@ -11,7 +11,7 @@
  *   光电接口 (TLP181): MCU_IR1_DET = PC4 (输入, 检测红外/光电)
  *   行程开关:  MCU_KEY_UP=PC8 (输入), MCU_KEY_DOWN=PC9 (输入, 已恢复)
  *   蜂鸣器:    MCU_BEEP5V0_CTL=PC12 (输出, 高电平响)
- *   调试串口:  UART4 TX=PC10 (AF_PP), RX=PC11 (输入浮空)
+ *   调试串口:  UART4 TX=PC10 (AF_PP), RX=PC11 (输入浮空, UHF 已回归 USART3 后释放)
  *   RCC: GPIOB/GPIOC(APB2) + UART4(APB1) 由 System_PeriphClkInit 统一开启。
  * ===================================================================== */
 
@@ -49,7 +49,7 @@ void App_NewPeriph_Init(void)
     /* 输出: 蜂鸣器 PC12 (高电平响) */
     gpio_cfg_output(BEEP_GPIO_PORT, BEEP_GPIO_PIN);
 
-    /* 调试串口 UART4 (PC10/11 已改作 UHF, 默认关闭; APP_DEBUG_SERIAL_EN=0 时跳过)*/
+    /* 调试串口 UART4 (PC10/11 已释放, 默认关闭; APP_DEBUG_SERIAL_EN=0 时跳过)*/
 #if APP_DEBUG_SERIAL_EN
     App_NewPeriph_DebugInit();
 #endif
@@ -70,42 +70,41 @@ uint8_t App_NewPeriph_ReadKeyDown(void)
 }
 
 /* ---- 蜂鸣器 (PC12, 高电平响) ---- */
+/* 一次性脉冲调度状态 (供业务短鸣: 结账完成提示等; 到期自动静音) */
+static uint32_t s_pulseEndMs = 0u;      /* 当前脉冲绝对截止时刻 */
+static uint8_t  s_pulseActive = 0u;     /* 1=脉冲进行中 */
+
 void App_NewPeriph_Beep(uint8_t on)
 {
     if (on) GPIO_SetBits(BEEP_GPIO_PORT, BEEP_GPIO_PIN);
     else    GPIO_ResetBits(BEEP_GPIO_PORT, BEEP_GPIO_PIN);
 }
 
-/* ---- 光电 IR (PC4) + 蜂鸣器 联动: 触发(低电平)期间 100ms 周期循环响/停 ----
- * 反转电平: IR 检测到低 (光电遮挡) 时, 蜂鸣器每 100ms 周期: 响 100ms / 停 100ms 循环;
- * IR 为高 (无遮挡) 时蜂鸣器关. 由主循环周期调用 (ms 粒度). */
-void App_IrBuzzer_Process(void)
+/* ---- 一次性蜂鸣脉冲 (ms): 立即响, 持续 ms 后自动停 ----
+ * 供业务反馈触发 (结账完成提示 / 回零成功长鸣等)。
+ * 重复触发会延长截止时刻 (粘连抑制靠上层节流)。
+ * 注: 原 IR 光电(PC4) 100ms 循环蜂鸣联动已按需求移除, 蜂鸣器专职
+ *     业务脉冲提示; IR 检测读取仍可用 App_NewPeriph_ReadIr()。 */
+void App_NewPeriph_BeepPulse(uint32_t ms)
 {
-    static uint32_t s_lastMs = 0;
-    static uint8_t  s_prevOn = 0;       /* 上一次 IR 是否高(触发) */
-    static uint8_t  s_phase = 0;        /* 当前 100ms 相位: 0=响 1=停 */
+    if (ms == 0u) { App_NewPeriph_Beep(0); s_pulseActive = 0u; return; }
+    s_pulseEndMs = SysTickHl_GetMs() + ms;
+    s_pulseActive = 1u;
+    App_NewPeriph_Beep(1);
+}
 
-    uint32_t now = SysTickHl_GetMs();
-    uint8_t  on  = (App_NewPeriph_ReadIr() == 0u);   /* 低=检测到(触发) */
-
-    /* 状态切换/上升沿: 重置相位与计时基准 */
-    if (on != s_prevOn) {
-        s_prevOn = on;
-        s_phase = 0;
-        s_lastMs = now;
-    }
-
-    if (!on) {
-        App_NewPeriph_Beep(0);
-        return;
-    }
-
-    /* 触发期间: 每 100ms 翻转相位 (响/停交替) */
-    if ((now - s_lastMs) >= 100u) {
-        s_lastMs = now;
-        s_phase = (uint8_t)(s_phase ^ 1u);
-    }
-    App_NewPeriph_Beep((s_phase == 0u) ? 1u : 0u);
+/* 查询 + 驱动脉冲: 每次要改变蜂鸣器输出前调用.
+ * 返回 1=当前有进行中的脉冲 (应保持响); 0=无脉冲 (可静音).
+ * 脉冲到期后自动静音并清零活动位. */
+uint8_t App_NewPeriph_BeepPulseActive(void)
+{
+    if (!s_pulseActive) return 0u;
+    if (SysTickHl_GetMs() < s_pulseEndMs)   /* 未到期 */
+        return 1u;
+    /* 到期: 静音清除 */
+    App_NewPeriph_Beep(0);
+    s_pulseActive = 0u;
+    return 0u;
 }
 
 /* ---- 调试串口 UART4 (轮询, UART4_IRQ 不在 MD 向量表) ---- */

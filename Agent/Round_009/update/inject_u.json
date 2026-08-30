@@ -1,0 +1,50 @@
+{
+  "precheck": "PASS",
+  "smoke": null,
+  "inject": [
+    {
+      "case": "U1",
+      "desc": "随机丢响应",
+      "verdict": "PASS",
+      "detail": "dropped 3 pkts; recovered ok=True"
+    },
+    {
+      "case": "U2",
+      "desc": "链路慢速/延迟",
+      "verdict": "PASS",
+      "detail": "slow-link added 106.1s; ok=True"
+    },
+    {
+      "case": "U3",
+      "desc": "中途USB重枚举",
+      "verdict": "PASS",
+      "detail": "replug mid-update stayed Boot/UPG; recovered ok=True"
+    },
+    {
+      "case": "U4",
+      "desc": "响应超时重试",
+      "verdict": "PASS",
+      "detail": "response-timeout retried; ok=True"
+    },
+    {
+      "case": "U5",
+      "desc": "连续满速批量",
+      "verdict": "PASS",
+      "detail": "burst no-reorder, VERIFY OK, back to App"
+    },
+    {
+      "case": "U6",
+      "desc": "重复/乱序发送",
+      "verdict": "FAIL",
+      "detail": "dup lost #1111"
+    },
+    {
+      "case": "U7",
+      "desc": "固件尺寸边界",
+      "verdict": "PASS",
+      "detail": "oversize->UPG_NO_SPACE stays Boot; normal fw recovered ok=True"
+    }
+  ],
+  "baseline": [],
+  "overall": "FAIL"
+}

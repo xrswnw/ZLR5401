@@ -5,7 +5,7 @@
 
 /* =====================================================================
  * UHF 超高频模块硬件抽象层 (SIM7500 / EX10 平台)
- *  - 接口: UART4 (PC10=TX, PC11=RX), 115200-8-N-1 (TTL 电平)
+ *  - 接口: USART3 (PB10=TX, PB11=RX), 115200-8-N-1 (TTL 电平)
  *  - UHF_EN = PB12 (模块电源使能, 高电平上电)
  *  - 模块 IO: OUT2=PB13, IN1=PB14, IN2=PB15, NRST=PC6, OUT1=PC7
  *  - 协议: EX10 通用指令帧 (见《EX10系列模块通信协议》):
@@ -26,7 +26,7 @@
 #define UHF_HL_LINK_BAD_CRC    2u
 
 /* ---- 接口 (硬件层) ---- */
-void     UHF_HL_Init(void);                         /* UART4 + 引脚初始化 */
+void     UHF_HL_Init(void);                         /* USART3 + 引脚初始化 */
 void     UHF_HL_DeInit(void);
 
 /* 电源 / 天线 硬件控制 */
@@ -65,6 +65,11 @@ int      UHF_HL_RecvFrame(uint8_t *cmd, uint16_t *status,
 
 /* CRC16 (附录5: init 0xFFFF, poly 0x1021, MSB first; 覆盖 0xFF 之后字节) */
 uint16_t UHF_HL_Crc16(const uint8_t *data, uint16_t len, uint16_t init);
+
+/* Round_050 诊断: 最近收帧的原始 Data Length 与 cmd */
+void     UHF_HL_GetRawLast(uint16_t *datalen, uint8_t *cmd);
+/* Round_050 诊断: 快照接收环内容 */
+uint16_t UHF_HL_DumpRx(uint8_t *out, uint16_t maxlen);
 
 /* 数据平面字节流 (供状态机解析标签流) */
 uint16_t UHF_HL_RxAvailable(void);

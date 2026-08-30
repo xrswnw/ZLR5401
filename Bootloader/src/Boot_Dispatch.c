@@ -157,7 +157,11 @@ void BootDispatch(ProtoFrame_t *f) {
             break;
         }
 
-        g_sIap.Written += dataLen;
+        /* 以"最高已覆盖地址"计进度 (按最大写地址而非累计字节),
+           使重复/乱序重发幂等: 重复块不再推进 Written, 不会提前越过 FwSize。 */
+        uint32_t covered = target + dataLen - APP_FLASH_ORIGIN;
+        if (covered > g_sIap.Written)
+            g_sIap.Written = covered;
         if (g_sIap.Written >= g_sIap.FwSize)
             g_sIap.State = IAP_DATA_DONE;
 

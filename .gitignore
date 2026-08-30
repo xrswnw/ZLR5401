@@ -24,8 +24,10 @@ Sdk/
 # Backup recycle bin (see global CLAUDE.md rule 1)
 TrashCan/
 
-# Python virtualenv
+# Python virtualenv / bytecode
 .venv/
+__pycache__/
+*.pyc
 
 # Object files
 *.o

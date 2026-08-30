@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 电机测试指令 - 实施计划 (Round_006)</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 1000px; margin: 24px auto; padding: 0 20px; color: #222; line-height: 1.6; }
+  h1 { border-bottom: 3px solid #2b6cb0; padding-bottom: 8px; }
+  h2 { color: #2b6cb0; margin-top: 32px; border-left: 5px solid #2b6cb0; padding-left: 10px; }
+  h3 { color: #333; margin-top: 20px; }
+  code { background: #f0f4f8; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; }
+  pre { background: #1e1e2e; color: #d0d0d0; padding: 12px; border-radius: 6px; overflow: auto; }
+  pre code { background: none; padding: 0; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 14px; }
+  th { background: #eef3f8; }
+  .note { background: #fffbe6; border-left: 4px solid #e6a700; padding: 8px 12px; margin: 12px 0; }
+  .warn { background: #fdecea; border-left: 4px solid #d93025; padding: 8px 12px; margin: 12px 0; }
+  .ok { background: #eafaf1; border-left: 4px solid #1a9e4b; padding: 8px 12px; margin: 12px 0; }
+  ul, ol { margin: 6px 0 12px 0; padding-left: 24px; }
+  .small { color: #666; font-size: 13px; }
+</style>
+</head>
+<body>
+
+<h1>ZLR5401 电机测试指令 — 实施计划</h1>
+<p class="small">Agent/Round_006 · 日期 2026-08-25 · 本文档为设计计划，<b>尚未实施</b>，待评审后执行。</p>
+
+<h2>1. 需求理解</h2>
+<p>新增一条上位机指令，对步进电机进行自动化行程测试：</p>
+<ol>
+  <li><b>增加一条指令：电机测试。</b></li>
+  <li><b>测试动作：</b>无人工干预下，以最快速度<b>正转</b>到<b>上触点</b>，检测到触点动作后<b>立即反转</b>至<b>下触点</b>触发 —— 这构成 <b>1 次往返</b>。</li>
+  <li><b>帧格式：</b>首字节 = 测试次数 <code>N</code>，单次 = 触发两触点为止（即一次上行程 + 一次下行程）。</li>
+  <li><b>状态机管理：</b>若当前正在测试，收到新测试指令返回<b>忙</b>（BUSY）。</li>
+</ol>
+
+<h2>2. 设计要点</h2>
+
+<h3>2.1 触点检测 — 极性无关，最稳健</h3>
+<p>行程开关电平：<code>KEY_UP=PC8</code>、<code>KEY_DOWN=PC9</code>，上拉输入、高电平=触发，读取函数 <code>App_NewPeriph_ReadKeyUp/Down()</code> 已可用。</p>
+<div class="note">
+<b>推荐：极性无关检测。</b>每半程不论「正转/反转」，只要检测到<b>任一触点</b>动作即判定到达，随后反转去触发另一触点。
+因为每次往返本来就必经两个触点，所以即使固件里「正转」映射到的物理触点与「上触点」相反，动作序列仍等价于「上→下」，
+可自校准，不依赖方向位的物理极性，也不引入方向配置项。<br>
+（若严格要求「正转必须到上触点、反转必须到下触点」，则需在计划外另行确认 <code>dir=0/CW</code> 对应哪一侧，本文不采用该简化之外的耦合。）
+</div>
+
+<h3>2.2 防抖 / 消重触</h3>
+<ul>
+  <li>行程开关存在机械抖动，<b>不能以单次瞬时读值判定</b>。每次节拍读值，要求触点<b>连续 N 次保持触发</b>（约 20ms）才认定为有效触发。</li>
+  <li><b>消重触：</b>一次触发生效后，须等两触点都回到释放（都读数 0）后再允许下一次触发计数，避免在触点仍被压住期间刚反转就误把同一触点再计一次。</li>
+</ul>
+
+<h3>2.3 运行参数</h3>
+<ul>
+  <li>测试期间把步进速度提到最高：<code>App_Stepper_SetSpeedHz(2000)</code>（沿用 <code>STEPPER_MAX_HZ=2000</code> 上限），转矩设 100%：<code>App_Stepper_SetTorquePercent(100)</code>。</li>
+  <li>运动用「持续运行」：<code>App_Stepper_Move({dir, steps=0})</code>，不停转，仅靠触点触发来反转/停止。</li>
+</ul>
+
+<h3>2.4 安全保护（必须）</h3>
+<div class="warn">
+触点损坏/未接线时不能无限狂转，需两重兜底：
+<ul>
+  <li><b>单程超时</b>：自本次方向启动起，规定时间内（如 10 s）仍无触点触发 → 判故障，停止电机。</li>
+  <li><b>电机故障</b>：若 <code>App_Stepper_GetState()==FAULT</code>（DRV8434S 报故障/堵转）→ 立即停止测试。</li>
+  <li>任一保护触发即 <code>App_Stepper_Stop()</code>，状态置 FAULT，并上报。</li>
+</ul>
+</div>
+
+<h3>2.5 指令形态</h3>
+<p>新增<b>独立功能码</b> <code>FC_MOTOR_TEST (0x0F)</code>，内部分子命令，与既有电机运动控制 <code>FC_MOTOR_CTRL(0x0A)</code> 分离，清晰表达「整机自检」语义：</p>
+<table>
+  <tr><th>子命令</th><th>值</th><th>数据</th><th>说明</th></tr>
+  <tr><td>TEST_SUB_START</td><td>0x01</td><td>[cmd, N]</td><td>启动测试，N=往返次数（≥1）</td></tr>
+  <tr><td>TEST_SUB_STOP</td><td>0x02</td><td>[cmd]</td><td>中止测试，回到空闲</td></tr>
+  <tr><td>TEST_SUB_QUERY</td><td>0x03</td><td>[cmd]</td><td>查询状态/进度</td></tr>
+</table>
+<table>
+  <tr><th>错误码</th><th>值</th><th>含义</th></tr>
+  <tr><td>TEST_ERR_OK</td><td>0</td><td>成功</td></tr>
+  <tr><td>TEST_ERR_BUSY</td><td>1</td><td>正在测试，拒绝新启动</td></tr>
+  <tr><td>TEST_ERR_PARAM</td><td>2</td><td>参数非法（N=0 等）</td></tr>
+  <tr><td>TEST_ERR_FAULT</td><td>3</td><td>电机故障 / 触点超时</td></tr>
+</table>
+<p><b>完成上报方式：</b>START 立即回 <code>[cmd,err]</code>；主机随后轮询 <code>QUERY</code> 取进度与完成。QUERY 响应：
+<code>[cmd, err, state, total, done]</code>，其中 <code>total</code>=请求次数、<code>done</code>=已完成往返数。<code>state</code>：0=IDLE、1=RUN、2=DONE、3=FAULT。</p>
+
+<h2>3. 新增模块 App_MotorTest</h2>
+<p>独立的应用层状态机模块，主循环周期推进，遵循既有分层（新外设行程开关在 <code>App_NewPeriph_HL.c</code>，电机控制走 <code>App_Stepper.c</code> API）。</p>
+
+<h3>3.1 状态机</h3>
+<pre><code>IDLE ──START(N)──► RUN_UP ──(触点)──► RUN_DOWN ──(触点,完成1次)──┐
+                                        done&lt;N ──► RUN_UP (再反转)│
+                                        done==N ─► DONE ──(延时)──► IDLE
+RUN_* ──(电机FAULT / 单程超时)──► FAULT ──(STOP/CLEAR 或自动复位)──► IDLE
+任意非 IDLE —— STOP ──► IDLE</code></pre>
+
+<h3>3.2 模块接口（App_MotorTest.h）</h3>
+<pre><code>void  App_MotorTest_Init(void);                     /* 复位状态=IDLE */
+int   App_MotorTest_Start(uint8_t passes);          /* 0 OK / -1 BUSY / -2 PARAM */
+int   App_MotorTest_Stop(void);                     /* 中止, 回 IDLE, 停电机 */
+void  App_MotorTest_Process(void);                  /* 主循环节拍 */
+int   App_MotorTest_IsBusy(void);                   /* 1=正在测试 */
+uint8_t App_MotorTest_GetState(void);              /* 0 IDLE/1 RUN/2 DONE/3 FAULT */
+void  App_MotorTest_GetProgress(uint8_t *total, uint8_t *done);  /* 进度 */
+/* 结果供协议层上报: */
+typedef enum { MT_DONE_OK=0, MT_ABORT=1, MT_FAULT=2 } AppMotorTestResult_t;
+AppMotorTestResult_t App_MotorTest_GetResult(void);</code></pre>
+
+<h3>3.3 实现逻辑（App_MotorTest.c 骨架）</h3>
+<pre><code>Process() 每 tick(=主循环) 运行:
+  if state != RUN: return
+  1) 电机故障检测: if App_Stepper_GetState()==FAULT → 停+置FAULT，上报，return
+  2) 防抖采样: read KEY_UP/KEY_DOWN;
+     if 任一连续保持触发 2~3 次tick → 认为有效触发 (当前只有 1 个方向在跑)
+  3) 无触发: 单程计时超时(10s) → 停+置FAULT，上报，return
+  4) 有触发(contact_i) :
+     - 若本次行程不是「刚从同方向启动」或触点已 re-arm(两触点已释放):
+         标记本半程完成; 校正 done / 方向:
+         a) 若已完成下行程(一次往返)且 done&gt;=N → 停, DONE, 上报
+         b) 否则: 换反向 App_Stepper_Move({ ~dir, 0 }), 进入下一个半程, 清零单程计时 & 触点按下锁存</code></pre>
+
+<h2>4. 改动文件清单</h2>
+<table>
+  <tr><th>文件</th><th>改动</th><th>性质</th></tr>
+  <tr><td>Application/inc/App_CustomProtocol.h</td><td>新增 <code>FC_MOTOR_TEST 0x0F</code> 与 <code>TEST_SUB_*</code>/<code>TEST_ERR_*</code> 宏</td><td>新增宏</td></tr>
+  <tr><td>Application/inc/App_MotorTest.h</td><td>新建模块头文件（接口见 3.2）</td><td>新建</td></tr>
+  <tr><td>Application/src/App_MotorTest.c</td><td>新建状态机实现（见 3.3）。依赖 <code>App_Stepper.h</code>、<code>App_NewPeriph_HL.h</code>、<code>App_SysTick_HL.h</code></td><td>新建</td></tr>
+  <tr><td>Application/src/App_Dispatch.c</td><td><code>switch(f-&gt;func)</code> 增加 <code>case FC_MOTOR_TEST</code>，分发 3 个子命令；<code>AppDispatchInit</code> 无需改</td><td>修改</td></tr>
+  <tr><td>Application/src/main.c</td><td><code>System_Init</code> 加 <code>App_MotorTest_Init()</code>；主循环加 <code>App_MotorTest_Process()</code></td><td>修改</td></tr>
+  <tr><td>Application/CMakeLists.txt</td><td>将 <code>App_MotorTest.c</code> 加入源码列表</td><td>修改</td></tr>
+  <tr><td>Protocol/App_Protocol.html</td><td><b>建议</b>：协议文档补充 FC=0x0F 说明（可选，便于上位机联调）</td><td>可选</td></tr>
+</table>
+
+<h2>5. 验证方案</h2>
+<ol>
+  <li><code>cmake --build Build</code> 编译，确保新增代码无警告/错误。</li>
+  <li>烧录后经上位机（或 HID 测试驱动）下发 <code>FC_MOTOR_TEST START, N=1</code>：
+      <ul>
+        <li>应回 <code>[0x01, TEST_ERR_OK=0]</code>；应立即看到电机高速正转→上触点→反转→下触点 一次往返后停止。</li>
+        <li>反复下发 START：应回 <code>TEST_ERR_BUSY=1</code>（正在测试状态机正确）。</li>
+        <li>QUERY 轮询：<code>state</code> 从 RUN→DONE→IDLE，<code>done</code> 从 0→N。</li>
+      </ul>
+  </li>
+  <li>边界：<code>N=0</code> → 回 <code>TEST_ERR_PARAM=2</code>。</li>
+  <li>故障保护：断开某一行程开关输入（使触点永不触发），START 后应在 ~10s 超时 → 自动停转并置 FAULT。</li>
+  <li>与既有功能回归：电机升降锁、UHF/AM、USB 枚举不受影响（新状态机仅在本指令触发时占用电机）。</li>
+</ol>
+
+<h2>6. 执行前准备（遵循工程规约）</h2>
+<ol>
+  <li>执行 <code./backup.sh "新增电机测试指令 FC_MOTOR_TEST"</code> 全量快照（Round_007），并写 Changelog。</li>
+  <li>不触碰看门狗（<code>USE_IWDG=0</code> 维持现状）。</li>
+  <li>本次仅生成本 <code>Plan.html</code>；待确认后按上述清单实施并生成 <code>Report.html</code>。</li>
+</ol>
+
+<h2>7. 待确认点 / 建议</h2>
+<ul>
+  <li><b>方向极性</b>：本设计为极性无关（任一触点均可触发换向），故无需确认 <code>dir</code> 物理映射。若不希望这样、坚持「正转必须=上触点」，请补充说明。</li>
+  <li><b>单程超时阈值</b>：默认 10s，可按机械行程长度调整。</li>
+  <li><b>指令形态</b>：默认新增独立 <code>FC_MOTOR_TEST 0x0F</code>；若更倾向并入 <code>FC_MOTOR_CTRL</code> 作第 7 号子命令，可改（更省功能码，但语义混在同一组运动指令里）。</li>
+  <li><b>完成后动作</b>：默认执行完自动停转并置 DONE→IDLE。<b>建议</b>在测试过程中若电机堵转/多次超时，应让主机能看到 FAULT 以便排查机械问题。</li>
+</ul>
+
+</body>
+</html>

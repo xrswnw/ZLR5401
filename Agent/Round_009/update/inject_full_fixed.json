@@ -1,0 +1,92 @@
+{
+  "precheck": "PASS",
+  "smoke": null,
+  "inject": [
+    {
+      "case": "F1",
+      "desc": "丢DATA帧→补发",
+      "verdict": "PASS",
+      "detail": "dropped-one-pkt-injected-then-resent; ok=True"
+    },
+    {
+      "case": "F2",
+      "desc": "帧CRC坏块→重发",
+      "verdict": "PASS",
+      "detail": "corrupt-frame dropped then resent; ok=True"
+    },
+    {
+      "case": "F3",
+      "desc": "错CRC固件→VERIFY拒",
+      "verdict": "PASS",
+      "detail": "bad-crc rejected (stayed Boot), good fw recovered"
+    },
+    {
+      "case": "F4",
+      "desc": "提交前软复位仍BOOT",
+      "verdict": "PASS",
+      "detail": "reset before commit kept Boot/UPG; recovered ok=True"
+    },
+    {
+      "case": "F5",
+      "desc": "擦后即复位可重写",
+      "verdict": "PASS",
+      "detail": "erase-only leaves Boot/UPG; restart START rewrote ok=True"
+    },
+    {
+      "case": "F6",
+      "desc": "损坏镜像EXIT拒绝",
+      "verdict": "PASS",
+      "detail": "EXIT_BOOT err=1 refused(True); recovered to App"
+    },
+    {
+      "case": "F7",
+      "desc": "提交后复位直入APP",
+      "verdict": "PASS",
+      "detail": "after commit, FC_RESET boots straight to App"
+    },
+    {
+      "case": "U1",
+      "desc": "随机丢响应",
+      "verdict": "PASS",
+      "detail": "dropped 3 pkts; recovered ok=True"
+    },
+    {
+      "case": "U2",
+      "desc": "链路慢速/延迟",
+      "verdict": "PASS",
+      "detail": "slow-link added 101.6s; ok=True"
+    },
+    {
+      "case": "U3",
+      "desc": "中途USB重枚举",
+      "verdict": "PASS",
+      "detail": "replug mid-update stayed Boot/UPG; recovered ok=True"
+    },
+    {
+      "case": "U4",
+      "desc": "响应超时重试",
+      "verdict": "PASS",
+      "detail": "response-timeout retried; ok=True"
+    },
+    {
+      "case": "U5",
+      "desc": "连续满速批量",
+      "verdict": "PASS",
+      "detail": "burst no-reorder, VERIFY OK, back to App"
+    },
+    {
+      "case": "U6",
+      "desc": "重复/乱序发送",
+      "verdict": "PASS",
+      "detail": "duplicate chunks idempotent, VERIFY OK, back to App"
+    },
+    {
+      "case": "U7",
+      "desc": "固件尺寸边界",
+      "verdict": "PASS",
+      "detail": "oversize->UPG_NO_SPACE stays Boot; normal fw recovered ok=True"
+    }
+  ],
+  "baseline": [],
+  "overall": "PASS"
+}

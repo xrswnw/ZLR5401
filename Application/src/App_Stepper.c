@@ -16,13 +16,15 @@
 #define STEPPER_MIN_HZ       1u
 #define STEPPER_MAX_HZ       8000u   /* 上限, 兼顾 SPI 开销与 IWDG 2s 预算 (每 tick 一次 SPI) */
 #define APP_VREF_VOLTS       2.64f   /* 硬件 VREF (仅配置结构数据, 无浮点运算) */
+#define STEPPER_MICROSTEP_DRV DRV8434S_MICROSTEP_HALF  /* 上电压入 DRV8434S 微步档 (1/2, 400/转); 自检判据经 GetMicrostepCfg 读取 */
 
-/* 高负载(堵转)监测参数 */
+/* 高负载(堵转)监测参数: 100ms 采样; TRQ 持续低于阈值 ~600ms 判高负载并自动降速,
+ * 降速后仍持续低阈值再累计 ~2.4s (合计 ~3s) 才停机 -> 硬顶挡块 3s 内保护, 避免长时间研磨. */
 #define STEPPER_OL_DEFAULT_THRESH   400u   /* TRQ_COUNT 12bit, 越低越接近失速; <此值判高负载 */
 #define STEPPER_OL_SAMPLE_MS        100u   /* 采样周期 */
 #define STEPPER_OL_SAMPLES          6u     /* 6×100ms=600ms 持续低阈值 -> 高负载(滤瞬时) */
 #define STEPPER_OL_DOWNGRADE_HZ     800u   /* 降速档 (微步/s) */
-#define STEPPER_OL_DN_SAMPLES       4u     /* 降速后 400ms 仍未回升 -> 停机 */
+#define STEPPER_OL_DN_SAMPLES       24u    /* 降速后 24×100ms=2.4s 仍未回升 -> 停机 (合计~3s) */
 #define STEPPER_RUN_MAX_MS          60000u /* 单次连续运行上限 (防机构长时间卡死通电) */
 
 /* 停止原因 (统计 lastReason) */
@@ -32,6 +34,19 @@
 #define STEPPER_RSN_OVERLOAD 3u
 #define STEPPER_RSN_DRVFAULT 4u
 
+/* 行程开关错误位 (全局错误位, 经 QUERY/HEALTH 上报, CLEAR 清除) */
+#define SWERR_UP     0x01u   /* 上行程 KEY_UP 缺失/未触发 */
+#define SWERR_DOWN   0x02u   /* 下行程 KEY_DOWN 缺失/未触发 */
+
+/* 实测双腿基准 (Protocol/Files/电机行程测试报告.html):
+ * 上腿 4085 微步, 下腿 4324 微步 (1/2 档, 400 步/转). 连续运行超过
+ * 基准×裕量仍未触发对应开关 -> 判开关通道缺失/失效. */
+#define LEG_UP_STEPS       4085u
+#define LEG_DOWN_STEPS     4324u
+#define LEG_SW_MARGIN_PCT  15u          /* 裕量 15%, 容机构装配公差 */
+#define LEG_UP_LIMIT    (LEG_UP_STEPS * (100u + LEG_SW_MARGIN_PCT) / 100u)
+#define LEG_DOWN_LIMIT  (LEG_DOWN_STEPS * (100u + LEG_SW_MARGIN_PCT) / 100u)
+
 static AppStepperState_t s_state = APP_STEPPER_IDLE;
 static uint32_t          s_speedHz  = STEPPER_DEFAULT_HZ;
 static uint32_t          s_cmdSpeedHz = STEPPER_DEFAULT_HZ;  /* 协议设定速(不随降速改变) */
@@ -39,6 +54,8 @@ static uint32_t          s_stepsReq = 0;      /* 本次目标微步数, 0=持续
 static uint32_t          s_lastTickMs;
 static uint8_t           s_fault, s_diag1, s_diag2;
 static uint8_t           s_dir;
+static uint8_t           s_switchErr = 0u;    /* 行程开关错误位 (SWERR_*) */
+static uint32_t          s_legSteps  = 0u;    /* 本腿已走微步 (自启动方向计数) */
 
 /* 高负载(堵转)监测 + 运行统计 */
 static AppStepperOlovState_t s_olov = STEPPER_OL_NONE;
@@ -65,7 +82,7 @@ void App_Stepper_Init(void)
     Drv8434S_HL_Init();
 
     cfg.vref_voltage = APP_VREF_VOLTS;
-    cfg.microstep    = DRV8434S_MICROSTEP_HALF;
+    cfg.microstep    = STEPPER_MICROSTEP_DRV;
     cfg.decay        = DRV8434S_DECAY_SMART_TUNE_RIPPLE;
     cfg.enable_ol    = 0;
     cfg.ocp_retry    = 0;
@@ -78,6 +95,7 @@ void App_Stepper_Init(void)
     s_cmdSpeedHz = STEPPER_DEFAULT_HZ;
     s_stepsReq = 0; s_dir = 0;
     s_fault = 0; s_diag1 = 0; s_diag2 = 0;
+    s_switchErr = 0u; s_legSteps = 0u;
     s_lastTickMs = SysTickHl_GetMs();
     s_olov = STEPPER_OL_NONE;
     s_olovThresh = STEPPER_OL_DEFAULT_THRESH;
@@ -128,6 +146,11 @@ static void stepper_set_trq(uint8_t percent)
 
 static void stepper_read_fault(void)
 {
+    /* FAULT 态冻结快照: DRV8434S 状态寄存器读后自清, 停机后若继续轮询,
+     * 触发停机那一拍的故障位 (OCP/UVLO/SPI_ERROR 等) 会被下一拍读掉,
+     * QUERY 恒见 fault=0x00 无法归因 (历次 nFAULT 停转事故均此现象)。
+     * 进入 FAULT 后不再覆盖, 保留停机瞬间的证据; ClearFault 显式清。 */
+    if (s_state == APP_STEPPER_FAULT) return;
     s_fault = drv8434s_get_fault_status(&g_hMotor);
     s_diag1 = drv8434s_get_diag1(&g_hMotor);
     s_diag2 = drv8434s_get_diag2(&g_hMotor);
@@ -143,6 +166,41 @@ void App_Stepper_Process(void)
         stepper_read_fault();
 
         if (s_state == APP_STEPPER_RUN) {
+            /* 定步数运动完成: TIM4 走满 stepsReq 自动停脉冲(IsRunning=0),
+             * 据此回 IDLE 并断电 (外部 Stop 类路径各自置状态, 不会走到这) */
+            if (StepperTim4_IsRunning() == 0u) {
+                stepper_disable_output();
+                s_state = APP_STEPPER_IDLE;
+                s_stats.lastReason = STEPPER_RSN_NORMAL;
+                return;
+            }
+
+            /* 本腿行程计数 (自本次方向起动累加; MOVE 设了 s_legSteps=0) */
+            s_legSteps = StepperTim4_GetStepsDone();
+
+            /* 行程开关监控 (硬件保护, 不依赖位置): 本腿已超实测基准×裕量仍未触发
+             * 奔向下一个行程开关 -> 判开关缺失/失效, 置错误位并停机, 防止硬顶挡块.
+             *     上腿(dir=0, 奔 KEY_UP):  超过 LEG_UP_LIMIT 未触发 -> 上行程错
+             *     下腿(dir=1, 奔 KEY_DOWN): 超过 LEG_DOWN_LIMIT 未触发 -> 下行程错 */
+            if (s_dir == 0u && s_legSteps >= LEG_UP_LIMIT) {
+                StepperTim4_Stop();
+                stepper_disable_output();
+                s_state = APP_STEPPER_IDLE;
+                s_olov = STEPPER_OL_NONE;
+                s_switchErr |= SWERR_UP;
+                s_stats.lastReason = STEPPER_RSN_OVERLOAD;
+                return;
+            }
+            if (s_dir == 1u && s_legSteps >= LEG_DOWN_LIMIT) {
+                StepperTim4_Stop();
+                stepper_disable_output();
+                s_state = APP_STEPPER_IDLE;
+                s_olov = STEPPER_OL_NONE;
+                s_switchErr |= SWERR_DOWN;
+                s_stats.lastReason = STEPPER_RSN_OVERLOAD;
+                return;
+            }
+
             /* 故障 (FAULT 位、失速 DIAG2 或 nFAULT 拉低) -> 停转 */
             if ((s_fault & DRV8434S_FLT_FAULT) ||
                 (s_diag2 & DRV8434S_DIAG2_STALL) ||
@@ -216,6 +274,7 @@ int App_Stepper_Move(AppStepperMove_t *mv)
     /* 新运动: 复位高负载状态、恢复协议设定速、记录统计与起始时刻 */
     s_olov = STEPPER_OL_NONE;
     s_olovCnt = 0; s_olovDnCnt = 0;
+    s_legSteps = 0;
     s_speedHz = s_cmdSpeedHz;
     s_runStartMs = SysTickHl_GetMs();
     s_olovTickMs = s_runStartMs;
@@ -233,8 +292,7 @@ int App_Stepper_Stop(void)
     stepper_disable_output();
     s_state = APP_STEPPER_IDLE;
     s_olov = STEPPER_OL_NONE;
-    if (s_stats.lastReason == STEPPER_RSN_NONE)
-        s_stats.lastReason = STEPPER_RSN_NORMAL;
+    s_stats.lastReason = STEPPER_RSN_NORMAL;   /* lastReason=最近停止, 每次覆盖 */
     return 0;
 }
 
@@ -275,6 +333,7 @@ int App_Stepper_ClearFault(void)
 {
     (void)drv8434s_clear_fault(&g_hMotor);
     s_fault = 0; s_diag1 = 0; s_diag2 = 0;
+    s_switchErr = 0u;                       /* 一并清行程开关错误位 (运行/回零时检测) */
     if (s_state == APP_STEPPER_FAULT) {
         s_state = APP_STEPPER_IDLE;
         stepper_disable_output();
@@ -286,8 +345,12 @@ AppStepperState_t App_Stepper_GetState(void) { return s_state; }
 uint8_t  App_Stepper_GetFault(void)     { return s_fault; }
 uint8_t  App_Stepper_GetDiag1(void)     { return s_diag1; }
 uint8_t  App_Stepper_GetDiag2(void)     { return s_diag2; }
+uint8_t  App_Stepper_GetSwitchErr(void) { return s_switchErr; }
+void     App_Stepper_SetSwitchErr(uint8_t bit) { s_switchErr |= (uint8_t)(bit & (SWERR_UP | SWERR_DOWN)); }
 uint8_t  App_Stepper_GetMicrostep(void)   /* 诊断: 实时读 DRV8434S CTRL3 微步位 [3:0] */
 { return (uint8_t)(drv8434s_read_reg(&g_hMotor, DRV8434S_REG_CTRL3) & DRV8434S_CTRL3_MICROSTEP_MASK); }
+uint8_t  App_Stepper_GetMicrostepCfg(void)  /* 自检判据: 上电压入 DRV8434S 的微步档期望值 */
+{ return (uint8_t)STEPPER_MICROSTEP_DRV; }
 uint32_t App_Stepper_GetStepsDone(void) { return StepperTim4_GetStepsDone(); }
 
 void App_Stepper_SetOlovThreshold(uint16_t t)

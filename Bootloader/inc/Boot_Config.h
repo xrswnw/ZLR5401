@@ -15,14 +15,17 @@
 #define SYS_CLK_MHZ        72
 
 /* ===================== Flash Partition =====================
- * C8T6: Flash 64KB @0x08000000, 页大小 1KB(MD)。
- * 分区: BOOT代码(22K) + PARAM(2K预留, 实占512B) + APP(40K, 回收顶部2K)。
+ * 硬件 GD32F303RCT6 (Cortex-M4, 256K flash @0x08000000~0x08040000, 页 2KB HD)。
+ * 分区: BOOT代码(22K) + PARAM(2K预留, 实占512B) + APP(232K)。
  * 0x08000000 BOOT_CODE 22K
  * 0x08005800 PARAM 2K (主256B + 影子256B, 余1.5K空置)
- * 0x08006000 APP 40K
- * 0x08010000 Flash末尾
- * BOOT_FLASH_SIZE = BOOT_CODE_SIZE + PARAM_REGION_SIZE = 24K (APP_ORIGIN据此推导)*/
-#define FLASH_PAGE_SIZE     1024U              /* HD=2KB, MD(C8T6)=1KB*/
+ * 0x08006000 APP 232K
+ * 0x08040000 Flash末尾
+ * BOOT_FLASH_SIZE = BOOT_CODE_SIZE + PARAM_REGION_SIZE = 24K (APP_ORIGIN据此推导)
+ * 注: APP_FLASH_SIZE 曾为 40K(STM32F103 C8T6 旧假设), App 涨到 57KB 后
+ * Reset 向量 0x080100f4 越过 0x08010000 范围校验导致 JumpToApp 拒绝 -> 卡 Boot。
+ * 已改回 RCT6 真实容量 232K。*/
+#define FLASH_PAGE_SIZE     2048U              /* HD=2KB (GD32F303 RCT6/STM32F103 HD)*/
 #define BOOT_FLASH_ORIGIN   0x08000000U
 #define BOOT_CODE_SIZE      (22U * 1024U)      /* BOOT 代码区(链接脚本 FLASH LENGTH)*/
 #define PARAM_FLASH_ORIGIN  (BOOT_FLASH_ORIGIN + BOOT_CODE_SIZE)  /* 0x08005800, 升级不擦除*/
@@ -30,8 +33,8 @@
 #define PARAM_REGION_SIZE   (2U * 1024U)      /* 链接脚本预留 PARAM 区(含余量)*/
 #define BOOT_FLASH_SIZE     (BOOT_CODE_SIZE + PARAM_REGION_SIZE)  /* 24K = 22K code + 2K param*/
 #define APP_FLASH_ORIGIN    (BOOT_FLASH_ORIGIN + BOOT_FLASH_SIZE) /* 0x08006000*/
-#define APP_FLASH_SIZE      (40U * 1024U)     /* 回收顶部2K: 0x08006000~0x08010000*/
-#define APP_FLASH_END       (APP_FLASH_ORIGIN + APP_FLASH_SIZE)  /* 0x08010000 = Flash末尾*/
+#define APP_FLASH_SIZE      (232U * 1024U)    /* RCT6 256K - 前置24K: 0x08006000~0x08040000*/
+#define APP_FLASH_END       (APP_FLASH_ORIGIN + APP_FLASH_SIZE)  /* 0x08040000 = Flash末尾*/
 
 #define RAM_ORIGIN          0x20000000U
 #define RAM_SIZE            (20U * 1024U)

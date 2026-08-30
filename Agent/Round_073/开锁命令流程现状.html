@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 开锁命令 (FC_LOCKER_CTRL 0x0D) 现状流程全景 — Round_073</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#161a22; --border:#262c38; --text:#e6e9ef;
+    --muted:#8b94a3; --pass:#3fb950; --fail:#f85149; --incon:#d29922;
+    --skip:#6e7681; --accent:#58a6ff; --violet:#bc8cff; --orange:#ffa657;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--text); line-height:1.65; }
+  .wrap { max-width:1180px; margin:0 auto; padding:24px; }
+  h1 { font-size:24px; border-bottom:2px solid var(--border); padding-bottom:12px; }
+  h2 { font-size:19px; margin-top:38px; color:var(--accent); border-left:4px solid var(--accent); padding-left:10px; }
+  h3 { font-size:15px; margin-top:24px; }
+  .meta { color:var(--muted); font-size:13px; }
+  .cards { display:flex; gap:12px; flex-wrap:wrap; margin:18px 0; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px;
+          padding:14px 20px; min-width:130px; text-align:center; }
+  .card .num { font-size:26px; font-weight:700; }
+  .card .lbl { color:var(--muted); font-size:12px; margin-top:4px; }
+  .card .sub { color:var(--muted); font-size:11px; margin-top:2px; }
+  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
+  th,td { border:1px solid var(--border); padding:6px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--panel); color:var(--muted); font-weight:600; white-space:nowrap; }
+  .code { font-family:"SF Mono",Menlo,monospace; background:#0b0e13; border:1px solid var(--border);
+          padding:1px 6px; border-radius:4px; font-size:12px; color:#e6edf3; }
+  code { font-family:"SF Mono",Menlo,monospace; font-size:12px; }
+  .ref { color:var(--violet); font-family:"SF Mono",Menlo,monospace; font-size:11px; white-space:nowrap; }
+  .box { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 18px; margin:14px 0; }
+  .box.key { border-color:var(--accent); }
+  .box.warnbox { border-color:var(--incon); }
+  ul { margin:8px 0; padding-left:20px; }
+  li { margin:5px 0; }
+  .tail { color:var(--muted); font-size:12px; margin-top:40px; border-top:1px solid var(--border); padding-top:12px; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; margin-left:6px; }
+  .t-ok  { background:#1a3322; color:var(--pass); }
+  .t-warn{ background:#332b14; color:var(--incon); }
+  .t-new { background:#241d3a; color:var(--violet); }
+  .cmdflow { display:grid; grid-template-columns:1fr; gap:0; margin:16px 0; }
+  .step { display:grid; grid-template-columns:70px 1fr; background:var(--panel);
+          border:1px solid var(--border); border-radius:10px; padding:12px 16px; margin:8px 0; }
+  .step .n { font-size:22px; font-weight:700; color:var(--accent); text-align:center; }
+  .step .n small { display:block; font-size:10px; color:var(--muted); }
+  .frame { font-family:"SF Mono",Menlo,monospace; font-size:12px; background:#0b0e13;
+           border:1px solid var(--border); border-radius:6px; padding:8px 12px; margin:8px 0;
+           overflow-x:auto; white-space:nowrap; }
+  .fb { color:#79c0ff; }          /* 字段字节 */
+  .fk { color:#ffa657; }           /* cmd 字节 */
+  .fd { color:#7ee787; }           /* 数据字节 */
+  .fc { color:#d2a8ff; }           /* CRC */
+  .fh { color:#ff7b72; }           /* 帧头 */
+  svg text { font-family:-apple-system,"PingFang SC",sans-serif; }
+  svg .mono { font-family:"SF Mono",Menlo,monospace; }
+  .legend { display:flex; gap:16px; flex-wrap:wrap; color:var(--muted); font-size:12px; margin:6px 0 14px; }
+  .legend span::before { content:"■ "; }
+  .lg-st  { color:#58a6ff; } .lg-ok { color:#3fb950; } .lg-bad{ color:#f85149; }
+  .lg-to  { color:#d29922; } .lg-fault{ color:#bc8cff; } .lg-idle{ color:#6e7681; }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+  @media (max-width:900px){ .two{ grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ZLR5401 开锁命令 (FC_LOCKER_CTRL 0x0D) 现状流程全景</h1>
+<div class="meta">
+  轮次：Round_073 ｜ 生成：2026-08-29 ｜ 性质：<b>现状梳理文档（只读分析，未改任何固件代码）</b>
+  <br>对象：开锁器业务编排层 <span class="code">App_Locker</span> + 协议入口 <span class="code">App_Dispatch FC_LOCKER_CTRL</span> + 依赖模块 UHF / Stepper / LED
+  <br>代码基线：main 分支（commit <span class="code">ab18f9d</span> 之后的工作区）
+</div>
+
+<h2>0. 一页结论</h2>
+<div class="box key">
+  <ul style="margin-top:0">
+    <li><b>当前一次完整开锁测试需要「1×CONFIGURE + m×ADD + 1×START + 轮询QUERY/GET_EVENT + N×CONSUME_SOFT」</b>，m 为硬标签数（1~16），N 为软标数。标签多时命令数线性增长。</li>
+    <li>协议层<b>流式拼帧已支持单帧最长 1024B data</b>（<span class="code">PROTO_MAX_DATA=1024</span>，字节级重组，跨 HID report 拼帧无障碍）→ <b>"一条命令全带"在协议层完全可行</b>，仅受上位机是否拆 report 发送约束。<span class="code">App_Locker.h</span> 中"单帧受 56B 限制"注释<b>已过时</b>。</li>
+    <li>固件 <span class="code">App_Locker_Configure()</span> 内部即是"清单全量重建 + 置状态"的原子入口，单命令合并<b>无需改动 App_Locker.c 状态机本体</b>。</li>
+    <li>已识别 6 个测试注意点/潜在坑（见 §8），其中 <b>CONFIGURE 会清空已有清单</b> 与 <b>事件环形缓冲仅 8 条、满则丢最旧</b> 对测试影响最大。</li>
+  </ul>
+</div>
+
+<h2>1. 模块组成与调用链</h2>
+<div class="box">
+<pre style="margin:0;font-size:12px;color:#c9d1d9">
+上位机 SwComForTool (USB HID, VID/PID 0x5377:0x5378)
+   │  64B HID report (report id 0x01, 有效载荷 63B/个)
+   ▼
+App_Usb.c / App_Usb_Transport.c      ── 字节流喂入 ──┐
+                                                      ▼
+                            App_CustomProtocol.c  <span class="ref">ProtoParseByte (App_CustomProtocol.c:74)</span>
+                            流式状态机: 0x53 0x77 → addr → len → payload → CRC32
+                            单帧 data 上限 1024B, 可跨多个 HID report 重组
+                                                      │  完整帧回调
+                                                      ▼
+                            <b>App_Dispatch.c:699  case FC_LOCKER_CTRL (0x0D)</b>
+                            按 data[0] 子命令分发 (7 个子命令)
+                                                      │
+                                                      ▼
+                            <b>App_Locker.c  开锁器编排状态机</b>   <span class="ref">(主循环 main.c:175 App_Locker_Process 节拍)</span>
+                             ├── App_UHF.c    硬标签 EPC 盘点  (SIM7500)
+                             ├── App_Stepper.c 磁块升降        (DRV8434S + TIM4 STEP)
+                             └── App_Led_HL.c  ERR 红灯指示
+</pre>
+</div>
+
+<h2>2. 命令编码总表（现状 7 个子命令）</h2>
+<table>
+  <tr><th>子命令</th><th>值</th><th>data 格式</th><th>固件动作</th><th>响应格式</th><th>错误码</th></tr>
+  <tr>
+    <td><span class="code">LOCKER_SUB_CONFIGURE</span></td><td>0x01</td>
+    <td><code>[cmd, hardCntL, hardCntH, softCntL, softCntH]</code></td>
+    <td><b>清空清单</b>，hardCount 仅作上限预检（≤16），实际清单由后续 ADD 累积；仅写入 softCount <span class="tag t-warn">坑①</span></td>
+    <td><code>[cmd, err]</code></td>
+    <td>BUSY=1 / PARAM=2</td>
+  </tr>
+  <tr>
+    <td><span class="code">LOCKER_SUB_ADD</span></td><td>0x02</td>
+    <td><code>[cmd, epcLen, epc...]</code> (≤12B)</td>
+    <td>追加 1 条硬标签 EPC 至清单（IDLE/CONFIGURED 态均可）</td>
+    <td><code>[cmd, err]</code></td>
+    <td>BUSY=1 / PARAM=2</td>
+  </tr>
+  <tr>
+    <td><span class="code">LOCKER_SUB_START</span></td><td>0x03</td>
+    <td><code>[cmd]</code></td>
+    <td>UHF 上电开扫 + 计算保持窗口 + ERR 灭 + 进 CONFIGURED 就绪</td>
+    <td><code>[cmd, err]</code></td>
+    <td>PARAM=2</td>
+  </tr>
+  <tr>
+    <td><span class="code">LOCKER_SUB_CANCEL</span></td><td>0x04</td>
+    <td><code>[cmd]</code></td>
+    <td>UHF 停扫 + 磁块回降 + ERR 灭 + 回 IDLE（<b>任意状态可用</b>）</td>
+    <td><code>[cmd, OK]</code></td>
+    <td>无（恒成功）</td>
+  </tr>
+  <tr>
+    <td><span class="code">LOCKER_SUB_QUERY</span></td><td>0x05</td>
+    <td><code>[cmd]</code></td>
+    <td>读状态机快照</td>
+    <td><code>[cmd, err, state, hm(2), sc(2), su(2)]</code></td>
+    <td>OK</td>
+  </tr>
+  <tr>
+    <td><span class="code">LOCKER_SUB_CONSUME_SOFT</span></td><td>0x06</td>
+    <td><code>[cmd]</code></td>
+    <td>消耗 1 次软标解码（<b>仅 SOFT_DECODE 态接受</b>）；N 次用尽→DONE <span class="tag t-warn">坑③</span></td>
+    <td><code>[cmd, err]</code></td>
+    <td>BUSY=1</td>
+  </tr>
+  <tr>
+    <td><span class="code">LOCKER_SUB_GET_EVENT</span></td><td>0x07</td>
+    <td><code>[cmd]</code></td>
+    <td>取走 1 条上报事件（环形缓冲 8 条，满丢最旧）<span class="tag t-warn">坑②</span></td>
+    <td><code>[cmd, err, code, epcLen, epc.., hm(2), su(2), sc(2), hc(2)]</code></td>
+    <td>NO_EVENT=3</td>
+  </tr>
+</table>
+<p class="meta">定义出处：<span class="ref">App_CustomProtocol.h:52-68</span> ｜ 分发实现：<span class="ref">App_Dispatch.c:699-815</span></p>
+
+<h2>3. 一次完整开锁测试的命令时序（现状，以上位机视角）</h2>
+<p class="meta">帧格式：<span class="fh">53 77</span> <span class="fb">addr(1) 00</span> <span class="fb">len(2)</span> <span class="fk">FC=0D</span> <span class="fd">data...</span> <span class="fc">CRC32(4)</span> ｜ len = 1 + dataLen + 4（小端）</p>
+
+<div class="cmdflow">
+
+  <div class="step"><div class="n">1<small>CONFIGURE</small></div><div>
+    <b>建立结账任务（必发，会清空旧清单）</b> —— 设 softCount=N；hardCount 字段只做上限预检。
+    <div class="frame"><span class="fh">53 77</span> <span class="fb">xx 00</span> <span class="fb">0B 00</span> <span class="fk">0D</span> <span class="fd">01 02 00 03 00</span> <span class="fc">CRC32</span>
+      &nbsp;<span style="color:var(--muted)">← hardCnt=2(预检), softCnt=3</span></div>
+    <span class="meta">响应 <span class="code">01 00</span>。固件：<span class="ref">App_Locker_Configure (App_Locker.c:108)</span> → 状态 LOCKER_CONFIGURED。若当前忙 → <span class="code">01 01 BUSY</span>，需先 CANCEL。</span>
+  </div></div>
+
+  <div class="step"><div class="n">2<small>ADD ×m</small></div><div>
+    <b>逐条追加硬标签 EPC（m = 硬标签数，1~16 条，每条一条命令）</b>
+    <div class="frame"><span class="fh">53 77</span> <span class="fb">xx 00</span> <span class="fb">0A 00</span> <span class="fk">0D</span> <span class="fd">02 0C E2 00 34 12 ... (12B EPC)</span> <span class="fc">CRC32</span>
+      &nbsp;<span style="color:var(--muted)">← 追加 12 字节 EPC</span></div>
+    <span class="meta">每条响应 <span class="code">02 00</span>。固件：<span class="ref">App_Locker_AddTag (App_Locker.c:128)</span>。EPC 超 12B 被截断到 12B。</span>
+  </div></div>
+
+  <div class="step"><div class="n">3<small>START</small></div><div>
+    <b>激活任务：UHF 上电 + 开扫 + 起保持窗口</b>
+    <div class="frame"><span class="fh">53 77</span> <span class="fb">xx 00</span> <span class="fb">06 00</span> <span class="fk">0D</span> <span class="fd">03</span> <span class="fc">CRC32</span></div>
+    <span class="meta">固件：<span class="ref">App_Locker_Start (App_Locker.c:142)</span> —— <span class="code">App_UHF_Open()</span>（非 READY 时）→ <span class="code">App_UHF_Inventory()</span> →
+    窗口 = <span class="code">2min + (m-1)×30s</span> → ERR 灯灭。此后磁块"可开锁"。</span>
+  </div></div>
+
+  <div class="step"><div class="n">4<small>轮询</small></div><div>
+    <b>测试观察阶段 —— 轮询 QUERY + GET_EVENT</b>（推荐间隔 ≤500ms，见坑②）
+    <div class="frame">QUERY:      <span class="fh">53 77</span> <span class="fb">xx 00</span> <span class="fb">06 00</span> <span class="fk">0D</span> <span class="fd">05</span> <span class="fc">CRC</span>
+      &nbsp;→&nbsp; <span class="fd">05 00 state hm(L) hm(H) sc(L) sc(H) su(L) su(H)</span></div>
+    <div class="frame">GET_EVENT:  <span class="fh">53 77</span> <span class="fb">xx 00</span> <span class="fb">06 00</span> <span class="fk">0D</span> <span class="fd">07</span> <span class="fc">CRC</span>
+      &nbsp;→&nbsp; <span class="fd">07 00 evtCode epcLen epc.. hm(2) su(2) sc(2) hc(2)</span> 或 <span class="fd">07 03</span>(无事件)</div>
+    <span class="meta">本阶段固件主循环自动运行：<span class="ref">locker_process_configured (App_Locker.c:188)</span> 每 tick 保持扫描、取标签、比对、驱动升降（见 §5）。</span>
+  </div></div>
+
+  <div class="step"><div class="n">5<small>CONSUME×N</small></div><div>
+    <b>软标阶段（仅 softCount&gt;0 时）—— 上位机模拟解码完成，逐次上报消耗</b>
+    <div class="frame"><span class="fh">53 77</span> <span class="fb">xx 00</span> <span class="fb">06 00</span> <span class="fk">0D</span> <span class="fd">06</span> <span class="fc">CRC</span>
+      &nbsp;→&nbsp; <span class="fd">06 00</span></div>
+    <span class="meta">固件：<span class="ref">App_Locker_StopDecode (App_Locker.c:169)</span>，softUsed+1；softUsed==softCount 时置 DONE + 5s 倒计时。
+    <b>固件侧不主动检测软标</b>，完全靠这条命令驱动（坑③）。</span>
+  </div></div>
+
+  <div class="step"><div class="n">6<small>CANCEL</small></div><div>
+    <b>结束 / 随时中止（DONE 5s 后会自动回 IDLE，CANCEL 用于提前或超时场景）</b>
+    <div class="frame"><span class="fh">53 77</span> <span class="fb">xx 00</span> <span class="fb">06 00</span> <span class="fk">0D</span> <span class="fd">04</span> <span class="fc">CRC</span>
+      &nbsp;→&nbsp; <span class="fd">04 00</span></div>
+    <span class="meta">固件：<span class="ref">App_Locker_Cancel (App_Locker.c:160)</span> —— UHF 停扫 + <span class="code">lower_lock()</span> 磁块回降 4800 微步 + 回 IDLE。</span>
+  </div></div>
+
+</div>
+<p><b>命令总数 = 2 + m + 轮询(若干) + N。</b> 例：m=2 硬标签 + N=3 软标 ≈ <b>7 条命令 + 轮询</b>；m=16 时 ADD 一项就要 16 条。</p>
+
+<h2>4. 状态机全景图（固件视角）</h2>
+<div class="box">
+<svg viewBox="0 0 1100 560" width="100%" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0 L10 5 L0 10 z" fill="#8b94a3"/>
+    </marker>
+  </defs>
+  <style>
+    .st { rx:10; fill:#161a22; stroke-width:2; }
+    .lbl { fill:#e6e9ef; font-size:14px; font-weight:700; text-anchor:middle; }
+    .sub { fill:#8b94a3; font-size:10.5px; text-anchor:middle; }
+    .ed { fill:#8b94a3; font-size:11px; }
+    .mono { font-family:Menlo,monospace; font-size:10px; fill:#bc8cff; }
+  </style>
+
+  <!-- IDLE -->
+  <rect class="st" x="40" y="250" width="150" height="64" stroke="#6e7681"/>
+  <text class="lbl" x="115" y="278">IDLE</text>
+  <text class="sub" x="115" y="296">空闲·默认锁定·磁块降</text>
+
+  <!-- CONFIGURED -->
+  <rect class="st" x="330" y="250" width="180" height="64" stroke="#58a6ff"/>
+  <text class="lbl" x="420" y="278">CONFIGURED</text>
+  <text class="sub" x="420" y="296">扫描循环·等硬标签放置</text>
+
+  <!-- SOFT_DECODE -->
+  <rect class="st" x="700" y="250" width="180" height="64" stroke="#58a6ff"/>
+  <text class="lbl" x="790" y="278">SOFT_DECODE</text>
+  <text class="sub" x="790" y="296">m==n 全解锁·等软标消耗</text>
+
+  <!-- DONE -->
+  <rect class="st" x="960" y="250" width="130" height="64" stroke="#3fb950"/>
+  <text class="lbl" x="1025" y="278">DONE</text>
+  <text class="sub" x="1025" y="296">结账完成·停留5s</text>
+
+  <!-- FAULT -->
+  <rect class="st" x="540" y="460" width="180" height="64" stroke="#bc8cff"/>
+  <text class="lbl" x="630" y="488">FAULT</text>
+  <text class="sub" x="630" y="506">链路坏·ERR常亮·磁块降</text>
+
+  <!-- IDLE -> CONFIGURED -->
+  <path d="M190 275 L328 275" stroke="#8b94a3" stroke-width="1.6" marker-end="url(#arr)" fill="none"/>
+  <text class="ed" x="200" y="240">CONFIGURE + ADD×m + START</text>
+  <text class="mono" x="200" y="256">App_Locker_Start (App_Locker.c:142)</text>
+
+  <!-- CONFIGURED 内部: 匹配 -->
+  <rect x="310" y="60" width="220" height="34" rx="8" fill="#12261a" stroke="#3fb950" stroke-width="1.5"/>
+  <text class="ed" x="320" y="81" fill="#3fb950">EPC 匹配 → 磁块升起 4800µ步 + 绿灯</text>
+  <path d="M420 94 L420 248" stroke="#3fb950" stroke-width="1.4" marker-end="url(#arr)" fill="none" stroke-dasharray="4 3"/>
+  <text class="mono" x="428" y="140">rise_lock() → App_Stepper_Move</text>
+  <text class="mono" x="428" y="156">dir=0, APP_LOCKER_STEP_RISE</text>
+  <text class="mono" x="428" y="172">EVT_MATCH_OK(0) + 刷新保持窗口</text>
+
+  <!-- CONFIGURED 内部: 不匹配 -->
+  <rect x="310" y="105" width="220" height="34" rx="8" fill="#2d1418" stroke="#f85149" stroke-width="1.5"/>
+  <text class="ed" x="320" y="126" fill="#f85149">EPC 不匹配 → ERR 红灯闪烁·不升起</text>
+  <text class="mono" x="428" y="200">EVT_MISMATCH(1) (App_Locker.c:236)</text>
+
+  <!-- CONFIGURED -> SOFT -->
+  <path d="M510 275 L698 275" stroke="#3fb950" stroke-width="1.6" marker-end="url(#arr)" fill="none"/>
+  <text class="ed" x="525" y="240">hardMatched == hardCount (m==n)</text>
+  <text class="mono" x="525" y="256">EVT_HARD_DONE(2) · 窗口清零</text>
+  <text class="mono" x="525" y="222">softCount==0 → 直接 DONE</text>
+
+  <!-- SOFT -> DONE -->
+  <path d="M880 275 L958 275" stroke="#3fb950" stroke-width="1.6" marker-end="url(#arr)" fill="none"/>
+  <text class="ed" x="885" y="240">softUsed == softCount</text>
+  <text class="mono" x="885" y="256">EVT_DONE(5) · 5s 倒计时</text>
+
+  <!-- 超时回 IDLE -->
+  <path d="M330 300 Q 190 420 115 316" stroke="#d29922" stroke-width="1.6" marker-end="url(#arr)" fill="none"/>
+  <text class="ed" x="130" y="410" fill="#d29922">保持窗口超时 / CANCEL</text>
+  <text class="mono" x="130" y="426">EVT_TIMEOUT(4) + App_Locker_Cancel</text>
+
+  <path d="M700 300 Q 500 400 400 420 Q 300 430 210 330" stroke="#d29922" stroke-width="1.4" marker-end="url(#arr)" fill="none" stroke-dasharray="5 4"/>
+  <text class="ed" x="420" y="404" fill="#d29922">DONE 5s 到 / SOFT 超时 → Cancel → IDLE</text>
+
+  <!-- CONFIGURED -> FAULT -->
+  <path d="M480 314 L560 440 L538 458" stroke="#bc8cff" stroke-width="1.6" marker-end="url(#arr)" fill="none"/>
+  <text class="ed" x="470" y="430" fill="#bc8cff">UHF 链路断/ERROR (App_Locker.c:191)</text>
+  <text class="mono" x="470" y="446">EVT_FAULT(6)</text>
+
+  <!-- FAULT -> IDLE -->
+  <path d="M540 492 Q 300 500 130 340" stroke="#8b94a3" stroke-width="1.4" marker-end="url(#arr)" fill="none" stroke-dasharray="5 4"/>
+  <text class="ed" x="260" y="530" fill="#8b94a3">恢复后 CANCEL 清障 → IDLE</text>
+</svg>
+</div>
+<div class="legend">
+  <span class="lg-st">正常主线</span><span class="lg-ok">匹配/解锁动作</span><span class="lg-bad">比对失败</span>
+  <span class="lg-to">超时/结束路径</span><span class="lg-fault">故障路径</span><span class="lg-idle">空闲态</span>
+</div>
+<p class="meta">注：头文件中定义了 <span class="code">LOCKER_UNLOCK_HOLD=2</span> 状态，但代码<b>未实现该独立状态</b>——匹配后的保持窗口在 CONFIGURED 态内由 <span class="code">holdDeadlineMs</span> 时间戳实现（每次 MATCH_OK 刷新，<span class="ref">App_Locker.c:216</span>），状态查询始终显示 CONFIGURED(1)。</p>
+
+<h2>5. CONFIGURED 态主循环单 tick 详细流程</h2>
+<div class="box">
+<pre style="margin:0;font-size:12px;color:#c9d1d9">
+<b>locker_process_configured()  <span class="ref">(App_Locker.c:188)</span> — 主循环每 tick 执行</b>
+
+ ① 检查 UHF 链路状态/ERROR ──── 坏 ──► EVT_FAULT(6) → FAULT 态 (ERR 常亮, 磁块降)   <span class="ref">L191-195</span>
+ ② UHF 空闲则再次 Inventory(持续扫描)                                              <span class="ref">L196</span>
+ ③ App_UHF_TagTake() 取一条标签 ─── 空 ──► 跳到 ⑦ (本 tick 结束)                    <span class="ref">L199-200</span>
+ ④ 在未解锁清单中查找匹配 EPC (epc_eq 全字节比较)                                    <span class="ref">L203-208</span>
+ ⑤a 命中:
+     ├ items[i].matched=1, hardMatched++ (n)
+     ├ EVT_MATCH_OK(0) 上报 (带 EPC)
+     ├ 保持窗口刷新 = now + 2min + (m-1)×30s     <span class="tag t-warn">坑④: 每次匹配都续窗口</span>  <span class="ref">L216-219</span>
+     ├ 步进 IDLE 且磁块未升 → rise_lock() 升 4800µ步 (dir=0 CW)                       <span class="ref">L220-222</span>
+     └ n ≥ m (全部解锁):
+         ├ EVT_HARD_DONE(2), holdDeadlineMs=0 (解除窗口)
+         ├ → SOFT_DECODE
+         └ softCount==0 → EVT_DONE(5) → DONE (5s)                    <span class="ref">L223-233</span>
+ ⑤b 未命中:
+     ├ EVT_MISMATCH(1) 上报 (带 EPC)
+     └ ERR 红灯翻转闪烁 (奇偶 tick 交替 EOn/EOff), 不升起            <span class="ref">L235-238</span>
+ ⑥ ⑦ 窗口检查: holdDeadlineMs≠0 且 now ≥ deadline
+     └ EVT_TIMEOUT(4) → Cancel (UHF停+磁块降+ERR灭) → IDLE                            <span class="ref">L242-246</span>
+</pre>
+</div>
+
+<h2>6. 事件上报机制与时间参数</h2>
+<div class="two">
+  <div class="box">
+    <h3 style="margin-top:0">事件环形缓冲 <span class="ref">(App_Locker.c:29-67)</span></h3>
+    <ul>
+      <li>容量 <b>8 条</b>；满时<b>丢弃最旧</b>再压入（evr_push L52-55）。</li>
+      <li>每条事件快照：code + EPC(≤12B) + 四个计数字段 + 时间戳。</li>
+      <li>上位机 GET_EVENT 一次取 1 条，取完为止；无事件回 <span class="code">LOCKER_ERR_NO_EVENT=3</span>。</li>
+      <li><b>没有主动推送</b>——纯轮询拉取模型。</li>
+    </ul>
+    <h3>事件码表</h3>
+    <table>
+      <tr><th>码</th><th>事件</th><th>触发时机</th></tr>
+      <tr><td>0</td><td>MATCH_OK</td><td>硬标签命中清单</td></tr>
+      <tr><td>1</td><td>MISMATCH</td><td>读到非清单 EPC</td></tr>
+      <tr><td>2</td><td>HARD_DONE</td><td>m==n 全解锁</td></tr>
+      <tr><td>3</td><td>SOFT_USED</td><td>CONSUME_SOFT 每次</td></tr>
+      <tr><td>4</td><td>TIMEOUT</td><td>保持窗口到期</td></tr>
+      <tr><td>5</td><td>DONE</td><td>软标用尽 / 无软标直达</td></tr>
+      <tr><td>6</td><td>FAULT</td><td>UHF 链路故障</td></tr>
+    </table>
+  </div>
+  <div class="box">
+    <h3 style="margin-top:0">时间与步数参数 <span class="ref">(App_Locker.h:68-72)</span></h3>
+    <table>
+      <tr><th>宏</th><th>值</th><th>含义</th></tr>
+      <tr><td><span class="code">BASE_HOLD_MS</span></td><td>120 s</td><td>基础开锁保持窗口</td></tr>
+      <tr><td><span class="code">EXTRA_PER_TAG_MS</span></td><td>30 s</td><td>每多 1 硬标签加时</td></tr>
+      <tr><td><span class="code">DONE_IDLE_MS</span></td><td>5 s</td><td>DONE 停留后回 IDLE</td></tr>
+      <tr><td><span class="code">STEP_RISE</span></td><td>4800 µ步</td><td>升起步数 (dir=0)</td></tr>
+      <tr><td><span class="code">STEP_LOWER</span></td><td>4800 µ步</td><td>回降步数 (dir=1)</td></tr>
+    </table>
+    <p class="meta">几何参考（记忆库）：当前 1/2 微步 = 400 步/转，下→上行程实测 ≈4287 微步。4800 步略超行程，靠机构上限位截断——行程开关无停转保护（已知暂不实现）。</p>
+    <h3>升降动作链</h3>
+    <p class="meta" style="font-size:12px">
+      rise_lock/lower_lock → <span class="code">App_Stepper_Move</span> <span class="ref">(App_Stepper.c:255)</span>：
+      FAULT 位置位时先 <span class="code">drv8434s_clear_fault</span> 清障再启步（对应上电首驱 nFAULT 误停问题）→
+      TIM4 硬件 STEP 脉冲 + S 型加减速 → 运行中监测 FAULT/DIAG2(堵转)/nFAULT 引脚，任一触发即停转并回 IDLE。
+    </p>
+  </div>
+</div>
+
+<h2>7. "一条命令控制"提案（未实施，待确认）</h2>
+<div class="box" style="border-color:var(--violet)">
+  <h3 style="margin-top:0"><span class="tag t-new">提案</span> LOCKER_SUB_ONE_START (0x08) — 一键开锁</h3>
+  <div class="frame"><span class="fh">53 77</span> <span class="fb">xx 00</span> <span class="fb">len(2)</span> <span class="fk">0D</span> <span class="fd">08 softCntL softCntH tagCnt [epcLen1 epc1..] [epcLen2 epc2..] ...</span> <span class="fc">CRC32</span></div>
+  <ul>
+    <li>语义 = CONFIGURE + ADD×m + START 三合一。内部直接调 <span class="code">App_Locker_Configure(items, tagCnt, softCnt)</span> → <span class="code">App_Locker_Start()</span>，<b>App_Locker.c 状态机零改动</b>。</li>
+    <li>容量核算：data = 4 + m×(1+12B)，m=16 时 212B &lt; <span class="code">PROTO_MAX_DATA=1024</span> ✓。</li>
+    <li>帧长 223B &gt; HID 单 report 63B 有效载荷 → 上位机拆 4 个 report 连续发送，固件流式解析器（<span class="ref">ProtoParseByte (App_CustomProtocol.c:74)</span>）天然支持跨 report 重组，<b>传输层与固件协议层均无需改动</b>。</li>
+    <li>待确认 ①：非 IDLE 收到 0x08 → 回 <span class="code">BUSY</span>（保守）或隐式 Cancel 重建（更"一键"）？当前倾向 BUSY。</li>
+    <li>待确认 ②：旧命令 CONFIGURE/ADD/START 保留作调试路径，与 0x08 共存。</li>
+    <li>改动面：仅 <span class="ref">App_CustomProtocol.h</span>（+1 宏+注释）与 <span class="ref">App_Dispatch.c:699</span>（+1 case）；上位机 SwComForTool 增加发送封装（需确认其 HID 写函数是否已支持 &gt;63B 自动拆包）。</li>
+  </ul>
+</div>
+
+<h2>8. 测试注意点 / 已识别坑（现状）</h2>
+<div class="box warnbox">
+  <table>
+    <tr><th>#</th><th>问题</th><th>位置</th><th>影响与建议</th></tr>
+    <tr><td>坑①</td><td><b>CONFIGURE 会清空已有清单</b>：hardCount 字段只作预检不写入，清单必须靠后续 ADD 重建</td>
+        <td><span class="ref">App_Dispatch.c:704-725</span></td>
+        <td>下发顺序错误（CONFIGURE 发在 ADD 之后）会静默清掉清单；测试脚本必须严格 CONFIGURE→ADD→START 顺序</td></tr>
+    <tr><td>坑②</td><td><b>事件缓冲仅 8 条，满丢最旧</b>，无主动推送</td>
+        <td><span class="ref">App_Locker.c:29,52</span></td>
+        <td>GET_EVENT 轮询间隔过长会漏事件（尤其 MISMATCH 高频时）；建议 ≤500ms 轮询</td></tr>
+    <tr><td>坑③</td><td><b>软标消耗完全由上位机驱动</b>（CONSUME_SOFT），固件不主动检测软标</td>
+        <td><span class="ref">App_Locker.c:249-259</span></td>
+        <td>测试时必须模拟 N 次 CONSUME_SOFT，否则 SOFT_DECODE 只能靠窗口/超时退出；注意 SOFT 态 holdDeadline 已清零，实际<b>只能 CANCEL 退出</b></td></tr>
+    <tr><td>坑④</td><td><b>每次 MATCH_OK 刷新保持窗口</b>（2min+(m-1)×30s 重新计算）</td>
+        <td><span class="ref">App_Locker.c:216-219</span></td>
+        <td>逐个放置标签可持续延长窗口；若测试期望"固定窗口"语义，实际行为不同</td></tr>
+    <tr><td>坑⑤</td><td>头文件 <span class="code">LOCKER_UNLOCK_HOLD=2</span> 状态<b>未实现</b>，匹配保持嵌在 CONFIGURED 态</td>
+        <td><span class="ref">App_Locker.h:41</span></td>
+        <td>上位机 QUERY 看到的 state 不会出现 2；文档/上位机若按 5 态解析会错位</td></tr>
+    <tr><td>坑⑥</td><td>磁块升降依赖 DRV8434S；持续 FAULT 时表现为"匹配了却不升起"（Move 内部仅清障重试一次）</td>
+        <td><span class="ref">App_Stepper.c:255-266</span></td>
+        <td>结合既有记忆：上电首驱曾出现 nFAULT 间歇误停（0-21 步，~50%），已由 seek_phase 重试缓解；若测试偶发"不升起"，先 MOTOR_CMD_QUERY 查 fault 寄存器</td></tr>
+  </table>
+</div>
+
+<h2>9. 协议层关键事实（与"一条命令"可行性直接相关）</h2>
+<div class="box">
+  <ul>
+    <li><span class="code">PROTO_MAX_DATA = 1024</span> <span class="ref">(App_CustomProtocol.h:14)</span> —— 帧长度字段 16bit，长度校验上限 1024+5。</li>
+    <li>解析器 <span class="code">ProtoParseByte</span> 是<b>逐字节状态机</b>：0x53→0x77→addr→00→len(2)→payload→CRC32，与 HID report 边界<b>完全解耦</b>——一个逻辑帧可由任意多个 report 拼出。</li>
+    <li>USB 传输层：HID report 64B（首字节 report id 0x01 剥离后 63B 有效）<span class="ref">(App_Usb_Transport.c:98, App_Usb_HL.h:33)</span>。上位机 SwComForTool 侧是否已实现"&gt;63B 帧自动拆 report 连发"是单命令方案的<b>唯一未确认点</b>。</li>
+    <li><span class="code">App_Locker.h:20-22</span> 注释"上位机单帧受 HID 56B data 限制"与实际协议能力<b>不符</b>，属陈旧文档，实施单命令方案时应一并修正。</li>
+  </ul>
+</div>
+
+<div class="tail">
+  ZLR5401 开锁命令现状流程全景 ｜ Round_073 ｜ 2026-08-29 ｜ 只读分析，未改动固件 ｜
+  备份: /Volumes/Record/Person Code/BackupArea/ZLR5401/Round_073_20260829_195803 (68.25M)
+</div>
+
+</div>
+</body>
+</html>

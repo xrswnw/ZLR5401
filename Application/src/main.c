@@ -6,6 +6,7 @@
 #include "App_Led_HL.h"
 #include "App_Led.h"
 #include "App_RgbLed_HL.h"
+#include "App_RgbLed_Pattern.h"
 #include "App_Usb.h"
 #include "App_Usb_HL.h"
 #include "App_Sys_CfgClock.h"
@@ -18,7 +19,14 @@
 #include "App_Locker.h"
 #include "App_NewPeriph_HL.h"
 #include "App_MotorTest.h"
+#include "App_MotorHoming.h"
 #include "App_BootSelfTest.h"
+
+/* TEMP: AM 线路测试模式 —— 主循环每 500ms 发 0x63 总查询探链,
+ * RGB 绿=链路通 / 红=无应答; 期间禁用灯语仲裁避免覆盖测试指示.
+ * 查询为阻塞: 未接 AM ~200ms 超时, 已接 ~1.2s 取 12 帧 (IWDG 已喂, <2s 预算).
+ * 线路排查完成后置 0 恢复正常灯语. */
+#define AM_LINE_TEST 0
 
 void System_Init(void)
 {
@@ -49,15 +57,19 @@ void System_Init(void)
     /* 6. LED*/
     LedHl_Init();
     RgbLedHl_Init();   /* RGB 三色灯 G=PA4/R=PA5/B=PA6, 默认全灭 */
+    App_RgbLedPat_Init();   /* RGB 灯语仲裁器 (状态指示, 见 App_RgbLed_Pattern) */
 
     /* 6.5 新增外设: 光电/行程开关/蜂鸣器 GPIO + 调试串口 (骨架)*/
     App_NewPeriph_Init();
 
-    /* 7. USB HID (USB_EN=PA6/LED_BLUE 使能, AF_PP 配置 PA11/12 + GPIO_SetBits USB_EN)*/
+    /* 7. USB HID (USB_EN=PA8 使能, AF_PP 配置 PA11/12 + GPIO_SetBits USB_EN)*/
     App_Usb_Init();
 
-    /* 8.4 参数区加载: 主区/影子区 CRC 失败时回落到默认值并写回 flash*/
+    /* 8.4 参数区加载: 主区/影子区 CRC 失败时回落到默认值并写回 flash;
+     * 失败事实沉淀到设备级自检错误位 (SELF_ERR_PARAM_CRC, 仅上电置位,
+     * 经 FC_SELFTEST_CTRL 0x0F 可读, 只能手动 CLEAR). */
     if (ParamLoad(&g_sParam) != 0) {
+        App_SelfTest_SetErrBits(SELF_ERR_PARAM_CRC);
         ParamInit(&g_sParam);
         (void)ParamSave(&g_sParam);
     }
@@ -110,7 +122,7 @@ void System_Init(void)
         }
     }
 
-    /* 8.8 AM 解码器初始化 (RS485/USART1 驱动 + 配置, 不主动下发;
+    /* 8.8 AM 消磁器初始化 (RS232/USART1 驱动 + 配置, 不主动下发;
      * 配置由 上位机 SET_CONFIG 下发或在 本机启动时按持久化配置复位) */
     App_AM_Init();
     {
@@ -141,7 +153,24 @@ void System_Init(void)
     /* 9. 开全局中断 (最后一步 Sys_EnableInt, USB 准备就绪后才开)*/
     __asm volatile ("cpsie i");
 
-    /* 9.5 上电自检 (POST): 蜂鸣器 500ms + 外设链路监控经调试串口打印.
+    /* 9.5 上电行程自检/回零: 用行程开关建立绝对位置基准.
+     * 必须在开全局中断后调用 —— 回零阻塞驱动依赖 TIM4 中断(推进 STEP)
+     * 与 SysTick 中断(ms 计时), 中断关着会卡死; 期间喂狗.
+     * 上电首驱存在间歇性 nFAULT/开关漏读 (实测 ~1/3 概率单次失败, 再次
+     * 驱动即正常): 失败自动重试至多 3 次并清故障寄存器, 全部失败才置
+     * 错误位, 上层 MOVE/TEST 将被禁止以防冲挡块. */
+    /* 回零为阻塞循环 (主循环不跑), 无法走 Tick 闪烁 -> 黄常亮示意;
+     * 结束保持黄, 衔接 POST (彩灯自检白闪后回到黄, 探测全程黄常亮),
+     * 由 POST 末尾统一熄灭, 交主循环灯语仲裁器接管。 */
+    RgbLedHl_Set(RGB_BIT_G | RGB_BIT_R);
+    for (uint8_t homTry = 0u; homTry < 3u; homTry++) {
+        if (App_MotorHoming_Run() == MOTOR_HOMING_OK) break;
+        (void)App_Stepper_ClearFault();
+        SysTickHl_DelayMs(200u);
+        IwdgHl_Feed();
+    }
+
+    /* 9.6 上电自检 (POST): 蜂鸣器 500ms + 外设链路监控经调试串口打印.
      * 需在开全局中断后调用 (UHF/AM 帧回依赖 USART 收中断). 阻塞期间喂狗.
      * 呼吸灯由主循环 AppLedProcess 持续运行 (Task 2 常驻). */
     App_BootSelfTest_Run();
@@ -158,6 +187,10 @@ int main(void)
 
         /* 主循环喂狗.*/
         IwdgHl_Feed();
+
+        /* 蜂鸣脉冲到期自动停: BeepPulse(50ms/300ms) 只开不关,
+         * IR 蜂鸣流程删除时原轮询者一并丢失, 曾导致一次触发即长响. */
+        (void)App_NewPeriph_BeepPulseActive();
 
         /* USB HL 轮询 (当前中断驱动, 保留)*/
         App_Usb_Poll();
@@ -177,13 +210,29 @@ int main(void)
         /* AM 解码器状态机推进 (链路/心跳监测)*/
         App_AM_Process();
 
+#if AM_LINE_TEST
+        /* TEMP AM 线路测试: 每 500ms 一问, RGB 直接指示结果 */
+        {
+            static uint32_t s_amTestMs = 0u;
+            uint32_t now = SysTickHl_GetMs();
+            if (s_amTestMs == 0u || (now - s_amTestMs) >= 500u) {
+                s_amTestMs = now;
+                IwdgHl_Feed();
+                int ok = (App_AM_Query() == 0);
+                RgbLedHl_Set(ok ? RGB_BIT_G : RGB_BIT_R);
+            }
+        }
+#endif
+
         /* 绿灯心跳 (500ms)*/
         AppLedProcess();
 
         /* 按键诊断闪烁 (行程开关低电平驱动 ERR, 独立于业务)*/
         AppLed_KeyBlinkProcess();
 
-        /* IR 检测(PC4)高电平 -> 蜂鸣器 100ms 周期循环响/停 */
-        App_IrBuzzer_Process();
+        /* RGB 灯带状态指示仲裁 (业务灯语/行程错误/闪显/手动回收) */
+#if !AM_LINE_TEST
+        App_RgbLedPat_Tick();
+#endif
     }
 }

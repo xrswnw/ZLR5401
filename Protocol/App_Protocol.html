@@ -100,8 +100,8 @@ li { margin: 3px 0; }
 <!-- 命令总览 -->
 <h2>3. 命令总览</h2>
 <div class="phase">
-<p>App 实现 8 个命令。其余命令（FC=0x03/0x04/0x05/0x06/0x09）由 Bootloader 处理（详见 Boot_Protocol.html）。</p>
-<p class="box">命令总览 <b>0x0C / 0x0D</b> 为本轮新增（AM 消磁器 / 开锁器）。<b>灯控（LED 呼吸灯）无 USB 命令</b>，由本地硬件 PWM（TIM3_CH1）自走，不对外暴露。</p>
+<p>App 实现 14 个命令。其余命令（FC=0x03/0x04/0x05/0x06/0x09）由 Bootloader 处理（详见 Boot_Protocol.html）。</p>
+<p class="box">命令总览：<b>0x0F</b> 为本轮新增（设备级自检/锁存错误位）。<b>灯控（LED 呼吸灯）无 USB 命令</b>，由本地硬件 PWM（TIM3_CH1）自走，不对外暴露。</p>
 <table>
 <tr><th>FC</th><th>名称</th><th>Host → Device</th><th>Device → Host</th><th>用途</th></tr>
 <tr><td><code>0x01</code></td><td>FC_HANDSHAKE</td><td>—</td><td>28B: result/protoVer/status/UID/uidHash/layer/upgradeCount/baudRate</td><td>发现/存活探测</td></tr>
@@ -110,10 +110,11 @@ li { margin: 3px 0; }
 <tr><td><code>0x08</code></td><td>FC_RESET</td><td>—</td><td>1B: result</td><td>软件复位 (空参数, 回 OK 后延时 20ms 再复位)</td></tr>
 <tr><td><code>0x09</code></td><td>FC_EXIT_BOOT</td><td>—</td><td>1B: result</td><td>退出升级 (Boot 处理); App 忽略</td></tr>
 <tr><td><code>0x0A</code></td><td>FC_MOTOR_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §10 (subCmd 0x01~0x09)</td><td>步进电机 DRV8434S 控制 + 健康监控</td></tr>
-<tr><td><code>0x0B</code></td><td>FC_UHF_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §11 (subCmd 0x01~0x0A)</td><td>UHF 超高频 SIM7500 模块控制</td></tr>
+<tr><td><code>0x0B</code></td><td>FC_UHF_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §11 (subCmd 0x01~0x0E, 0x10)</td><td>UHF 超高频 SIM7500 模块控制</td></tr>
 <tr><td><code>0x0C</code></td><td>FC_AM_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §12 (subCmd 0x01~0x07)</td><td>AM 消磁器控制</td></tr>
 <tr><td><code>0x0D</code></td><td>FC_LOCKER_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §13 (subCmd 0x01~0x07)</td><td>开锁器业务编排</td></tr>
 <tr><td><code>0x0E</code></td><td>FC_RGB_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §14 (subCmd 0x01)</td><td>RGB 三色灯 G=PA4/R=PA5/B=PA6 控制</td></tr>
+<tr><td><code>0x0F</code></td><td>FC_SELFTEST_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §15 (subCmd 0x01~0x03)</td><td>设备级自检错误位 (锁存位图, App 专属)</td></tr>
 </table>
 <p>响应帧的 <code>func</code> = 请求 <code>func ^ 0xFF</code>（例如 <code>0x01 → 0xFE</code>，<code>0x0A → 0xF5</code>）。</p>
 </div>
@@ -233,6 +234,10 @@ length=5 (FC + CRC32)</pre>
 <tr><td><code>0x0D</code></td><td><code>1</code></td><td><code>LOCKER_ERR_BUSY</code></td><td>忙（非空闲需先取消）</td></tr>
 <tr><td><code>0x0D</code></td><td><code>2</code></td><td><code>LOCKER_ERR_PARAM</code></td><td>参数非法/超上限</td></tr>
 <tr><td><code>0x0D</code></td><td><code>3</code></td><td><code>LOCKER_ERR_NO_EVENT</code></td><td>无待取事件</td></tr>
+<tr><td colspan="4"><em>以下 FC=0x0F 设备自检结果码：</em></td></tr>
+<tr><td><code>0x0F</code></td><td><code>0</code></td><td><code>SELFTEST_ERR_OK</code></td><td>成功</td></tr>
+<tr><td><code>0x0F</code></td><td><code>1</code></td><td><code>SELFTEST_ERR_PARAM</code></td><td>参数错误（长度不足/未知子命令）</td></tr>
+<tr><td><code>0x0F</code></td><td><code>2</code></td><td><code>SELFTEST_ERR_BUSY</code></td><td>忙（RERUN 时 Locker/OneShot 非空闲）</td></tr>
 <tr><td colspan="4"><em>以下 Boot 返回的码，在 App 端不出现（详见 Boot_Protocol.html）：</em></td></tr>
 <tr><td><code>0x03</code></td><td><code>1,2</code></td><td><code>UPG_NO_SPACE</code> / <code>UPG_ERASE_FAIL</code></td><td>固件过大 / Flash 擦除失败</td></tr>
 <tr><td><code>0x04</code></td><td><code>2,3</code></td><td><code>DATA_FLASH_FAIL</code> / <code>DATA_ADDR_ERR</code></td><td>写失败 / 地址越界</td></tr>
@@ -277,13 +282,13 @@ if (n >= 64 && report[0] == 0x02) {
 <h3>10.1 子命令总览</h3>
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
-<tr><td><code>0x01</code></td><td>MOVE</td><td><code>[cmd, dir, stepsL, stepsM, stepsH]</code></td><td><code>[cmd, err]</code></td><td>启动运动: <code>dir</code>=0(CW)/1(CCW), <code>steps</code>=24bit 微步数, <code>0</code>=持续运行</td></tr>
+<tr><td><code>0x01</code></td><td>MOVE</td><td><code>[cmd, dir, stepsL, stepsM, stepsH]</code></td><td><code>[cmd, err]</code></td><td>启动运动: <code>dir</code>=0(CW)/1(CCW), <code>steps</code>=24bit 微步数, <code>0</code>=持续运行. MOVE 不受行程自检门控, 电机完全开放给上位机控制; 行程开关错误位(<code>switchErr</code>)仅作报警/诊断, 由上位机自行决策. 设定步数走满自动停脉冲并回 IDLE (QUERY 可见)</td></tr>
 <tr><td><code>0x02</code></td><td>STOP</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>停止并关断输出</td></tr>
 <tr><td><code>0x03</code></td><td>SPEED</td><td><code>[cmd, hzL, hzH]</code></td><td><code>[cmd, err]</code></td><td>设定微步/秒 (1~2000)</td></tr>
 <tr><td><code>0x04</code></td><td>TORQUE</td><td><code>[cmd, pct]</code></td><td><code>[cmd, err]</code></td><td>转矩百分比 (6~100)</td></tr>
-<tr><td><code>0x05</code></td><td>QUERY</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, fault, diag1, diag2, stepsDoneL, stepsDoneH]</code></td><td>查询状态/故障/已走微步数</td></tr>
+<tr><td><code>0x05</code></td><td>QUERY</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, fault, diag1, diag2, stepsDoneL, stepsDoneH, switchErr, testState]</code></td><td>查询状态/故障/已走微步数/行程开关错误位/行程测试态</td></tr>
 <tr><td><code>0x06</code></td><td>CLEAR</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>清除故障并回到 IDLE</td></tr>
-<tr><td><code>0x07</code></td><td>TEST</td><td><code>[cmd, passes]</code></td><td><code>[cmd, err]</code></td><td>电机行程测试: 最高速正转→触碰行程开关→立即反转→触碰(完成1次往返), 共 <code>passes</code> 次后自动停转. 进行中再下发回 <code>MOTOR_ERR_BUSY</code></td></tr>
+<tr><td><code>0x07</code></td><td>TEST</td><td><code>[cmd, passes]</code></td><td><code>[cmd, err]</code></td><td>电机行程测试: 最高速正转→触碰行程开关→立即反转→触碰(完成1次往返), 共 <code>passes</code> 次后自动停转. 进行中再下发回 <code>MOTOR_ERR_BUSY</code>; 上电回零未成功回 <code>MOTOR_ERR_FAULT</code></td></tr>
 <tr><td><code>0x08</code></td><td>HEALTH</td><td><code>[cmd]</code></td><td><code>[cmd, err, olovState, threshL, threshH, trqL, trqH, reason]</code></td><td>读健康/堵转监测: 高负载状态 / 高负载阈值 / 实时转矩计数 / 最近停机原因</td></tr>
 <tr><td><code>0x09</code></td><td>STATS</td><td><code>[cmd]</code></td><td><code>[cmd, err, runSeconds(3B), startCount(2B), lastReason]</code></td><td>读运行统计: 累计运行秒数 / 启动次数 / 最近停止原因</td></tr>
 </table>
@@ -292,11 +297,13 @@ if (n >= 64 && report[0] == 0x02) {
 <table>
 <tr><th>字段</th><th>说明</th></tr>
 <tr><td><code>err</code></td><td>0=OK</td></tr>
-<tr><td><code>state</code></td><td>0=IDLE(停止) / 1=RUN / 2=FAULT; 行程测试时上报测试态(2=DONE/3=FAULT)</td></tr>
-<tr><td><code>fault</code></td><td>DRV8434S FAULT 寄存器原始值 (bit7=FAULT, bit5=UVLO, bit4=CPUV, bit3=OCP, bit2=STALL, bit1=过温)</td></tr>
+<tr><td><code>state</code></td><td><strong>语义由 <code>testState</code> 决定</strong>: testState≠0 时为行程测试态 (1=RUN / 2=DONE / 3=测试FAULT, DONE/FAULT 保持至 CLEAR); testState=0 时为步进态 (0=IDLE / 1=RUN / 2=FAULT)。<em>注意: state=2 不一定是故障, 先看 testState</em></td></tr>
+<tr><td><code>fault</code></td><td>DRV8434S FAULT 寄存器原始值 (bit7=FAULT, bit6=SPI_ERROR, bit5=UVLO, bit4=CPUV, bit3=OCP, bit2=STALL, bit1=过温, bit0=开路)。<strong>state=FAULT 时为停机瞬间快照</strong>（DRV 状态寄存器读后自清，固件在 FAULT 态冻结轮询以防证据被抹掉，归因靠此快照）；IDLE/RUN 时为实时轮询值</td></tr>
 <tr><td><code>diag1</code></td><td>行程测试故障原因 (非测试时为 0): 1=步进故障 / 2=挣脱超时 / 3=方向极性错触 / 4=期望触点超时</td></tr>
-<tr><td><code>diag2</code></td><td>诊断寄存器2 (OTW/OTS/STALL/OL)</td></tr>
+<tr><td><code>diag2</code></td><td>诊断寄存器2 (OTW/OTS/STALL/OL)。state=FAULT 时同为停机瞬间快照</td></tr>
 <tr><td><code>stepsDone</code></td><td>本次运动已完成的微步数 (16bit, 溢出截断; 持续运行意会)</td></tr>
+<tr><td><code>switchErr</code></td><td>行程开关错误位: bit0=上行程错(缺失/超腿长未触发), bit1=下行程错. 由上电回零/运行中开关监控置位; CLEAR 清 0. 置位时 TEST 被禁(冲挡块保护), MOVE 不受门控(上位机自行决策)但运行中开关监控仍会在超腿长未触发时置位并停机.</td></tr>
+<tr><td><code>testState</code></td><td>行程测试状态机当前态: 0=非测试(state 为步进态), 1=RUN, 2=DONE, 3=测试FAULT. 用于消解 state 字段的测试态/步进态歧义 (测试结束后 MT 态保持到 CLEAR, 期间 state 上报测试态).</td></tr>
 </table>
 
 <h3>10.3 HEALTH / STATS 响应字段</h3>
@@ -306,9 +313,9 @@ if (n >= 64 && report[0] == 0x02) {
 <tr><td><code>thresh</code></td><td>高负载 TRQ_COUNT 阈值 (16bit, 默认 400; 越低越接近失速)</td></tr>
 <tr><td><code>trq</code></td><td>最近一次转矩计数采样 (12bit, 满刻度 4095=无负载, 越低负载越高)</td></tr>
 <tr><td><code>reason</code></td><td>最近停机原因: 0=无 / 1=正常停止 / 2=运行时限 / 3=高负载停机 / 4=DRV故障</td></tr>
-<tr><td colspan="2"><em>注: 运行中每 100ms 采样 TRQ_COUNT; 持续低于阈值 600ms → 自动降速到 800 微步/s; 降速后仍低 400ms → 强制停机。单次连续运行上限 60s。</em></td></tr>
-<tr><td rowspan="3"><code>STATS (0x09)</code></td><td><code>runSeconds</code></td><td>累计运行秒数 (24bit, RAM 仅存, 断电清零)</td></tr>
-<tr><td><code>startCount</code></td><td>累计启动次数 (16bit, RAM 仅存)</td></tr>
+<tr><td colspan="2"><em>注: 运行中每 100ms 采样 TRQ_COUNT; 持续低于阈值 600ms → 自动降速到 800 微步/s; 降速后仍持续低 ≈2.4s → 强制停机 (合计约 3s, 堵转保护). 单次连续运行上限仍 60s。</em></td></tr>
+<tr><td rowspan="3"><code>STATS (0x09)</code></td><td><code>runSeconds</code></td><td>累计运行秒数 (24bit LE, RAM 仅存, 断电清零)</td></tr>
+<tr><td><code>startCount</code></td><td>累计启动次数 (16bit LE, RAM 仅存)</td></tr>
 <tr><td><code>lastReason</code></td><td>最近停止原因 (同 HEALTH.reason)</td></tr>
 </table>
 
@@ -316,22 +323,42 @@ if (n >= 64 && report[0] == 0x02) {
 <div class="note-title">错误码 (data[1])</div>
 <code>0</code>=OK, <code>1</code>=参数错误, <code>2</code>=器件处于故障状态, <code>3</code>=忙(TEST 进行中)。
 </div>
+
+<div class="note">
+<div class="note-title">上电行程自检/回零 (无条件完整自检: 先上后下)</div>
+上电时电机位置未知; 开全局中断后无论电机停在何处(含已压行程开关), 均执行两阶段自检:
+<ul>
+<li>阶段1 向上找 <code>KEY_UP</code>: 验证上行程开关在位/可达 (静态已触发则免驱动)。</li>
+<li>阶段2 向下回归 <code>KEY_DOWN</code>: 验证下行程开关并建立下行程绝对基准。</li>
+<li>两阶段均通过 → 回零完成（蜂鸣提示已不在回零处）。成功蜂鸣移至 POST 末尾统一判据：<strong>电机自检(SPI 回读/器件故障/行程开关) 与 UHF 通信全部通过才蜂鸣 1s</strong>；任一失败静默，由错误灯语表达（AM 通信/参数 CRC 不参与蜂鸣判据，仅记错误位）。</li>
+<li>任一阶段失败(超腿长未触发 / 堵转撞硬挡被 TRQ 停机 / 超步 / 超时) → 置 <code>switchErr</code> 对应位并立即返回(不继续后续阶段), 此时 TEST 回 <code>MOTOR_ERR_FAULT</code>(防冲挡块), 对应错误灯闪, 无蜂鸣。MOVE 不受此门控(开放给上位机), 但运行中开关监控会在超腿长未触发时置位并停机。<code>CLEAR</code> 清错误位。</li>
+</ul>
+自检驱动优先保护设备: 低转速(2000Hz)低转矩(40%) + 每段最大步数上限(腿长实测×2+裕量: 上 8970 / 下 9448 微步) + 30s 超时; 堵转由 TRQ 监测(~600ms 降速 + ~2.4s 停机)兜底。上电后首次驱动存在间歇性瞬态(被 DRV8434S nFAULT+SPI_ERROR 误停, 与位置/负载无关), 每阶段起步若在 &lt;50 步内因 DRV 故障停机则自动清故障重试一次。
+</div>
+
+<div class="note">
+<div class="note-title">运行中开关监控 + 灯色指示 (新增)</div>
+<ul>
+<li>正向(奔上)超过上腿限制 <code>LEG_UP_LIMIT</code> 未触上开关 → 置 switchErr.bit0; 反向(奔下)超下腿限制未触下开关 → 置 bit1.</li>
+<li>灯色(500ms 闪烁): 上行程错=黄(<code>G+R</code>), 下行程错=粉红(<code>R+B</code>, B 为 PA7 蓝灯占位; 需后续接入蓝色 LED 硬件才可见).</li>
+</ul>
+</div>
 </div>
 
 
 <!-- FC_UHF_CTRL -->
 <h2>11. FC_UHF_CTRL (0x0B) — UHF 超高频 SIM7500 模块控制</h2>
 <div class="phase">
-<p>本命令把超高频（UHF）RFID 读写模块 <strong>SIM7500</strong>（芯联创展 / Silion，基于 Impinj E710 平台，EPC Class 1 Gen2 / ISO 18000-6C）暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x0C），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。通信经 <strong>UART4</strong>（PC10=TX / PC11=RX，115200-8-N-1，TTL）的 EX10 通用 <code>0xFF</code> 帧（FF + len + cmd + data + CRC16）。模块控制引脚：UHF_EN=PB12（高电平上电）、UHF_REG_OUT2=PB13 / UHF_REG_IN1=PB14 / UHF_REG_IN2=PB15、UHF_NRST=PC6、UHF_OUT1=PC7。板上无 MCU 天线切换脚（SIM7500 天线选择经模块命令）。</p>
+<p>本命令把超高频（UHF）RFID 读写模块 <strong>SIM7500</strong>（芯联创展 / Silion，基于 Impinj E710 平台，EPC Class 1 Gen2 / ISO 18000-6C）暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x0C），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。通信经 <strong>USART3</strong>（PB10=TX / PB11=RX，115200-8-N-1，TTL）的 EX10 通用 <code>0xFF</code> 帧（FF + len + cmd + data + CRC16）。模块控制引脚：UHF_EN=PB12（高电平上电）、UHF_REG_OUT2=PB13 / UHF_REG_IN1=PB14 / UHF_REG_IN2=PB15、UHF_NRST=PC6、UHF_OUT1=PC7。板上无 MCU 天线切换脚（SIM7500 天线选择经模块命令）。</p>
 
-<p>控制面 / 数据面解耦：状态机（IDLE/READY/INVENTORY/READ/WRITE/ERROR/ANT_CHECK）由设备内部管理。开放/设置时下发功率、频段、Gen2(Session/Target/Q)；<code>OPEN</code> 时同步执行<strong>回波检测</strong>判断天线连接。盘点/读写标签结果缓存在设备标签缓冲，主机经 <code>GET_TAGS</code> 取走。</p>
+<p>控制面 / 数据面解耦：状态机（IDLE/READY/INVENTORY/READ/WRITE/ERROR/ANT_CHECK/GETBUF）由设备内部管理。开放/设置时下发功率、频段、Gen2(Session/Target/Q)；<code>OPEN</code> 时同步执行<strong>回波检测</strong>判断天线连接。<code>INVENTORY</code> 为<strong>多标签同步盘存</strong>（0x22，带内部超时）→ 0x29 取回缓存，设备内部<strong>同步阻塞</strong>完成整段流程后，把全部标签内联在响应里直接带回——<b>上位机一次请求即可拿到场内所有标签</b>，无需分步拉取、无主动上报。</p>
 
 <h3>11.1 子命令总览</h3>
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
 <tr><td><code>0x01</code></td><td>OPEN</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>上电 + 下发配置 + 回波检测，进入 READY（告警仍可用）</td></tr>
 <tr><td><code>0x02</code></td><td>CLOSE</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>停止并下电</td></tr>
-<tr><td><code>0x03</code></td><td>INVENTORY</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>发起一次盘点（单标签 0x21，EPC 直接入缓冲）</td></tr>
+<tr><td><code>0x03</code></td><td>INVENTORY</td><td><code>[cmd, timeoutL, timeoutH]</code></td><td><code>[cmd, err, count L, count H, (rssi, epcLen, epc..)...]</code></td><td>发起一次盘点：设备内部同步完成 0x22→0x29，<b>标签内联在响应里带回</b>；<code>timeout</code>(ms, 缺省 1000) 为 0x22 盘存超时</td></tr>
 <tr><td><code>0x04</code></td><td>READ_TAG</td><td><code>[cmd, epcLen, epc.., bank, addr, cnt]</code></td><td><code>[cmd, err]</code></td><td>读标签：按 EPC 定位，读 <code>bank</code>/<code>addr</code> 起 <code>cnt</code> 个字</td></tr>
 <tr><td><code>0x05</code></td><td>WRITE_TAG</td><td><code>[cmd, epcLen, epc.., bank, addr, len, data..]</code></td><td><code>[cmd, err]</code></td><td>写标签：按 EPC 定位，写 <code>len</code> 字节到 <code>bank</code>/<code>addr</code></td></tr>
 <tr><td><code>0x06</code></td><td>STOP</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>停止当前操作</td></tr>
@@ -341,7 +368,24 @@ if (n >= 64 && report[0] == 0x02) {
 <tr><td><code>0x0A</code></td><td>GET_TAGS</td><td><code>[cmd, count]</code></td><td><code>[cmd, err, total L, total H, (epcLen, rssi, epc..)...]</code></td><td>取标签缓冲；<code>count</code>=0 取全部，>0 取前 <code>count</code> 条</td></tr>
 <tr><td><code>0x0B</code></td><td>GET_STATUS</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, link, totalTags, powered, antennaOk, lastErr, antRl H, antRl L, antVswr H, antVswr L]</code></td><td>读取状态/错误监控（含回波结果）</td></tr>
 <tr><td><code>0x0C</code></td><td>CHECK_ANT</td><td><code>[cmd]</code></td><td><code>[cmd, err, antennaOk, antRl H, antRl L, antVswr H, antVswr L]</code></td><td>主动触发一次回波检测</td></tr>
+<tr><td><code>0x0D</code></td><td>SCAN_START</td><td><code>[cmd, cycleL, cycleH]</code></td><td><code>[cmd, err]</code></td><td>启动<u>自动扫描</u>：连续盘点持续入缓冲（<b>不主动上报</b>），主机用 <code>GET_TAGS</code> 拉取；<code>cycle</code>(ms, 缺省 1000) 为每轮 0x22 盘存超时</td></tr>
+<tr><td><code>0x0E</code></td><td>SCAN_STOP</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>停止自动扫描并停止当前盘点轮次</td></tr>
 </table>
+
+<h3>11.4 盘点错误码与同步语义</h3>
+<p><code>INVENTORY</code> 为<strong>同步阻塞</strong>：设备在单请求内完成 0x22 多标签盘存（超时 <code>timeout</code>，缺省 1000ms）→ 0x29 取回缓冲 → 解码(EPC 长度取自 PC 高 5 位 <code>(pc&gt;&gt;11)*2</code>) → 把全部标签<b>内联在响应里</b>不规则带回。无主动上报。<code>err</code> 取值：</p>
+<table>
+<tr><th>err</th><th>含义</th></tr>
+<tr><td><code>0</code></td><td>OK，紧随其后 <code>count L,H</code> + 每条 <code>[rssi, epcLen, epc..]</code>（<code>rssi</code> 0~255，<code>epcLen</code> 6~16）</td></tr>
+<tr><td><code>1</code> PARAM</td><td>参数非法</td></tr>
+<tr><td><code>2</code> BUSY</td><td>设备忙（其它操作进行中），需稍后重试</td></tr>
+<tr><td><code>3</code> NOT_READY</td><td>未 OPEN / 已下电</td></tr>
+<tr><td><code>4</code> LINK</td><td>UHF 模块链路异常</td></tr>
+<tr><td><code>5</code> NO_TAG</td><td>场内无标签（0x22 返回 0）</td></tr>
+<tr><td><code>6</code> TIMEOUT</td><td>盘存超时</td></tr>
+</table>
+<div class="note"><code>SCAN_START</code> 为<u>自动扫描 / 识别测距</u>：设备持续连续盘点，每轮复用 <code>INVENTORY</code> 的 0x22→0x29 流程，标签连同 <code>rssi</code> 持续写入数据面缓冲。<b>设备不主动上报</b>——主机按需用 <code>GET_TAGS</code> 拉取取走（每次拉完缓冲即清空），据此判断标签是否在识别范围内或测距。<code>cycle</code> 既作每轮 0x22 盘存超时也作轮询间隔。<b>识别到标签即蜂鸣 50ms 提示</b>（非阻塞，到期自动停；靠近则每轮 beep，远离不响，用于测距判定）。扫描中发起单次 <code>INVENTORY</code> 会返回 <code>BUSY</code>；先 <code>SCAN_STOP</code> 再单次盘点。</div>
+<div class="note"><u>扫描中可打断改配置</u>：自动扫描中的 <code>SET_CONFIG</code>（如改功率）<b>不立即下发</b>（避免打断 0x22→0x29 时序），而是返回 OK 挂起；由设备在本轮盘点结束回 READY 后、<b>下一轮盘点前插入下发配置</b>，下发完成即继续自动盘点。故主机收到 <code>SET_CONFIG</code> 的同步 OK 即表示已接受，实际下发在下轮盘点前生效。也可 <code>SCAN_STOP</code> 后改配置（停扫时也会补发挂起配置）。</div>
 
 <h3>11.2 配置字段 (SET_CONFIG / GET_CONFIG)</h3>
 <table>
@@ -360,7 +404,7 @@ if (n >= 64 && report[0] == 0x02) {
 <table>
 <tr><th>字段</th><th>说明</th></tr>
 <tr><td><code>err</code></td><td>0=OK</td></tr>
-<tr><td><code>state</code></td><td>0=IDLE / 1=READY / 2=INVENTORY / 3=READ / 4=WRITE / 5=ERROR / 6=ANT_CHECK</td></tr>
+<tr><td><code>state</code></td><td>0=IDLE / 1=READY / 2=INVENTORY / 3=READ / 4=WRITE / 5=ERROR / 6=ANT_CHECK / 7=GETBUF(0x22盘存后取缓冲)</td></tr>
 <tr><td><code>link</code></td><td>0=链路正常 / 1=超时 / 2=CRC 错误</td></tr>
 <tr><td><code>totalTags</code></td><td>累计盘点到标签总数（8bit 截断）</td></tr>
 </table>
@@ -393,20 +437,24 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <!-- FC_AM_CTRL -->
 <h2>12. FC_AM_CTRL (0x0C) — AM 消磁器控制</h2>
 <div class="phase">
-<p>本命令把 AM EAS <strong>消磁器（Deactivator）</strong>暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x07），其后为参数。硬件经 <strong>USART1</strong>（RS485，经 SP3485 收发，PA9=TX / PA10=RX，方向控制 PA8，<code>0x2A 0xA2</code> 帧族）与消磁器通信。16 位参数值高字节在后：<code>(H&lt;&lt;8)|L</code>。</p>
+<p>本命令把 AM EAS <strong>消磁器（Deactivator）</strong>暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x09），其后为参数。硬件经 <strong>USART1</strong>（RS232 全双工，PA9=TX / PA10=RX，<code>0x2A 0xA2</code> 帧族）与消磁器通信。16 位参数值高字节在后：<code>(H&lt;&lt;8)|L</code>。</p>
 <div class="warn">
-<b>设备语义（实测）</b>：这是 <b>消磁器</b>（检测标签→消磁/报警），<b>不读标签唯一 ID</b>。参数命令为「回显式写」，<b>无真读回</b>；发空数据=写 0（危险）。故 <code>GET_CONFIG / GET_PARAM</code> 返回的是<b>设备本地缓存</b>（最近一次成功写入值），<b>不是</b>从解码器读回。cmd17 是设备主动上报的“检测到标签”事件：<code>2A A2 17 01 01 07 FF FF FF FF FF 00 00 校验</code>（5B 字段恒 FF×5，仅作事件标记，不区分标签），经监控子命令累计。
+<b>设备语义（实测）</b>：这是 <b>消磁器</b>（检测标签→消磁/报警），<b>不读标签唯一 ID</b>。<b>读回全部参数走总查询 <code>0x63</code></b>（真读回存储值，非回显）；逐参数命令单独发仍是回显。cmd17 是设备主动上报的<b>消磁结果</b>：<code>2A A2 17 01 01 07 5B0 5B1 5B2 5B3 5B4 00 00 校验</code>。5B 字段 <code>FF FF FF FF FF</code> = <b>消磁失败（标签无法消磁，持续连发重试上报）</b>；单帧/非 FF 字段 = <b>消磁成功（仅一帧后停）</b>。GET_STATUS 据此分类：≥3 帧连发 FF×5 判失败、单帧/静默判成功、静默 >300ms 复位空闲。
 </div>
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
-<tr><td><code>0x01</code></td><td>GET_CONFIG</td><td>[cmd]</td><td>[cmd, err, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode, mains]</td><td>读取当前配置（本地缓存）</td></tr>
-<tr><td><code>0x02</code></td><td>SET_CONFIG</td><td>[cmd, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode, (mains)]</td><td>[cmd, err]</td><td>设置配置并持久化</td></tr>
-<tr><td><code>0x03</code></td><td>GET_PARAM</td><td>[cmd, amCmd]</td><td>[cmd, err, amCmd, valH,valL]</td><td>读单个参数（本地缓存）</td></tr>
-<tr><td><code>0x04</code></td><td>SET_PARAM</td><td>[cmd, amCmd, valH,valL]</td><td>[cmd, err]</td><td>写单个参数（回显校验+缓存）</td></tr>
-<tr><td><code>0x05</code></td><td>QUERY</td><td>[cmd]</td><td>[cmd, err, link]</td><td>探测链路（link=0 正常）</td></tr>
-<tr><td><code>0x06</code></td><td>GET_STATUS</td><td>[cmd]</td><td>[cmd, link, evt(4), last(4)]</td><td>监控：链路 + 标签检测事件累计(4B) + 最近事件相对上电 ms(4B)</td></tr>
+<tr><td><code>0x01</code></td><td>GET_CONFIG</td><td>[cmd]</td><td>[cmd, err, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode, mains]</td><td>读取当前配置（经 0x63 真读回）</td></tr>
+<tr><td><code>0x02</code></td><td>SET_CONFIG</td><td>[cmd, thrH,thrL, hitH,hitL, freq, delayH,delayL, len, invert, syncH,syncL, volt, mode, (mains)]</td><td>[cmd, err]</td><td>设置配置并持久化（写后 0x63 复核）</td></tr>
+<tr><td><code>0x03</code></td><td>GET_PARAM</td><td>[cmd, amCmd]</td><td>[cmd, err, amCmd, valH,valL]</td><td>读单个参数（经 0x63 真读回）</td></tr>
+<tr><td><code>0x04</code></td><td>SET_PARAM</td><td>[cmd, amCmd, valH,valL]</td><td>[cmd, err]</td><td>写单个参数（回显校验）</td></tr>
+<tr><td><code>0x05</code></td><td>QUERY</td><td>[cmd]</td><td>[cmd, err, link]</td><td>发 0x63 总查询探链（link=0 正常）</td></tr>
+<tr><td><code>0x06</code></td><td>GET_STATUS</td><td>[cmd]</td><td>[cmd, link, evt(4), last(4), deact]</td><td>监控：链路 + cmd17 上报帧累计(4B) + 最近上报相对上电 ms(4B) + 消磁结果分类(0=空闲/1=成功/2=失败)。<b>deact 为第 11 字节，向后兼容（前 10 字节格式不变）</b></td></tr>
 <tr><td><code>0x07</code></td><td>SET_MODE</td><td>[cmd, mode]</td><td>[cmd, err]</td><td>仅切工作模式并持久化</td></tr>
+<tr><td><code>0x08</code></td><td>GET_WAVE</td><td>[cmd]</td><td>[cmd, err, pointsH, pointsL]</td><td>触发一次同步波形采集（0x64，阻塞约 1s），points=有效点数（400 或部分）</td></tr>
+<tr><td><code>0x09</code></td><td>GET_WAVE_PAGE</td><td>[cmd, page]</td><td>[cmd, page, err, pointsH, pointsL, w(≤48)]</td><td>取一页波形（48 点/页），400 点=9 页（末页 16 点）；points 为该次采集总有效点</td></tr>
 </table>
+<div class="note">
+<b>波形语义（cmd 0x64）</b>：发 <code>2A A2 64 01 01 02 00 00 68</code> 请求，解码器分 <b>4 包</b>背靠背返回一周期：<code>2A A2 64 04 包次 66 &lt;100点&gt; EF FE</code>（108B，<b>无常规校验，EF FE 收尾</b>）。50Hz 市电 400 点 / 20ms / 每点 50us；RX 窗首点附近即标签回波位置。USB 单帧 ≤52B（63−头11），故分页上传：48 点/页。经 <code>GET_WAVE</code> 触发同步采集（阻塞约 1s）后，用 <code>GET_WAVE_PAGE</code> 逐页拉取；有效点数可能 &lt;400（实时背靠背丢包场景），以各响应 <code>points</code> 为准。</div>
 <div class="note">
 <div class="note-title">配置字段 (SET_CONFIG / GET_CONFIG)</div>
 <table>
@@ -464,7 +512,7 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <p>控制板载 RGB 三色灯：<strong>G=PA4、R=PA5、B=PA6</strong>（高电平点亮）。<code>data</code> 区首字节为子命令码 <code>cmd</code>（0x01），其后为参数。响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），并回显 <code>mask</code>。</p>
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
-<tr><td><code>0x01</code></td><td>SET</td><td>[cmd, mask, reserved]</td><td>[cmd, err, mask]</td><td>按位掩码设置三色：<code>mask</code> bit0=G 绿 / bit1=R 红 / bit2=B 蓝，其余位与 <code>reserved</code> 预留（忽略）</td></tr>
+<tr><td><code>0x01</code></td><td>SET</td><td>[cmd, mask, reserved]</td><td>[cmd, err, mask]</td><td>手动设色：<code>mask</code> bit0=G 绿 / bit1=R 红 / bit2=B 蓝，其余位与 <code>reserved</code> 预留（忽略）。仅设备空闲（Locker/OneShot/行程测试均未运行）时接受，作为手动灯语保持 <strong>10s 自动回收</strong>（业务灯语优先，到期自动灭）；<code>mask=0</code> 立即撤销。运行中回 <code>err=2 BUSY</code></td></tr>
 </table>
 <div class="note">
 <div class="note-title">颜色掩码示例</div>
@@ -472,7 +520,59 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 </div>
 <div class="note">
 <div class="note-title">错误码 (data[1])</div>
-<code>0</code>=OK, <code>1</code>=参数非法/长度不足。
+<code>0</code>=OK, <code>1</code>=参数非法/长度不足, <code>2</code>=BUSY（结账/开锁/行程测试流程运行中，拒绝手动设色）。
+</div>
+<div class="note">
+<div class="note-title">本地灯语（Round_010 起自动驱动，不受本命令控制）</div>
+RGB 灯带由固件按业务状态自动指示：扫描等待=青慢闪 · 标签匹配=绿单闪 · 升起开锁=绿常亮 · 失配=红快闪 3s · 软标等待=白常亮 · 软标成功=白单闪 · 消磁失败=红双闪 · 结账完成=绿三连闪+蜂鸣 · 故障=红常亮 · 行程开关错误=黄/粉红闪。手动 SET 仅在空闲时叠加显示。
+</div>
+</div>
+
+<!-- FC_SELFTEST_CTRL -->
+<h2>15. FC_SELFTEST_CTRL (0x0F) — 设备级自检/锁存错误位</h2>
+<div class="phase">
+<p>设备级健康监控：上电 POST 逐个探测外设（步进电机 DRV8434S / UHF / AM 消磁器），结果沉淀为 <strong>16bit 锁存错误位图 <code>errBits</code></strong>；运行期故障（开锁器 UHF 链路故障、未回零）与参数区 CRC 失败亦联动置位。<code>data</code> 区首字节为子命令码 <code>cmd</code>。响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK）。<strong>App 专属命令</strong>（Bootloader 收到 0x0F 忽略）。</p>
+
+<h3>15.1 错误位定义 (errBits, 16bit LE)</h3>
+<table>
+<tr><th>bit</th><th>宏</th><th>含义</th><th>置位来源</th></tr>
+<tr><td>bit0</td><td><code>SELF_ERR_MOTOR_SPI</code></td><td>DRV8434S SPI 配置回读不一致（通信/落配置失败）</td><td>POST / RERUN 探测</td></tr>
+<tr><td>bit1</td><td><code>SELF_ERR_MOTOR_FAULT</code></td><td>DRV8434S 器件故障（FAULT 位）</td><td>POST / RERUN 探测</td></tr>
+<tr><td>bit2</td><td><code>SELF_ERR_UHF_COMM</code></td><td>UHF Open/Query 通信失败</td><td>POST / RERUN 探测；运行期开锁器 UHF 链路故障</td></tr>
+<tr><td>bit3</td><td><code>SELF_ERR_AM_COMM</code></td><td>AM 消磁器 Query 通信失败</td><td>POST / RERUN 探测</td></tr>
+<tr><td>bit4</td><td><code>SELF_ERR_PARAM_CRC</code></td><td>参数区 CRC 失败回落默认值</td><td>仅上电置位（不随探测刷新，只能 CLEAR 手动清）</td></tr>
+<tr><td>bit5</td><td><code>SELF_ERR_TRAVEL_SW</code></td><td>行程开关缺失/回零失败（明细见 QUERY 响应 switchErr：bit0=上 bit1=下）</td><td>POST / RERUN 探测；运行期开锁器"未回零"故障</td></tr>
+<tr><td>bit6~15</td><td>—</td><td>预留（恒 0）</td><td>—</td></tr>
+</table>
+<p><strong>刷新语义</strong>：bit0~3、bit5 随 <code>RERUN</code> 探测结果整体刷新（故障已消除则自动清位）；bit4 为引导期事实，仅 <code>CLEAR</code> 可清。</p>
+
+<h3>15.2 子命令</h3>
+<table>
+<tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
+<tr><td><code>0x01</code></td><td>QUERY</td><td>[cmd]</td><td>[cmd, err, errBitsL, errBitsH, motorCommOk, drvFault, uhfLink, amLink, paramCrc, switchErr]</td><td>读锁存错误位 + 实时诊断快照（无阻塞），字段见 15.3</td></tr>
+<tr><td><code>0x02</code></td><td>RERUN</td><td>[cmd]</td><td>[cmd, err, errBitsL, errBitsH]</td><td>重探外设并刷新锁存位：<strong>阻塞约 3s</strong>（UHF 上电+回帧、AM 回帧超时），期间喂狗不复位。仅 Locker/OneShot 空闲时接受，否则回 <code>err=2 BUSY</code></td></tr>
+<tr><td><code>0x03</code></td><td>CLEAR</td><td>[cmd, maskL, maskH]</td><td>[cmd, err, errBitsL, errBitsH]</td><td>按掩码清指定位（<code>mask</code> 与 15.1 bit 定义一致，可多选），响应回清位后的剩余位图</td></tr>
+</table>
+
+<h3>15.3 QUERY 响应字段</h3>
+<table>
+<tr><th>字段</th><th>含义</th></tr>
+<tr><td><code>errBitsL / errBitsH</code></td><td>锁存错误位图（低/高字节，bit 定义见 15.1）</td></tr>
+<tr><td><code>motorCommOk</code></td><td>1 = DRV8434S SPI 配置回读一致（查询时实时再读 CTRL3 微步档 + CTRL7 EN_SSC）</td></tr>
+<tr><td><code>drvFault</code></td><td>DRV8434S 实时故障寄存器（0=无故障）</td></tr>
+<tr><td><code>uhfLink</code></td><td>UHF 实时链路：0=正常 / 1=超时 / 2=CRC 错误</td></tr>
+<tr><td><code>amLink</code></td><td>AM 实时链路：0=正常 / 非0=掉线</td></tr>
+<tr><td><code>paramCrc</code></td><td>1 = 本次上电参数区曾 CRC 失败回落默认值（= errBits bit4 的镜像）</td></tr>
+<tr><td><code>switchErr</code></td><td>行程开关实时错误位：bit0=上行程错 / bit1=下行程错（同 FC_MOTOR_CTRL QUERY 的 switchErr 字段）</td></tr>
+</table>
+
+<div class="note">
+<div class="note-title">与既有错误通道的关系</div>
+FC_MOTOR_CTRL QUERY/HEALTH 已提供电机细粒度诊断（switchErr、堵转、统计），FC_UHF/AM CTRL QUERY 提供各自链路状态；本命令把它们汇总为<strong>设备级一键健康位图</strong>，供上位机在发现设备（HANDSHAKE 后）或巡检时快速判断"哪里坏了"，无需逐个外设轮询。锁存位保证 POST 期/历史瞬时故障不丢失。
+</div>
+<div class="note">
+<div class="note-title">错误码 (data[1])</div>
+<code>0</code>=OK, <code>1</code>=参数错误（长度不足/未知子命令）, <code>2</code>=BUSY（RERUN 时开锁流程运行中）。
 </div>
 </div>
 
@@ -529,16 +629,19 @@ MOTOR_STATE_FAULT         = 2
 // FC=0x0B 子命令码 (FC_UHF_CTRL)
 UHF_SUB_OPEN              = 0x01   // 上电 + 下发配置 + 回波检测 -> READY
 UHF_SUB_CLOSE             = 0x02   // 停止并下电
-UHF_SUB_INVENTORY         = 0x03   // 发起盘点 (异步, 单标签 0x21)
+UHF_SUB_INVENTORY         = 0x03   // 同步盘点: 0x22多标签盘存(timeout) -> 0x29取回, 标签内联返回
 UHF_SUB_READ_TAG          = 0x04   // 读标签 [epcLen, epc.., bank, addr, cnt]
 UHF_SUB_WRITE_TAG         = 0x05   // 写标签 [epcLen, epc.., bank, addr, len, data..]
 UHF_SUB_STOP              = 0x06   // 停止当前操作
 UHF_SUB_QUERY             = 0x07   // 查询 [state, link, totalTags]
 UHF_SUB_GET_CONFIG        = 0x08   // 读配置 [power, antenna, checksum, session, target, q, band]
 UHF_SUB_SET_CONFIG        = 0x09   // 写配置并持久化 [.., (band)]
-UHF_SUB_GET_TAGS          = 0x0A   // 取标签缓冲 [count]
+UHF_SUB_GET_TAGS          = 0x0A   // 取标签缓冲(数据面, 扫描/盘点取走) [count]
 UHF_SUB_GET_STATUS        = 0x0B   // 状态/错误监控 [state, link, totalTags, powered, antennaOk, lastErr, antRl(2), antVswr(2)]
 UHF_SUB_CHECK_ANT         = 0x0C   // 主动回波检测 [antennaOk, antRl(2), antVswr(2)]
+UHF_SUB_SCAN_START        = 0x0D   // 启动自动扫描 [cycle(2)]: 连续盘点入缓冲, GET_TAGS 拉取, 不主动上报
+UHF_SUB_SCAN_STOP         = 0x0E   // 停止自动扫描
+UHF_SUB_GET_DUMP          = 0x10   // 0x22/0x29 原始字节诊断 (Round_050/051)
 UHF_ERR_OK                = 0
 UHF_ERR_PARAM             = 1
 UHF_ERR_BUSY              = 2
@@ -549,6 +652,7 @@ UHF_ERR_TIMEOUT           = 6
 UHF_STATE_IDLE            = 0
 UHF_STATE_READY           = 1
 UHF_STATE_INVENTORY       = 2
+UHF_STATE_GETBUF          = 7
 UHF_STATE_READ            = 3
 UHF_STATE_WRITE           = 4
 UHF_STATE_ERROR           = 5
@@ -560,8 +664,10 @@ AM_SUB_SET_CONFIG         = 0x02   // 写配置并持久化 (同上字段, mains
 AM_SUB_GET_PARAM          = 0x03   // 读单个参数(本地缓存) [amCmd]
 AM_SUB_SET_PARAM          = 0x04   // 写单个参数 [amCmd, valH,valL]
 AM_SUB_QUERY              = 0x05   // 探测链路 [link]
-AM_SUB_GET_STATUS         = 0x06   // 监控: [link, evt(4B), lastEventMs(4B)]
+AM_SUB_GET_STATUS         = 0x06   // 监控: [link, evt(4B), lastEventMs(4B), deact(0空闲/1成功/2失败)]
 AM_SUB_SET_MODE           = 0x07   // 仅切工作模式并持久化 [mode]
+AM_SUB_GET_WAVE           = 0x08   // 同步波形采集(0x64, 阻塞~1s): [err, pointsH, pointsL]
+AM_SUB_GET_WAVE_PAGE      = 0x09   // 取一页波形(48点/页): [page, err, pointsH, pointsL, w(≤48)]
 AM_ERR_OK                 = 0
 AM_ERR_PARAM              = 1
 AM_ERR_LINK               = 4

@@ -22,9 +22,10 @@ uint8_t App_NewPeriph_ReadKeyDown(void);  /* 1=下行程触发 (PC9, 已恢复) 
 
 /* ---- 蜂鸣器 (PC12, 高电平响) ---- */
 void App_NewPeriph_Beep(uint8_t on);
-
-/* ---- IR 检测(PC4, 高=触发) -> 蜂鸣器 100ms 循环响/停 (主循环周期调用) ---- */
-void App_IrBuzzer_Process(void);
+/* 一次性蜂鸣脉冲 (ms): 立即响, 持续 ms 后自动停 (到期自动静音) */
+void    App_NewPeriph_BeepPulse(uint32_t ms);
+/* 查询/驱动脉冲: 返回 1=脉冲进行中 (应保持响) */
+uint8_t App_NewPeriph_BeepPulseActive(void);
 
 /* ---- 调试串口 (UART4, 轮询) ---- */
 void App_NewPeriph_DebugInit(void);

@@ -57,7 +57,10 @@ AppStepperState_t   App_Stepper_GetState(void);
 uint8_t  App_Stepper_GetFault(void);       /* 最近一次读取的 FAULT 寄存器原始值 */
 uint8_t  App_Stepper_GetDiag1(void);
 uint8_t  App_Stepper_GetDiag2(void);
+uint8_t  App_Stepper_GetSwitchErr(void);   /* 行程开关错误位: bit0=上, bit1=下 (运行/回零检测) */
+void     App_Stepper_SetSwitchErr(uint8_t bit);
 uint8_t  App_Stepper_GetMicrostep(void);  /* 诊断: 实时读 DRV8434S CTRL3 微步位 */
+uint8_t  App_Stepper_GetMicrostepCfg(void);  /* 上电压入的微步档期望值 (自检判据) */
 uint32_t App_Stepper_GetStepsDone(void);   /* 本次运动已完成微步数 */
 AppStepperOlovState_t App_Stepper_GetOlovState(void);  /* 高负载监测状态 */
 uint16_t App_Stepper_GetTorqueCount(void); /* 最近一次 TRQ_COUNT 采样 */

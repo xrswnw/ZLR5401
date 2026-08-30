@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Round_005 — AM 消磁器 配置暴露 + 工作模式 + 事件监控 · 实施报告（v2）</title>
+<style>
+:root{
+  --blue:#2563eb; --blue-l:#3b82f6; --blue-bg:#eff6ff;
+  --purple:#7c3aed; --purple-l:#8b5cf6; --purple-bg:#f5f3ff;
+  --ink:#1e293b; --ink2:#475569; --line:#e2e8f0; --bg:#f8fafc;
+  --ok:#16a34a; --ok-bg:#f0fdf4; --warn:#b45309; --warn-bg:#fffbeb; --bad:#dc2626; --bad-bg:#fef2f2;
+}
+*{box-sizing:border-box}
+body{margin:0;font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;background:var(--bg);color:var(--ink);line-height:1.58}
+header{background:linear-gradient(120deg,var(--blue) 0%,var(--purple) 100%);color:#fff;padding:26px 40px;border-bottom:4px solid #fff}
+header h1{margin:0 0 6px;font-size:23px}header p{margin:2px 0;opacity:.95;font-size:13px}
+main{max-width:1100px;margin:0 auto;padding:26px 22px}
+section{background:#fff;border:1px solid var(--line);border-radius:12px;padding:20px 24px;margin:16px 0;box-shadow:0 1px 3px rgba(15,23,42,.06)}
+h2{font-size:17px;margin:0 0 13px;padding-left:11px;border-left:4px solid var(--blue);color:var(--ink)}
+h3{font-size:14.5px;margin:16px 0 8px;color:var(--ink)}
+.hl-blue{background:var(--blue-bg);border-left:4px solid var(--blue);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-ok{background:var(--ok-bg);border-left:4px solid var(--ok);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-warn{background:var(--warn-bg);border-left:4px solid var(--warn);padding:10px 14px;border-radius:6px;margin:8px 0}
+.hl-bad{background:var(--bad-bg);border-left:4px solid var(--bad);padding:10px 14px;border-radius:6px;margin:8px 0}
+.badge{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:999px;vertical-align:middle;white-space:nowrap}
+.b-ok{background:var(--ok-bg);color:var(--ok);border:1px solid #bbf7d0}
+.b-warn{background:var(--warn-bg);color:var(--warn);border:1px solid #fde68a}
+.b-blue{background:var(--blue-bg);color:var(--blue);border:1px solid #bfdbfe}
+table{width:100%;border-collapse:collapse;font-size:12.8px;margin:10px 0}
+th,td{border:1px solid var(--line);padding:7px 9px;text-align:left;vertical-align:top}
+th{background:linear-gradient(120deg,var(--blue-bg),var(--purple-bg));font-weight:600}
+code{background:#f1f5f9;border:1px solid var(--line);border-radius:4px;padding:1px 5px;font-family:Consolas,monospace;font-size:12.3px}
+pre{background:#0f172a;color:#e2e8f0;border-radius:8px;padding:12px 14px;overflow-x:auto;font-size:12.3px;line-height:1.5}
+pre code{background:transparent;border:none;color:inherit;padding:0}
+pre .g{color:#4ade80}pre .y{color:#facc15}pre .r{color:#f87171}pre .b{color:#93c5fd}pre .dim{color:#64748b}
+em{color:var(--blue);font-style:normal;font-weight:600}
+ol,ul{margin:6px 0 8px;padding-left:22px}
+li{margin:3px 0}
+</style>
+</head>
+<body>
+<header>
+<h1>Round_005 · AM 消磁器 — 配置暴露 + 工作模式 + 事件监控 · 实施报告</h1>
+<p>ZLR5401 · Round_021 基线 · 2026-08-25 · 配套 Plan.html（v2）与 Protocol/App_Protocol.html §12</p>
+</header>
+<main>
+
+<section>
+<h2>1. 交付概览</h2>
+<div class="hl-ok"><b>范围内全部落地并编译通过</b>（app.elf / app.hex 22:44 生成，0 error / 0 warning）。
+三件套：<em>配置暴露</em>（10 参数 get/set + 持久化）、<em>工作模式可配置</em>（0x50 + SET_MODE）、<em>事件监控</em>（cmd17 主动上报累计）。</div>
+<table>
+<tr><th>交付物</th><th>文件</th><th>状态</th></tr>
+<tr><td>非阻塞取帧（cmd17 被动上报）</td><td>App_AM_HL.c / .h</td><td><span class="badge b-ok">完成</span></td></tr>
+<tr><td>参数缓存语义（读=本地缓存，不回读）</td><td>App_AM.c</td><td><span class="badge b-ok">完成</span></td></tr>
+<tr><td>工作模式（AM_MODE_* + SET_MODE）</td><td>App_AM.h / App_Dispatch.c</td><td><span class="badge b-ok">完成</span></td></tr>
+<tr><td>监控（eventCount / lastEventMs / link）</td><td>App_AM.c + AM_SUB_GET_STATUS</td><td><span class="badge b-ok">完成</span></td></tr>
+<tr><td>主频 mainsFreq 字段（0x5D）</td><td>App_AM.h / App_Param.c / main.c / Dispatch</td><td><span class="badge b-ok">完成</span></td></tr>
+<tr><td>持久化（+mainsFreq，17B，偏移16 'AM' magic）</td><td>App_Param.c</td><td><span class="badge b-ok">完成</span></td></tr>
+<tr><td>协议文档 §12 更新</td><td>Protocol/App_Protocol.html</td><td><span class="badge b-ok">完成</span></td></tr>
+<tr><td>备份 + Changelog</td><td>Round_021_20260825_224330</td><td><span class="badge b-ok">完成</span></td></tr>
+</table>
+</section>
+
+<section>
+<h2>2. 代码改动明细</h2>
+<h3>2.1 App_AM_HL（传输层）</h3>
+<ul>
+<li>新增 <code>AM_HL_TryRecvFrame()</code>（非阻塞）：复用 <code>am_uart_peek_frame</code> 无超时取帧，供主循环轮询 cmd17；<code>AM_HL_RecvFrame</code> 重构为复用 <code>am_frame_parse()</code>。</li>
+<li>纠错：阻塞 <code>RecvFrame</code> 校验错时不再直接返回错误，而是丢弃继续等下帧，避免误伤异步上报。</li>
+<li>新增命令字宏 <code>AM_CMD_ATAG_REPORT(0x17)</code>、<code>AM_CMD_WAVE(0x64)</code>。</li>
+</ul>
+<h3>2.2 App_AM（控制层 · 核心语义纠正）</h3>
+<ul>
+<li><b>缓存即真相</b>：<code>App_AM_GetParam</code> 改为<b>返回本地缓存</b>（按命令查 s_cfg），<b>不再发空数据读回</b>——发空数据会把参数写成 0（实测危险）。<code>App_AM_SetParam</code> 回显校验成功后同步更新缓存 <code>am_cache_by_cmd()</code>。</li>
+<li><b>监控</b>：<code>App_AM_Process</code> 轮询 <code>AM_HL_TryRecvFrame</code>，收到 cmd17 → <code>s_evtCount++</code>、<code>s_lastEvtMs</code>，任何合法帧刷新链路活动 <code>s_lastValidMs</code>；超 6s 无帧判掉线。</li>
+<li><b>模式</b>：<code>AM_MODE_*</code> 枚举；<code>App_AM_SetConfig</code> 逐条下发含 mainsFreq；<code>App_AM_Query</code> 修正废弃的 0x3F 伪查询。</li>
+</ul>
+<h3>2.3 协议 / 持久化</h3>
+<ul>
+<li><code>App_CustomProtocol.h</code>：新增 <code>AM_SUB_GET_STATUS(0x06)</code>、<code>AM_SUB_SET_MODE(0x07)</code>；SET/GET_CONFIG 文档补 <code>mains</code>。</li>
+<li><code>App_Dispatch.c</code>：<code>SET_CONFIG</code> 支持 <code>dataLen&gt;=15</code> 才解析 mains（旧主机兼容，省略保持当前值）；新增 <code>GET_STATUS</code>（link+evt4B+last4B，无 err 字段）、<code>SET_MODE</code>（校验 0-2 + 写 + 持久化）。</li>
+<li><code>App_Param.c</code>：<code>AMUserCfg_t</code> 加 <code>mainsFreq</code>，Load 对旧记录缺省 0，Save 写第 17 字节（偏移 16+16）；<code>AmParam_Default</code> 补默认。</li>
+<li><code>main.c</code>：开机装载持久化映射补 <code>c.mainsFreq = pc.mainsFreq</code>。</li>
+</ul>
+</section>
+
+<section>
+<h2>3. 编译验证</h2>
+<pre><code>$ ./build_app.sh
+<span class="g">Application build done + firmware generated.</span>
+app.elf 307772 B 22:44   app.hex 135777 B 22:44
+<span class="b">0 error / 0 warning（AM 相关文件无告警）</span></code></pre>
+<div class="hl-warn"><b>未做 live 联调</b>：本轮为纯固件改动，尚未接消磁器实机验证「写→缓存读」「模式切换」「cmd17 计数」。
+验收清单见 Plan.htm §7。实机需注意 485 半双工：被动监听 cmd17 时不同时抢发写命令。</div>
+</section>
+
+<section>
+<h2>4. 遗留 / 后续</h2>
+<ul>
+<li><b>开锁器模式联动</b>：SET_MODE 已暴露；「待机=锁定」「仅检测=报警」的业务编排留在 App_Locker（后续 Round）。</li>
+<li><b>波形 cmd64</b>：按新范围明确不做 ID 解码；如需后台波段检测单独 Round。</li>
+<li><b>实机验收</b>：需在检测场用标签靠近触发 cmd17，验证 GET_STATUS 计数与 lastEventMs 刷新。</li>
+</ul>
+</section>
+
+<section>
+<h2>5. Round_022 升级（2026-08-26）· 0x63 真读回 + 0x88 解码暴露</h2>
+<div class="hl-warn"><b>纠正 v2 误判</b>：翻出权威《AM解码器通信协议20211230.docx》后发现 <b>0x63 总查询是真读回通道</b>（此前误以为"无真读回只能用本地缓存"）。写入后 0x63 逐项真读回实测验证通过。</div>
+<table>
+<tr><th>项</th><th>改动</th><th>文件</th></tr>
+<tr><td>真读回</td><td>GetParam/GetConfig/Query 改走 <code>0x63</code>（am_query_all：收 12 帧/1200ms 窗，seen&lt;3 判链路断）</td><td>App_AM.c</td></tr>
+<tr><td>写后复核</td><td>SetConfig 逐条写后 0x63 复核，读回不符即判 LINK 异常</td><td>App_AM.c</td></tr>
+<tr><td>0x88 含头校验发送</td><td>新增 <code>AM_HL_SendFrameChkHdr</code>（校验含 2A A2 头，0x88 官方 0x58）</td><td>App_AM_HL.c/.h</td></tr>
+<tr><td>触发消磁</td><td>新增 <code>App_AM_Decode</code>（0x88 无回显、300ms 冷却）+ 协议 <code>AM_SUB_DECODE(0x08)</code></td><td>App_AM.c / App_CustomProtocol.h / App_Dispatch.c</td></tr>
+<tr><td>清理</td><td>移除废弃 <code>AM_CMD_QUERY_ALL=0x3F</code>（0x63 才是总查询）</td><td>App_AM_HL.h</td></tr>
+</table>
+<div class="hl-ok"><b>编译</b>：0 error / 0 warning（App_AM/App_Dispatch/App_AM_HL 均在 10:40 重新编译）。固件 app.hex 已生成。</div>
+<div class="hl-warn"><b>待实机</b>：0x88 无回显，需你实机用标签确认「触发一次解码/消磁」是否真动作；cmd17 事件计数同理。协议文档 §12 已同步 0x08 + 真读回语义。</div>
+</section>
+
+</main>
+</body>
+</html>

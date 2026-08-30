@@ -4,7 +4,7 @@
 #include <stdint.h>
 
 /* 双灯硬件层:
- * RUN (PA2) = 呼吸灯, 软件 PWM 调光 (TIM3 时基 10kHz + 更新中断翻转).
+ * RUN (PA2) = 呼吸灯, TIM2_CH3 硬件 PWM 调光 (1kHz, PA2 默认映射).
  * ERR (PA3) = 故障/状态指示, 默认灭, 直接 GPIO 开关 (无调光).*/
 void LedHl_Init(void);
 

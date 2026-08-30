@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 单条同步开锁指令设计方案 v2（行程开关锚定 + UHF 持续监控） — Round_074</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#161a22; --border:#262c38; --text:#e6e9ef;
+    --muted:#8b94a3; --pass:#3fb950; --fail:#f85149; --incon:#d29922;
+    --skip:#6e7681; --accent:#58a6ff; --violet:#bc8cff; --orange:#ffa657;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--text); line-height:1.65; }
+  .wrap { max-width:1180px; margin:0 auto; padding:24px; }
+  h1 { font-size:24px; border-bottom:2px solid var(--border); padding-bottom:12px; }
+  h2 { font-size:19px; margin-top:38px; color:var(--accent); border-left:4px solid var(--accent); padding-left:10px; }
+  h3 { font-size:15px; margin-top:24px; }
+  .meta { color:var(--muted); font-size:13px; }
+  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
+  th,td { border:1px solid var(--border); padding:6px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--panel); color:var(--muted); font-weight:600; white-space:nowrap; }
+  .code { font-family:"SF Mono",Menlo,monospace; background:#0b0e13; border:1px solid var(--border);
+          padding:1px 6px; border-radius:4px; font-size:12px; color:#e6edf3; }
+  code { font-family:"SF Mono",Menlo,monospace; font-size:12px; }
+  .ref { color:var(--violet); font-family:"SF Mono",Menlo,monospace; font-size:11px; white-space:nowrap; }
+  .box { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 18px; margin:14px 0; }
+  .box.key { border-color:var(--accent); }
+  .box.warnbox { border-color:var(--incon); }
+  .box.decide { border-color:var(--violet); }
+  ul { margin:8px 0; padding-left:20px; }
+  li { margin:5px 0; }
+  .tail { color:var(--muted); font-size:12px; margin-top:40px; border-top:1px solid var(--border); padding-top:12px; }
+  .frame { font-family:"SF Mono",Menlo,monospace; font-size:12.5px; background:#0b0e13;
+           border:1px solid var(--border); border-radius:6px; padding:10px 14px; margin:10px 0;
+           overflow-x:auto; white-space:pre; line-height:1.7; }
+  .fh { color:#ff7b72; } .fb { color:#79c0ff; } .fk { color:#ffa657; } .fd { color:#7ee787; } .fc { color:#d2a8ff; }
+  .cm { color:#6e7681; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; margin-left:6px; }
+  .t-ok  { background:#1a3322; color:var(--pass); }
+  .t-warn{ background:#332b14; color:var(--incon); }
+  .t-new { background:#241d3a; color:var(--violet); }
+  .ec { text-align:center; font-weight:700; }
+  .e-ok{color:#3fb950;} .e-busy{color:#d29922;} .e-uhf{color:#58a6ff;} .e-tag{color:#f85149;} .e-mot{color:#bc8cff;}
+  .v2 { background:#241d3a; color:var(--violet); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ZLR5401 单条同步开锁指令设计方案 <span class="tag v2">v2</span> — 行程开关锚定 + UHF 持续监控</h1>
+<div class="meta">
+  轮次：Round_074 ｜ 生成：2026-08-29 ｜ 性质：<b>设计方案 — 待确认后实施</b>
+  <br>v1 → v2 变更（用户 2026-08-29 指示）：<b>①</b>升起目标由固定 4800 步改为 <b>升到 KEY_UP 上行程开关</b>；<b>②</b>保持阶段改为 <b>UHF 持续盘点在线监控</b>；<b>③</b>回降目标 = <b>回退到 KEY_DOWN 下行程开关</b>；<b>④</b>回降触发 = 流程结束(标签稳定移除) / 超时 / UHF 中途变更；<b>⑤</b>须处理盘点超时、防抖稳定判据、失败安全回退。
+  <br>备份：Round_074_20260829_200202（设计阶段不改固件代码）
+</div>
+
+<h2>1. 需求解读（v2）</h2>
+<div class="box key">
+  <ul>
+    <li><b>一条指令</b>：一帧带全 —— UHF 盘点超时 + 最大保持窗口 + 期望 TAG（EPC）+ RFU。设备自行解析执行。</li>
+    <li><b>单标签判断</b>：UHF 同步盘点一轮，读到的标签与帧内 TAG 比对，命中才继续。</li>
+    <li><b>符合 → 升起</b>：电机上行<b>直到触发 KEY_UP 上行程开关</b>（绝对位置锚定，不再固定步数），停住保持。</li>
+    <li><b>保持期间在线监控</b>：UHF <b>持续盘点</b>（一轮接一轮不停），实时监视期望标签在场状态。</li>
+    <li><b>回降触发（三选一先到先回）</b>：
+      <ol style="margin:4px 0 8px">
+        <li><b>流程结束</b> = 期望标签<b>稳定移除</b>（防抖确认，非单次漏读）；</li>
+        <li><b>超时</b> = 保持窗口到最大时长；</li>
+        <li><b>UHF 变更</b> = 读到内容变化（期望标签消失后读到其他 EPC）或 UHF 链路中断（无法继续证实标签在场，安全优先视为变更）。</li>
+      </ol>
+    </li>
+    <li><b>回降</b>：下行<b>回到 KEY_DOWN 下行程开关</b>（绝对位置基准，建立下次开锁的确定起点）。</li>
+    <li><b>同步阻塞</b>：全流程（含保持阶段）完成或失败那一刻回一帧，带详细失败码与结束原因。</li>
+  </ul>
+</div>
+
+<h2>2. 请求帧格式（不变部分沿用 v1）</h2>
+<div class="frame"><span class="fh">53 77</span> <span class="fb">addr 00</span> <span class="fb">len(2,LE)</span> <span class="fk">0D</span> <span class="fd">08  tmoL tmoH  maxHoldL maxHoldH  epcLen  EPC[0..11]  rfu1 rfu2</span> <span class="fc">CRC32(4)</span></div>
+<table>
+  <tr><th>字段</th><th>偏移</th><th>长度</th><th>取值</th><th>说明</th></tr>
+  <tr><td><span class="code">cmd</span></td><td>0</td><td>1</td><td class="ec">0x08</td><td><span class="code">LOCKER_SUB_ONE_SHOT</span></td></tr>
+  <tr><td><span class="code">tmoMs</span></td><td>1</td><td>2</td><td>0~10000</td><td>初始判定盘点的超时。0 = 默认 1000 <span class="cm">（保持阶段的盘点周期固定 1000ms，不受此参数影响）</span></td></tr>
+  <tr><td><span class="code">maxHoldMs</span></td><td>3</td><td>2</td><td>0~60000</td><td><b>保持阶段最大时长</b>（超时触发回降）。0 = 默认 30000。上限 60s（阻塞上限约束，见 §6）</td></tr>
+  <tr><td><span class="code">epcLen</span></td><td>5</td><td>1</td><td>1~12</td><td>期望 EPC 长度</td></tr>
+  <tr><td><span class="code">epc</span></td><td>6</td><td>epcLen</td><td>—</td><td>期望匹配的硬标签 EPC</td></tr>
+  <tr><td><span class="code">rfu</span></td><td>6+epcLen</td><td>0~N</td><td>0x00</td><td>保留（现全 0）</td></tr>
+</table>
+<p class="meta">帧 ~31B、响应 ~30B，均单 HID report 承载，无拆帧。</p>
+
+<h2>3. 响应帧与失败码总表（v2 新增 endReason / retreat 状态）</h2>
+<h3>3.1 响应骨架</h3>
+<div class="frame">data[0]=cmd(0x08)  data[1]=err  data[2]=endReason(仅 err=0 时有效)  data[3..]=诊断字段(随 err)</div>
+<h3>3.2 成功时的 endReason（为什么回降）</h3>
+<table>
+  <tr><th>值</th><th>宏</th><th>含义</th></tr>
+  <tr><td class="ec e-ok">1</td><td><span class="code">ONE_END_TAG_REMOVED</span></td><td>期望标签稳定移除（防抖确认，正常业务完成：客户取走商品）</td></tr>
+  <tr><td class="ec e-busy">2</td><td><span class="code">ONE_END_HOLD_TIMEOUT</span></td><td>保持窗口超时（maxHoldMs 到期）</td></tr>
+  <tr><td class="ec e-tag">3</td><td><span class="code">ONE_END_TAG_CHANGED</span></td><td>UHF 变更：期望标签稳定消失后读到其他 EPC</td></tr>
+  <tr><td class="ec e-uhf">4</td><td><span class="code">ONE_END_UHF_LOST</span></td><td>保持期间 UHF 链路中断（无法证实标签在场，安全优先回降）</td></tr>
+</table>
+<h3>3.3 失败码总表</h3>
+<table>
+  <tr><th>err</th><th>宏名</th><th>含义</th><th>触发条件</th><th>诊断字段</th></tr>
+  <tr><td class="ec e-ok">0x00</td><td><span class="code">ONE_ERR_OK</span></td><td>全流程完成（升到位→监控→回降到位）</td><td>—</td>
+      <td><code>endReason(1), epcLen, epc(命中EPC), riseSteps(2), lowerSteps(2)</code> — 升/降 = KEY_UP/KEY_DOWN 触点间的实际步数，可作行程健康度参考</td></tr>
+  <tr><td class="ec e-busy">0x01</td><td><span class="code">ONE_ERR_BUSY</span></td><td>资源忙</td><td>Locker 非 IDLE / UHF 自动扫 / 电机运动中</td>
+      <td><code>lockerState, uhfState, stepperState</code></td></tr>
+  <tr><td class="ec e-busy">0x02</td><td><span class="code">ONE_ERR_PARAM</span></td><td>参数非法</td><td>epcLen=0/&gt;12 / 帧长不符</td><td><code>无</code></td></tr>
+  <tr><td class="ec e-uhf">0x03</td><td><span class="code">ONE_ERR_UHF_OPEN</span></td><td>UHF 上电/配置失败</td><td><span class="code">App_UHF_Open()</span> ≠ OK</td><td><code>uhfRawErr</code></td></tr>
+  <tr><td class="ec e-uhf">0x04</td><td><span class="code">ONE_ERR_UHF_LINK</span></td><td>UHF 通信失败（初始盘点）</td><td><span class="code">InventorySync()</span> 链路负值</td><td><code>uhfRawErr</code></td></tr>
+  <tr><td class="ec e-uhf">0x05</td><td><span class="code">ONE_ERR_NO_TAG</span></td><td>初始盘点一张都没读到</td><td>InventorySync = 0 张</td><td><code>uhfRawErr</code></td></tr>
+  <tr><td class="ec e-tag">0x06</td><td><span class="code">ONE_ERR_MISMATCH</span></td><td>读到标签但 ≠ 期望</td><td>初始盘点无命中</td>
+      <td><code>tagsFound, epcLen, epc(读到的第一张)</code></td></tr>
+  <tr><td class="ec e-mot">0x07</td><td><span class="code">ONE_ERR_HOMING</span></td><td>未回零/行程开关错误</td><td>Homing 未就绪</td><td><code>switchErr</code></td></tr>
+  <tr><td class="ec e-mot">0x08</td><td><span class="code">ONE_ERR_MOTOR_FAULT</span></td><td>升降中电机故障（含触点不可达）</td><td>FAULT/DIAG2/nFAULT；或<b>升到步数上限仍未触 KEY_UP</b> / 降同理</td>
+      <td><code>fault, diag1, diag2+pin(2), steps(3), phase(1:升/2:降), <b>retreat(1:0=回退成功 1=回退失败 2=未尝试)</b></code></td></tr>
+  <tr><td class="ec e-mot">0x09</td><td><span class="code">ONE_ERR_MOTOR_TIMEOUT</span></td><td>升降超时</td><td>单段 &gt;10s / 步数停滞</td><td><code>steps(3), phase(1), retreat(1)</code></td></tr>
+</table>
+<div class="box warnbox" style="margin-top:6px">
+  <b>安全回退原则（v2 核心）</b>：升段/保持段任何失败，若磁块不在 KEY_DOWN，<b>必先尝试回退到 KEY_DOWN</b> 再回帧；回退结果记入 <span class="code">retreat</span> 字段（回退失败不掩盖原始错误码，但让上位机知道设备停在半程）。初始盘点/比对阶段的失败（0x03~0x06）磁块未动，retreat=2 不尝试。
+</div>
+
+<h2>4. 固件内部阻塞流程（v2 全景）</h2>
+<div class="box">
+<pre style="margin:0;font-size:12.5px;line-height:1.75;color:#c9d1d9">
+<b>FC_LOCKER_CTRL case 0x08 — 全程阻塞, 每个泵循环: {App_UHF_Process(); App_Stepper_Process(); IwdgHl_Feed(); DelayMs(20);}</b>
+
+ <b>⑴ 前置检查 (不阻塞)</b>
+     epcLen 合法? Locker==IDLE? UHF 非扫? 电机 IDLE? Homing 就绪?
+       → PARAM / BUSY(带三态) / HOMING(带 switchErr)
+
+ <b>⑵ UHF 就绪 (阻塞 ~100ms+配置)</b>
+     App_UHF_Open()  失败 → UHF_OPEN
+
+ <b>⑶ 初始同步盘点 + 单标签判断 (阻塞 ≤ tmoMs+500)</b>
+     App_UHF_InventorySync(tmoMs)
+       链路负值 → UHF_LINK / 0张 → NO_TAG / 全不命中 → MISMATCH(带读到的EPC)
+     命中 → 记录期望 EPC, <b>UHF 保持供电, 转异步持续盘点</b>
+
+ <b>⑷ 升起: 驱动上行至 KEY_UP 触点 (阻塞, 目标=开关不是步数)</b>
+     App_Stepper_Move(dir=0, 持续) + 泵循环:
+       App_NewPeriph_ReadKeyUp()==0 → 触到 → <b>DcBrakeStop + ClearFault</b>, 停在 KEY_UP
+       瞬态误停(<50步+fault≠0) → 清障重试 1 次          <span class="ref">回零既有判据 App_MotorHoming.c:100</span>
+       步数停滞>400ms / 超 HOMING_UP_MAX / 超10s         <span class="ref">seek_switch 既有兜底 App_MotorHoming.c:42</span>
+         → <b>MOTOR_FAULT/TIMEOUT (phase=1)</b>
+       <span class="cm">// 此段泵循环同时推进 UHF_Process: 盘点不中断, 升起期间标签若被取走也会被⑸看到</span>
+
+ <b>⑸ 保持: UHF 持续盘点在线监控 (阻塞, 最长 maxHoldMs)</b>
+     泵循环: UHF 空闲→App_UHF_Inventory() 再起一轮(1000ms); TagTake 逐张取
+     在场判定 (防抖, 连续漏读≠移除):
+       lastSeenMs  = 期望 EPC 最近一次被读到的时间戳
+       每读到期望 EPC → lastSeenMs = now, 清其他状态
+       <b>REMOVED_CONFIRM_MS(默认3000) 内再未读到</b> → 稳定移除确认
+       若移除确认时<b>读到过其他 EPC</b> → endReason=3 TAG_CHANGED, 否则 =1 TAG_REMOVED
+       UHF 链路断(ERROR 态/Inventory 反复无响应 ≥ UHF_LOST_CONFIRM_MS) → endReason=4 UHF_LOST
+       now ≥ holdStart+maxHoldMs → endReason=2 HOLD_TIMEOUT
+       <span class="cm">// 单次盘点空手 = 正常RFID漏读, 不触发任何回降, 只刷新"未读到"计时</span>
+       <span class="cm">// 非期望 EPC 在场但期望 EPC 仍在 → 忽略 (旁边客户, 不影响本场)</span>
+       <span class="cm">// 防抖窗口内 UHF 盘点自身超时: 连续3轮空回但总时长<确认窗 → 仍视为在场, 继续等</span>
+
+ <b>⑹ 回降: 下行至 KEY_DOWN 触点 (阻塞, 同⑷ 镜像)</b>
+     App_Stepper_Move(dir=1, 持续) + 泵循环:
+       ReadKeyDown()==0 → DcBrakeStop + ClearFault → 到位 (绝对基准恢复)
+       同款异常处理 → MOTOR_FAULT/TIMEOUT (phase=2, 带 retreat 字段=回退失败)
+     <span class="cm">// 回降期间 UHF 停扫 (UHF_Stop), 磁块已下, 不再需要监控</span>
+
+ <b>⑺ 返回</b>
+     err=00: [08, 00, endReason, epcLen, epc, riseSteps, lowerSteps]
+     失败:  按 §3.3 (含 retreat 状态)
+     <span class="cm">// 典型耗时: 盘点1s + 升~1.5s + 保持(事件驱动, 3s~60s) + 降~1.5s</span>
+</pre>
+</div>
+
+<h2>5. UHF 持续监控的防抖状态机（⑸ 详解，v2 新增）</h2>
+<div class="box">
+<pre style="margin:0;font-size:12.5px;color:#c9d1d9">
+              每轮盘点(1000ms)结果                     连续确认窗
+ ┌─────────┐  读到期望EPC   ┌──────────────┐  REMOVED_CONFIRM_MS 内无期望EPC
+ │ PRESENT │ ◄──────────── │   (持续在此)   │ ─────────────────────────────┐
+ └─────────┘               └──────────────┘                              │
+      │ 未读到(单次漏读)▼                                                 ▼
+ ┌─────────┐   再次读到期望EPC → 回 PRESENT          ┌────────────────────┐
+ │ MAYBE_  │ ─────────────────────────────          │ REMOVED-CONFIRMED  │→ endReason:
+ │ GONE    │  (漏读自动恢复, 不回降)                 │ 期间读到其他EPC?    │  3=CHANGED / 1=REMOVED
+ └─────────┘                                      └────────────────────┘
+ 并行计时器:
+   holdTimer: holdStart → maxHoldMs 到期           → endReason=2 (最高优先级先到先判)
+   uhfLinkTimer: Inventory 发出后 UHF_LOST_CONFIRM_MS 无任何响应帧 → endReason=4
+</pre>
+<table>
+  <tr><th>防抖参数</th><th>默认值</th><th>依据</th></tr>
+  <tr><td><span class="code">REMOVED_CONFIRM_MS</span> 稳定移除确认窗</td><td>3000 ms</td><td>≈3 个盘点周期。RFID 单轮漏读常见，3 轮连续不见才确认，兼顾响应速度与误判</td></tr>
+  <tr><td><span class="code">INVENTORY_PERIOD_MS</span> 保持阶段盘点周期</td><td>1000 ms</td><td>= <span class="code">App_UHF_Inventory()</span> 既有默认</td></tr>
+  <tr><td><span class="code">UHF_LOST_CONFIRM_MS</span> 链路失联确认</td><td>5000 ms</td><td>连续 5s 收不到任何 UHF 响应帧 → 判链路坏。模块重启/瞬态恢复期间不至于立刻误回降</td></tr>
+  <tr><td><span class="code">HOLD_MAX_MS</span> 阻塞硬上限</td><td>60000 ms</td><td>主循环冻结的容忍上限（§6），maxHoldMs 参数被钳到此值</td></tr>
+</table>
+<p class="meta">三个参数以宏定义形式放 <span class="code">App_LockerOneShot.h</span>，后续可按现场实测漏读率调整，不动协议。</p>
+</div>
+
+<h2>6. 边界与既定决策（v1 待确认项已按 v2 需求落定）</h2>
+<div class="box decide">
+  <table>
+    <tr><th>#</th><th>事项</th><th>v2 决策</th></tr>
+    <tr><td>①</td><td>阻塞期间主循环冻结（LED/蜂鸣IR/Locker 状态机停，无法响应任何新命令）</td>
+        <td>接受。总时长被 maxHoldMs(≤60s) + 升降(各≤10s) + 盘点(≤10.5s) 三段钳位，最坏 ~90s 全程喂狗不复位。期间 IWDG/TIM4/SysTick/USART/USB 中断照常。<b>上位机在阻塞期间不得发送其他命令</b>（同步语义，HID OUT 会积压）</td></tr>
+    <tr><td>②</td><td>升/降目标</td><td>升到 KEY_UP 触点、降回 KEY_DOWN 触点（绝对位置锚定），寻触驱动套用回零 seek 既有兜底（停滞/超步/超时）</td></tr>
+    <tr><td>③</td><td>升降速度/转矩</td><td>沿用回零参数 2000Hz / 40%——寻触驱动工况与回零完全相同，直接复用已验证数值</td></tr>
+    <tr><td>④</td><td>maxHoldMs=0 语义</td><td>=默认 30000ms</td></tr>
+    <tr><td>⑤</td><td>失败安全回退</td><td>升段/保持段失败必先回退 KEY_DOWN，retreat 字段上报回退结果；初始判定阶段失败磁块未动不回退</td></tr>
+    <tr><td>⑥</td><td>保持期间非期望 EPC 同场</td><td>忽略（只要期望 EPC 仍在场）——仅当期望 EPC 稳定消失后才看是否出现其他 EPC 决定 CHANGED/REMOVED 区分</td></tr>
+    <tr><td>⑦</td><td>升到位后保持期间电机</td><td>断输出（DcBrakeStop 后无保持电流）——磁块由机械/磁自锁，与现有 Locker 路径一致；若现场要求通电保持转矩，属参数调整再议</td></tr>
+    <tr><td>⑧</td><td>本指令与 App_Locker 状态机</td><td>完全旁路，不碰 Locker 上下文；互斥靠 ⑴ 前置检查（Locker 须 IDLE）</td></tr>
+  </table>
+</div>
+
+<h2>7. 改动清单</h2>
+<table>
+  <tr><th>文件</th><th>改动</th><th>规模</th></tr>
+  <tr><td><span class="code">App_CustomProtocol.h</span></td><td>+<span class="code">LOCKER_SUB_ONE_SHOT 0x08</span> + <span class="code">ONE_ERR_*</span> 10 码 + <span class="code">ONE_END_*</span> 4 原因 + 帧注释（修正过时 56B 注释）</td><td>~30 行</td></tr>
+  <tr><td><span class="code">App_Dispatch.c</span></td><td>+case 0x08（参数解析→调用→组帧，主逻辑外移）</td><td>~60 行</td></tr>
+  <tr><td><span class="code">App_LockerOneShot.c/.h</span>（新）</td><td>阻塞主流程 + §5 防抖状态机 + 泵循环 + 安全回退。复用既有函数: <span class="code">App_UHF_Open/InventorySync/Inventory/TagTake/Stop</span>、<span class="code">App_Stepper_Move/Process/Stop/DcBrakeStop/ClearFault/GetStepsDone/GetFault</span>、<span class="code">App_NewPeriph_ReadKeyUp/ReadKeyDown</span></td><td>~230 行</td></tr>
+  <tr><td><span class="code">CMakeLists.txt</span></td><td>新文件入构建</td><td>1 行</td></tr>
+  <tr><td>App_Locker.c / 状态机 / MotorTest / Homing</td><td><b>零改动</b>（epc_eq 3 行内联进 OneShot）</td><td>0</td></tr>
+</table>
+
+<h2>8. 测试计划（v2）</h2>
+<table>
+  <tr><th>用例</th><th>操作</th><th>期望</th></tr>
+  <tr><td>T1 正常完成-移除</td><td>正确 EPC → 升到 KEY_UP 停 → 取走标签</td><td>~3s 防抖后回降到 KEY_DOWN，回 <code>err=00 endReason=1</code> + 双段步数</td></tr>
+  <tr><td>T2 正常完成-超时</td><td>正确 EPC，标签一直放着不动，maxHoldMs=5000</td><td>5s 到回降，<code>err=00 endReason=2</code></td></tr>
+  <tr><td>T3 标签变更</td><td>升到位后，取走期望标签同时放上另一张</td><td><code>err=00 endReason=3</code>，防抖窗内不误回降</td></tr>
+  <tr><td>T4 单轮漏读防抖</td><td>升到位后人为让某几轮盘点空回（移开又快速放回 / 天线遮挡 1~2 轮）</td><td><b>不回降</b>（lastSeen 刷新恢复），全程 endReason 不触发</td></tr>
+  <tr><td>T5 UHF 链路中断</td><td>保持期间拔 UHF 模块/断供电</td><td>≥UHF_LOST_CONFIRM_MS 后回降，<code>endReason=4</code></td></tr>
+  <tr><td>T6 错误标签/无标签/参数非法/忙/未回零</td><td>沿用 v1 T2~T6</td><td>err=06/05/02/01/07，磁块不动</td></tr>
+    <tr><td>T7 升段失败+安全回退</td><td>模拟升段 nFAULT 真故障（压置 fault 后下发）</td><td>err=08 phase=1 带 fault/diag/steps + retreat=0（已回退 KEY_DOWN）</td></tr>
+  <tr><td>T8 回退也失败</td><td>双向都故障注入</td><td>err=08 + retreat=1，设备停半程，上位机可 MOTOR_CMD_QUERY 查</td></tr>
+  <tr><td>T9 阻塞喂狗极限</td><td>maxHoldMs=60000 正常业务</td><td>60s 阻塞不复位，到点回降 err=00</td></tr>
+  <tr><td>T10 行程步数健康度</td><td>连续 T1 ×10 收集 riseSteps/lowerSteps</td><td>步数稳定（≈4287 基准 ±漂移），漂移增大 = 打滑/磨损预警</td></tr>
+</table>
+
+<div class="tail">
+  ZLR5401 单条同步开锁指令设计方案 v2 ｜ Round_074 ｜ 2026-08-29 ｜ 设计文档，未改固件代码
+  ｜ 备份: /Volumes/Record/Person Code/BackupArea/ZLR5401/Round_074_20260829_200202
+</div>
+
+</div>
+</body>
+</html>

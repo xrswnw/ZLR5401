@@ -1,0 +1,324 @@
+{
+  "generated": "2026-08-27 01:15:09",
+  "phase": "all",
+  "destructive": true,
+  "total": 39,
+  "pass": 24,
+  "fail": 7,
+  "skip": 2,
+  "inconclusive": 6,
+  "results": [
+    {
+      "name": "A1",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "handshake frame header/payload correct: 53770100050001c5692f26",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "empty: ok",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "motor: ok",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "uhf: ok",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "locker: ok",
+      "evidence": []
+    },
+    {
+      "name": "A2",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "rgb: ok",
+      "evidence": []
+    },
+    {
+      "name": "A3",
+      "section": "A",
+      "layer": "A",
+      "verdict": "PASS",
+      "message": "0x01->0xFE, 0x0A->0xF5, 0x0D->0xF2",
+      "evidence": []
+    },
+    {
+      "name": "B1",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B2",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B3",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B4",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B5",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "device stayed silent (no response)",
+      "evidence": []
+    },
+    {
+      "name": "B6",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "broadcast answered on 0x0F func=fe",
+      "evidence": []
+    },
+    {
+      "name": "B7",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "silent for unknown FC and device still alive",
+      "evidence": []
+    },
+    {
+      "name": "B8",
+      "section": "B",
+      "layer": "B",
+      "verdict": "PASS",
+      "message": "EXIT_BOOT ignored in App; device alive",
+      "evidence": []
+    },
+    {
+      "name": "C1",
+      "section": "C",
+      "layer": "C",
+      "verdict": "PASS",
+      "message": "status=0 layer=1 protoVer=2 baud=115200",
+      "evidence": []
+    },
+    {
+      "name": "C2",
+      "section": "C",
+      "layer": "C",
+      "verdict": "PASS",
+      "message": "uidHash matches UID (0x3d21b5f1)",
+      "evidence": []
+    },
+    {
+      "name": "C3",
+      "section": "C",
+      "layer": "C",
+      "verdict": "PASS",
+      "message": "UID/upgradeCount/status stable (UID 0ed9373038330b0039353739)",
+      "evidence": []
+    },
+    {
+      "name": "D1",
+      "section": "D",
+      "layer": "D",
+      "verdict": "PASS",
+      "message": "addr=1 hw=b'C8T6_V1.0' sw=b'ZLR5401_V1.0'",
+      "evidence": []
+    },
+    {
+      "name": "D2",
+      "section": "D",
+      "layer": "D",
+      "verdict": "PASS",
+      "message": "layer=1 (App); DEVICE_INFO valid",
+      "evidence": []
+    },
+    {
+      "name": "E2",
+      "section": "E",
+      "layer": "E",
+      "verdict": "PASS",
+      "message": "err=1 (RESET_PARAM_ERR); device alive after param-err",
+      "evidence": []
+    },
+    {
+      "name": "E1",
+      "section": "E",
+      "layer": "E",
+      "verdict": "PASS",
+      "message": "re-enumerated; back in App (layer=1)",
+      "evidence": []
+    },
+    {
+      "name": "F1",
+      "section": "F",
+      "layer": "F",
+      "verdict": "SKIP",
+      "message": "skipped (needs --boot-test)",
+      "evidence": []
+    },
+    {
+      "name": "F2",
+      "section": "F",
+      "layer": "F",
+      "verdict": "SKIP",
+      "message": "skipped (needs --boot-test)",
+      "evidence": []
+    },
+    {
+      "name": "J1",
+      "section": "J",
+      "layer": "J",
+      "verdict": "FAIL",
+      "message": "cmd=0 err=2",
+      "evidence": []
+    },
+    {
+      "name": "J2",
+      "section": "J",
+      "layer": "J",
+      "verdict": "FAIL",
+      "message": "echo mask=0 != expected 0x07",
+      "evidence": []
+    },
+    {
+      "name": "J4",
+      "section": "J",
+      "layer": "J",
+      "verdict": "FAIL",
+      "message": "echo mask=7 != expected 0x01",
+      "evidence": []
+    },
+    {
+      "name": "J3",
+      "section": "J",
+      "layer": "J",
+      "verdict": "INCONCLUSIVE",
+      "message": "err=0 != PARAM; cmd len 2 accepted?",
+      "evidence": []
+    },
+    {
+      "name": "G3",
+      "section": "G",
+      "layer": "G",
+      "verdict": "INCONCLUSIVE",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "G2",
+      "section": "G",
+      "layer": "G",
+      "verdict": "PASS",
+      "message": "err=1",
+      "evidence": []
+    },
+    {
+      "name": "G1",
+      "section": "G",
+      "layer": "G",
+      "verdict": "FAIL",
+      "message": "case aborted by module exception",
+      "evidence": []
+    },
+    {
+      "name": "H1",
+      "section": "H",
+      "layer": "H",
+      "verdict": "PASS",
+      "message": "OPEN ok",
+      "evidence": []
+    },
+    {
+      "name": "H2",
+      "section": "H",
+      "layer": "H",
+      "verdict": "FAIL",
+      "message": "short data len=2",
+      "evidence": []
+    },
+    {
+      "name": "H4",
+      "section": "H",
+      "layer": "H",
+      "verdict": "INCONCLUSIVE",
+      "message": "err=0 (doc: invalid combo rejected)",
+      "evidence": []
+    },
+    {
+      "name": "H3",
+      "section": "H",
+      "layer": "H",
+      "verdict": "INCONCLUSIVE",
+      "message": "set err=1",
+      "evidence": []
+    },
+    {
+      "name": "H16",
+      "section": "H",
+      "layer": "H",
+      "verdict": "INCONCLUSIVE",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "H6",
+      "section": "H",
+      "layer": "H",
+      "verdict": "FAIL",
+      "message": "case aborted by module exception",
+      "evidence": []
+    },
+    {
+      "name": "I2",
+      "section": "I",
+      "layer": "I",
+      "verdict": "INCONCLUSIVE",
+      "message": "err=0",
+      "evidence": []
+    },
+    {
+      "name": "I1",
+      "section": "I",
+      "layer": "I",
+      "verdict": "FAIL",
+      "message": "case aborted by module exception",
+      "evidence": []
+    }
+  ]
+}

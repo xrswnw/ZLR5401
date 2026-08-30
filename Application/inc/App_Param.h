@@ -102,8 +102,9 @@ void UhfParam_Default(UHFUserCfg_t *cfg);
 
 /* ---- AM 解码器配置持久化 (userParam 区: 偏移 16, 避开 UHF) ----
  * 布局: [magic(2)][ver(1)][thrH,thrL(2)][hitH,hitL(2)][freq(1)][delayH,delayL(2)]
- *       [len(1)][inv(1)][syncH,syncL(2)][volt(1)][mode(1)] = 16 字节
- * magic = 0x4D41 ('AM'), ver = 1。 */
+ *       [len(1)][inv(1)][syncH,syncL(2)][volt(1)][mode(1)][mains(1)] = 17 字节
+ * magic = 0x4D41 ('AM'), ver = 1。
+ * mainsFreq 为 v1 追加字段: 旧记录缺该字节, Load 时置默认 0 (50Hz)。 */
 #define AM_PARM_MAGIC_HI     0x4Du    /* 'M' */
 #define AM_PARM_MAGIC_LO     0x41u    /* 'A' */
 #define AM_PARM_VERSION      1U
@@ -118,7 +119,8 @@ typedef struct {
     uint8_t  phaseInvert;  /* 零火翻转 */
     uint16_t phaseSync;    /* 相位同步 0-2000 */
     uint8_t  decodeVolt;   /* 解码电压 0低/1中/2高 */
-    uint8_t  mode;         /* 工作模式 0检测解码/1检测/2待机 */
+    uint8_t  mode;         /* 工作模式 0检测消磁/1仅检测/2待机 */
+    uint8_t  mainsFreq;    /* 市电 0=50Hz 1=60Hz */
 } AMUserCfg_t;
 
 int  AmParam_Load(AMUserCfg_t *cfg);   /* 0=OK (<0 无有效记录) */

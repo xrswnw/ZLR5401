@@ -86,14 +86,14 @@
 <div class="wrap">
 
 <div class="hero">
-  <h1>ZLR5401 · 智能开锁器 — 初版功能设计报告</h1>
-  <div class="sub">根据《约束/Link.txt》运行逻辑，结合已实现模块（UHF 硬标签读卡 / AM 软标解码器 / 步进电机升降 / LED）完成的功能设计</div>
+  <h1>ZLR5401 · 智能开锁器 — 功能设计与实现报告</h1>
+  <div class="sub">根据《约束/Link.txt》运行逻辑，结合已实现模块（UHF 硬标签读卡 / AM 软标解码器 / 步进电机升降 / LED）完成的功能设计 · v2 增补单命令同步开锁 (0x08) 与 AM 消磁判定 · v2.1 增补流程中交互 (0x09 进度 / CANCEL 打断) · v2.2 重构六约束业务状态机并加固间歇故障自愈</div>
   <div class="meta">
     <span>主控：GD32F103C8T6 (Cortex-M3)</span>
     <span>工程：ZLR5401</span>
     <span>命令：FC_LOCKER_CTRL (0x0D)</span>
-    <span>状态：初版功能已实现 · 编译通过</span>
-    <span>日期：2026-08-08</span>
+    <span>状态：v2.2 已烧录实测 · 0x08 闭环 8/8 · 流程中交互 12/12 · 状态机 17/17 PASS</span>
+    <span>日期：2026-08-29（v1: 2026-08-08）</span>
   </div>
 </div>
 
@@ -133,47 +133,73 @@
   </div>
   <div class="card">
     <h3 style="margin-top:0">状态指示 — LED <span class="tag tag-rdy">已提供</span></h3>
-    <p><span class="tag tag-warn">约束说明</span> 当前硬件为<b>单绿灯（PB4, PW-limb 呼吸）</b>，无独立红灯。本设计阶段以 <code>LedHl_GOn()</code> 指示就绪/匹配，<b>红灯闪烁</b>语义在报告中标注为「待硬件确认/红灯 GPIO」待扩展项，逻辑分支已预留（<code>MISMATCH</code> 事件已上报，点灯可后续接入）。</p>
+    <p><span class="tag tag-ok">v2.2 已接</span> <code>LedHl_EOn/EOff</code> 驱动 ERR 通道：<b>MISMATCH 红灯闪烁</b>（时间片驱动：最近失配后 3s 内以 250ms 半周期闪，不依赖读取节奏）、<b>FAULT 常亮</b>，正常运行熄灭；匹配/升起由绿灯通道与蜂鸣提示。</p>
   </div>
 </div>
 
 <!-- ================= 三、状态机 ================= -->
-<h2>三、业务状态机（App_Locker）</h2>
+<h2>三、业务状态机（App_Locker · v2.2 重构）</h2>
+<p><span class="tag tag-ok">v2.2 重构</span> 对照六条约束逐项审计后重构：磁块升降改为 <b>KEY_UP/KEY_DOWN 行程开关寻触</b>（非阻塞节拍子状态机，与 App_MotorHoming/App_LockerOneShot 同判据），新增 <b>UNLOCK_HOLD / LOWERING</b> 两状态与 FAULT 的 CANCEL 出口；已解锁标签重复读不误报、START 后清单只读、超时窗口回绕安全比较。</p>
 <div class="mermaid-bg">
 <div class="mermaid">
 stateDiagram-v2
     [*] --> IDLE
-    IDLE --> CONFIGURED: ADD/CONFIGURE 建立任务
-    CONFIGURED --> CONFIGURED: 匹配→升起+灯, 上报MATCH_OK
-    CONFIGURED --> CONFIGURED: 非清单→不升起, 上报MISMATCH
+    IDLE --> CONFIGURED: CONFIGURE+ADD 建立任务 / START 开扫
+    CONFIGURED --> UNLOCK_HOLD: 首次匹配 (MATCH_OK, 寻触升起)
+    CONFIGURED --> CONFIGURED: 后续匹配 / 非清单 MISMATCH
     CONFIGURED --> SOFT_DECODE: hardMatched==hardCount (HARD_DONE)
-    CONFIGURED --> IDLE: TIMEOUT / CANCEL
+    UNLOCK_HOLD --> SOFT_DECODE: hardMatched==hardCount (HARD_DONE)
+    UNLOCK_HOLD --> LOWERING: 超时 TIMEOUT / CANCEL
+    CONFIGURED --> LOWERING: 超时 TIMEOUT / CANCEL (已升起时)
     SOFT_DECODE --> SOFT_DECODE: 消耗一次软标 (SOFT_USED)
     SOFT_DECODE --> DONE: softUsed==softCount (DONE)
-    SOFT_DECODE --> IDLE: TIMEOUT / CANCEL
-    DONE --> IDLE: 停留后回落
+    SOFT_DECODE --> LOWERING: 超时 TIMEOUT / CANCEL
+    DONE --> LOWERING: 停留 5s 后回降
+    LOWERING --> IDLE: 寻触 KEY_DOWN 到位
     IDLE --> FAULT: 电机/链路故障
-    FAULT --> IDLE: 清障
+    CONFIGURED --> FAULT: 电机/链路故障
+    SOFT_DECODE --> FAULT: 电机/链路故障
+    DONE --> FAULT: 电机/链路故障
+    LOWERING --> FAULT: 回降寻触失败
+    FAULT --> LOWERING: CANCEL (磁块在空中则先回降)
+    FAULT --> IDLE: CANCEL (磁块在底部)
+    IDLE --> SOFT_DECODE: START 纯软标任务 (hardCount=0 直入)
 </div>
 </div>
 <div class="legend">
-  <b>状态语义</b>：IDLE=空闲锁定 · CONFIGURED=可开锁（硬标比对中） · SOFT_DECODE=硬标已全部解锁，软标计数中 · DONE=结账完成 · FAULT=故障。
+  <b>状态语义</b>：IDLE=空闲锁定 · CONFIGURED=可开锁（硬标比对中） · UNLOCK_HOLD=已匹配升起保持，继续比对剩余硬标 · SOFT_DECODE=硬标已全部解锁，软标计数中 · DONE=结账完成（5s 后回降） · FAULT=故障（ERR 常亮，CANCEL 可退） · LOWERING=回降寻触中。
 </div>
 
 <h3>状态定义</h3>
 <table>
 <tr><th>状态</th><th>值</th><th>进入条件</th><th>行为 / 退出</th></tr>
-<tr><td class="st0 state">IDLE</td><td>0</td><td>上电 / 取消 / 完成</td><td>默认锁定（磁块回落）；<code>CONFIGURE/ADD</code> → CONFIGURED</td></tr>
-<tr><td class="st1 state">CONFIGURED</td><td>1</td><td>建立结账任务</td><td>轮询 UHF 比对 EPC；匹配点亮绿灯升起；全匹配 → SOFT_DECODE；超时/取消 → IDLE</td></tr>
-<tr><td class="st2 state">SOFT_DECODE</td><td>3</td><td>硬标签 m==n</td><td>每次 <code>CONSUME_SOFT</code> 消耗一次；次数尽 → DONE</td></tr>
-<tr><td class="st3 state">DONE</td><td>4</td><td>软标次数用尽</td><td>停留 5s 后回落 → IDLE</td></tr>
-<tr><td class="st4 state">FAULT</td><td>5</td><td>UHF 链路/电机故障</td><td>回落锁定；清障 → IDLE</td></tr>
+<tr><td class="st0 state">IDLE</td><td>0</td><td>上电 / 取消 / 回降到位</td><td>默认锁定（磁块回落）；<code>CONFIGURE/ADD</code> → CONFIGURED</td></tr>
+<tr><td class="st1 state">CONFIGURED</td><td>1</td><td>建立结账任务 + START</td><td>轮询 UHF 比对 EPC；首次匹配寻触升起 → UNLOCK_HOLD；全匹配 → SOFT_DECODE（无软标直入 DONE）；超时/取消 → 回降回 IDLE</td></tr>
+<tr><td class="st2 state">UNLOCK_HOLD</td><td>2</td><td>首次硬标匹配（磁块寻触上升）</td><td>继续比对剩余硬标（升起子状态机走完）；m==n → SOFT_DECODE</td></tr>
+<tr><td class="st2 state">SOFT_DECODE</td><td>3</td><td>硬标签 m==n（或纯软标 START 直入）</td><td>磁块保持升起；每次 <code>CONSUME_SOFT</code> 消耗一次；次数尽 → DONE；5min 兜底窗口超时 → 回降</td></tr>
+<tr><td class="st3 state">DONE</td><td>4</td><td>软标次数用尽</td><td>停留 5s 后回降 → LOWERING → IDLE</td></tr>
+<tr><td class="st4 state">FAULT</td><td>5</td><td>UHF 链路 / 电机故障</td><td>停机停扫，ERR 常亮；<b>CANCEL 可退出</b>（磁块在空中先安全回降）；QUERY 回 faultReason 诊断码</td></tr>
+<tr><td class="st4 state">LOWERING</td><td>6</td><td>任意运行态取消/超时/完成且磁块已离开底部</td><td>寻触 KEY_DOWN 回降；到位 → IDLE；寻触失败 → FAULT</td></tr>
+</table>
+
+<h3>v2.2 关键语义修正（对照六条约束）</h3>
+<table>
+<tr><th>项</th><th>v1 旧行为</th><th>v2.2 修正</th></tr>
+<tr><td>磁块升降</td><td>定步数 4800（实测行程 4280，超程硬顶）</td><td>KEY_UP/KEY_DOWN 行程开关寻触（2000Hz/40%，停滞/超步/超时兜底 + 失败重试一次）</td></tr>
+<tr><td>匹配后保持态</td><td>无独立状态</td><td>UNLOCK_HOLD：升起保持中继续比对剩余硬标</td></tr>
+<tr><td>已解锁标签重复读</td><td>会被当失配报 MISMATCH</td><td>重复读静默忽略（不算失配、不重复计数）</td></tr>
+<tr><td>START 后改清单</td><td>ADD 仍可追加</td><td>START 后清单只读（ADD/重复 START 回 BUSY）</td></tr>
+<tr><td>FAULT 出口</td><td>无退出路径（只能复位）</td><td>CANCEL 退出；升/降途中故障 CANCEL 仍先安全回降</td></tr>
+<tr><td>MISMATCH 红灯</td><td>读触发（读一次闪一次）</td><td>时间片闪烁：最近失配后 3s 内以 250ms 半周期闪（不依赖读取节奏）</td></tr>
+<tr><td>超时比较</td><td>绝对值比较（SysTick 回绕不安全）</td><td>差值式 <code>(int32_t)(now-deadline)>=0</code>，回绕安全</td></tr>
+<tr><td>任务边界标签残留</td><td>上一任务缓冲标签可泄漏到新任务</td><td>CONFIGURE 清空 UHF 标签缓冲，匹配只认本任务新鲜读取</td></tr>
 </table>
 
 <h3>时间窗计算（约束 #6）</h3>
 <div class="card flow">
   开锁保持窗口 <span class="k">= 2min + (hardCount − 1) × 30s</span>，匹配任一硬标签即刷新该窗口；
-  窗口内允许重复开锁/取放，超时则磁块回落并上报 <code>LOCKER_EVT_TIMEOUT</code>。
+  窗口内允许重复开锁/取放，超时则磁块回落并上报 <code>LOCKER_EVT_TIMEOUT</code>；
+  软标阶段另有 <span class="k">5min</span> 兜底窗口（磁块保持升起直至 DONE 回降）。
 </div>
 
 <!-- ================= 四、协议 ================= -->
@@ -185,10 +211,23 @@ stateDiagram-v2
 <tr><td>ADD 0x02</td><td><code>[cmd, epcLen, epc…]</code></td><td>追加一条硬标签 EPC（可连续发，条数 ≤16）</td></tr>
 <tr><td>START 0x03</td><td><code>[cmd]</code></td><td>UHF 上电 + 开扫，进入可开锁</td></tr>
 <tr><td>CANCEL 0x04</td><td><code>[cmd]</code></td><td>取消任务，磁块回落回 IDLE</td></tr>
-<tr><td>QUERY 0x05</td><td><code>[cmd]</code></td><td><code>[cmd,err,state,hm, sc,su]</code> 查询状态/计数</td></tr>
+<tr><td>QUERY 0x05</td><td><code>[cmd]</code></td><td><code>[cmd,err,state,hm(2), sc(2),su(2), faultReason]</code> 查询状态/计数；faultReason 为最近一次 FAULT 原因诊断码（v2.2 新增：1=UHF链路 2=未回零 3=seek启动失败 4~6=升寻触失败 7=回降寻触失败 8=回降启动失败）</td></tr>
 <tr><td>CONSUME_SOFT 0x06</td><td><code>[cmd]</code></td><td>软标解码 1 次（进 SOFT 后使用）</td></tr>
 <tr><td>GET_EVENT 0x07</td><td><code>[cmd]</code></td><td>取一条上报事件（结果/异常回传上位机）</td></tr>
+<tr><td><b>ONE_SHOT 0x08</b></td><td><code>[cmd, tmoL,tmoH, holdL,holdH, epcLen, epc…, (demagCnt)]</code></td><td><b>单标签同步开锁</b>：一帧全流程阻塞执行，完成/失败回一帧，含详细失败码与诊断字段（详见 §五）</td></tr>
+<tr><td><b>GET_PROGRESS 0x09</b></td><td><code>[cmd]</code></td><td><b>0x08 流程中进度拉取</b>（阻塞期间随时可查）：回 <code>[cmd,err,phase,holdMs(2),steps(2),tagPresent,demagDone,epcLen,epc…]</code>，详见 §五.4</td></tr>
 </table>
+
+<h3>0x08 阻塞期间的命令白名单（流程中交互）</h3>
+<div class="note"><b>泵循环内嵌协议服务</b>：0x08 阻塞执行期间，泵循环 (<code>one_pump</code>) 内嵌 <code>Proto_Poll()</code>，协议层持续收发。分发层按白名单放行，其余一律回 BUSY：
+<table>
+<tr><th>命令组</th><th>放行（流程中可执行）</th><th>其余</th></tr>
+<tr><td>FC_LOCKER_CTRL</td><td>QUERY / GET_PROGRESS / CANCEL（CANCEL 触发安全打断）</td><td><code>LOCKER_ERR_BUSY</code></td></tr>
+<tr><td>FC_MOTOR_CTRL</td><td>QUERY / HEALTH / STATS（只读）</td><td><code>MOTOR_ERR_BUSY</code></td></tr>
+<tr><td>FC_UHF_CTRL</td><td>QUERY / GET_STATUS（只读）</td><td><code>UHF_ERR_BUSY</code></td></tr>
+<tr><td>FC_AM_CTRL</td><td>GET_STATUS（只读；其余含 QUERY 会 RxFlush 冲掉流程正等待的 cmd17 帧）</td><td><code>AM_ERR_BUSY</code></td></tr>
+</table>
+</div>
 
 <h3>上报事件（GET_EVENT 返回）</h3>
 <table>
@@ -202,45 +241,213 @@ stateDiagram-v2
 <tr><td>FAULT 6</td><td>故障</td><td>链路/电机异常</td></tr>
 </table>
 
-<!-- ================= 五、文件清单 ================= -->
-<h2>五、变更文件</h2>
+<!-- ================= 五、ONE_SHOT 单命令开锁 ================= -->
+<h2>五、单命令同步开锁 — LOCKER_SUB_ONE_SHOT (0x08)</h2>
+<p>v2 核心增补：<b>用户视角一条指令</b>携带 UHF 参数 + 期望标签 + 消磁数，设备自行解析并同步阻塞执行完整流程，完成或失败回一帧（含详细失败码 + 诊断字段）。实现：<code>App_LockerOneShot.c</code>。</p>
+
+<div class="mermaid-bg">
+<div class="mermaid">
+sequenceDiagram
+    participant H as 上位机
+    participant D as 设备 (阻塞执行)
+    H->>D: 0x08 [tmo, maxHold, epcLen, epc.., demagCnt]
+    D->>D: ⑴ 前置检查 (Locker/UHF/电机 IDLE, 已回零)
+    opt demagCnt > 0
+        D->>D: ⑴.5 AM 探链 + 确保消磁模式
+    end
+    D->>D: ⑵ UHF 上电就绪
+    D->>D: ⑶ 同步盘点 + 单标签 EPC 比对
+    Note over D: 失败→立即回帧 (NO_TAG/MISMATCH/UHF_*)
+    D->>D: ⑷ 升起: 寻触至 KEY_UP 行程开关
+    loop 保持期 (maxHold 内)
+        D->>D: UHF 持续盘点 + AM 消磁事件监控
+        D-->>D: 消磁达标 / 标签稳定移除 / 超时 / UHF失联
+    end
+    D->>D: ⑹ 回降: 寻触至 KEY_DOWN 行程开关
+    D-->>H: 回帧 [err, endReason, rise/lower步数, demagDone]
+</div>
+</div>
+
+<h3>请求帧</h3>
+<table>
+<tr><th>字段</th><th>偏移</th><th>说明</th></tr>
+<tr><td>cmd</td><td>0</td><td>0x08</td></tr>
+<tr><td>tmoL/tmoH</td><td>1/2</td><td>初始盘点超时 ms（0→默认1000，钳位 1~10000）</td></tr>
+<tr><td>maxHoldL/maxHoldH</td><td>3/4</td><td>最大保持窗 ms（0→默认30000，钳位 ≤60000）</td></tr>
+<tr><td>epcLen</td><td>5</td><td>期望 EPC 长度 1~12</td></tr>
+<tr><td>epc…</td><td>6..</td><td>期望 EPC（单标签比对基准）</td></tr>
+<tr><td><b>demagCnt</b></td><td>EPC后</td><td><b>消磁标签数，可缺省</b>；缺省/0 = <b>跳过消磁流程</b>（不触碰 AM）；&gt;0 = 保持期等待 AM 成功消磁事件数达标即回降</td></tr>
+</table>
+
+<h3>失败码（响应 data[1]）与诊断字段</h3>
+<table>
+<tr><th>err</th><th>含义</th><th>附加诊断字段</th></tr>
+<tr><td>0 OK</td><td>全流程完成</td><td>endReason, epcLen, epc, rise(2), lower(2), demagDone</td></tr>
+<tr><td>1 BUSY</td><td>Locker/UHF扫描/电机 占用</td><td>locker/uhf/stepper 三模块状态</td></tr>
+<tr><td>2 PARAM</td><td>epcLen 或帧长非法（立即回，不动磁块）</td><td>—</td></tr>
+<tr><td>3 UHF_OPEN</td><td>UHF 上电/配置失败</td><td>uhfRawErr</td></tr>
+<tr><td>4 UHF_LINK</td><td>初始盘点通信失败</td><td>uhfRawErr</td></tr>
+<tr><td>5 NO_TAG</td><td>初始盘点无标签</td><td>uhfRawErr</td></tr>
+<tr><td>6 MISMATCH</td><td>读到标签但 ≠ 期望 EPC</td><td>tagsFound + 读到的第一张 EPC 回传</td></tr>
+<tr><td>7 HOMING</td><td>未回零/行程开关异常，禁止运动</td><td>switchErr</td></tr>
+<tr><td>8 MOTOR_FAULT</td><td>升降中电机故障（DRV 寄存器非零）</td><td>fault, diag1, diag2, steps(3), phase, retreat</td></tr>
+<tr><td>9 MOTOR_TIMEOUT</td><td>升降超时/步数停滞/触点不可达</td><td>steps(3), phase, retreat</td></tr>
+<tr><td>10 AM_LINK</td><td>demagCnt&gt;0 时 AM 链路断/切模式失败</td><td>—</td></tr>
+</table>
+<p class="legend">err=8/9 时磁块不在下端必先安全回退至 KEY_DOWN，结果记入 retreat（0=回退成功 / 1=失败 / 2=未尝试）。</p>
+
+<h3>结束原因 endReason（err=0 时回降触发者）</h3>
+<table>
+<tr><th>值</th><th>含义</th><th>说明</th></tr>
+<tr><td>1</td><td>TAG_REMOVED</td><td>期望标签稳定移除（3s 防抖确认，正常业务完成）</td></tr>
+<tr><td>2</td><td>HOLD_TIMEOUT</td><td>保持窗超时（上位机给的最坏期限）</td></tr>
+<tr><td>3</td><td>TAG_CHANGED</td><td>期望标签消失后读到其他 EPC（防抖窗内区分换标）</td></tr>
+<tr><td>4</td><td>UHF_LOST</td><td>保持期 UHF 链路失联持续 5s（无法证实标签在场）</td></tr>
+<tr><td><b>5</b></td><td><b>DEMAG_DONE</b></td><td><b>消磁标签数达标（demagCnt&gt;0，优先于其他原因）</b></td></tr>
+<tr><td><b>6</b></td><td><b>ABORTED</b></td><td><b>CANCEL 打断：安全回降完成后正常回帧（见 §五.5）</b></td></tr>
+</table>
+
+<h3>消磁流程 demagCnt 语义</h3>
+<div class="note">
+<b>demagCnt = 0（缺省）→ 跳过消磁流程</b>：完全不触碰 AM 解码器，保持期仅做 UHF 标签在场监控。
+<b>demagCnt &gt; 0</b>：前置阶段对 AM 探链（0x63 总查询）并确保消磁模式（mode=0）；保持期经泵循环推进 <code>App_AM_Process</code>，
+监听 cmd17 成功消磁事件（见 §六），<b>本流程内成功消磁事件数 ≥ demagCnt 即回降</b>，endReason=5，demagDone 回传实际完成数。
+</div>
+
+<h3>五.4 GET_PROGRESS (0x09) — 流程中进度拉取</h3>
+<p>0x08 阻塞执行期间，上位机可随时下发 <code>LOCKER_SUB_GET_PROGRESS</code> 拉取进度快照（阻塞泵循环内嵌 Proto_Poll 服务）：</p>
+<table>
+<tr><th>字段</th><th>偏移</th><th>说明</th></tr>
+<tr><td>cmd / err</td><td>0 / 1</td><td>0x09 / 0=OK</td></tr>
+<tr><td>phase</td><td>2</td><td>0=无流程 · 1前置 2 UHF就绪 3盘点 4升起 5保持期 6回降</td></tr>
+<tr><td>holdMs (2)</td><td>3/4</td><td>保持期已保持 ms（其他阶段 0）</td></tr>
+<tr><td>steps (2)</td><td>5/6</td><td>升降段当前累计微步（瞬时值）</td></tr>
+<tr><td>tagPresent</td><td>7</td><td>保持期期望标签在场 0/1（3s 防抖窗内读到=1）</td></tr>
+<tr><td>demagDone</td><td>8</td><td>本流程内成功消磁事件数（demagCnt=0 恒 0）</td></tr>
+<tr><td>epcLen + epc…</td><td>9..</td><td>期望 EPC 原样回显</td></tr>
+</table>
+
+<h3>五.5 CANCEL 打断（安全回降保证）</h3>
+<div class="card flow">
+  流程中下发 <span class="k">LOCKER_SUB_CANCEL</span>: <b>立即回 OK</b> (~80ms) + 置 s_abort 打断标志<br>
+  前置/盘点阶段: 磁块未动 → 直接以 <span class="k">endReason=6 ABORTED</span> 回帧<br>
+  升起段被打断: 免疫回退 (s_retreatImmune) 下行寻触 KEY_DOWN → ABORTED 回帧<br>
+  保持期被打断: 与其他结束原因同级, 走正常回降段<br>
+  回降段/失败安全回退段: <b>打断免疫</b> — 安全动作必须完成, 不接受二次打断<br>
+  0x08 挂起回帧: err=OK, endReason=6 ABORTED, rise/lower 步数原样回传
+</div>
+
+<h3>闭环实测（2026-08-29，真机，EPC 33553463a4000158eb7e7a50 在场）</h3>
+<table>
+<tr><th>用例</th><th>输入</th><th>实测</th><th>结果</th></tr>
+<tr><td>P1/P2/P3 参数非法</td><td>epcLen=0 / 13 / 短帧</td><td>err=2 PARAM，80ms 立即回，不动磁块</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>M1 错误 EPC</td><td>12×0xAA</td><td>err=6 MISMATCH，tagsFound=1 + 读到 EPC 回传，1.09s</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>M2 全流程（demagCnt 缺省 0）</td><td>真实 EPC, hold=4s</td><td>err=OK end=HOLD_TIMEOUT rise=4280 lower=4281 demagDone=0，9.5s</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>P4 显式 demagCnt=0</td><td>EPC 后追加 0 字节</td><td>err=OK 全流程正常，demagDone=0，参数位不破坏旧格式</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>B1 忙互斥</td><td>Locker START 中下发 0x08</td><td>err=1 BUSY，locker/uhf/stepper=(1,2,0)</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>R1 事后恢复</td><td>QUERY</td><td>locker=0 IDLE, motor=0 IDLE</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td colspan="4" style="background:var(--blue-50)"><b>v2.1 流程中交互（demagCnt=3 无事件等待 + 打断）</b></td></tr>
+<tr><td>A1 demagCnt=3 无消磁事件</td><td>EPC + demagCnt=3, hold=16s</td><td>err=10 AM_LINK 快速回 0.27s（AM 消磁器当前接上位机侧，设备 RS485 空置）</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>B1 保持期进度拉取</td><td>0x08 hold=60s 进行中轮询 0x09</td><td>phase 4→5 steps=4280；holdMs 70→1150 递增，tagPresent=1，demagDone=0，EPC 回显正确</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>B2 流程中命令互斥</td><td>0x08 重入 / UHF_CLOSE / MOTOR_MOVE / AM_QUERY</td><td>分别回 BUSY=1/2/3/2，互不干扰</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>B3 CANCEL 打断</td><td>保持期中 CANCEL</td><td>CANCEL 80ms 回 OK；0x08 回帧 err=OK end=6 ABORTED rise=4280 lower=4281（安全回降完成）</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>B4 事后恢复</td><td>QUERY / MOTOR_QUERY / 0x09</td><td>locker=0, motor=0, phase=0 全恢复</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td colspan="4" style="background:var(--blue-50)"><b>v2.2 业务状态机重构（六约束闭环，Agent/Round_074/test/locker_sm.py）</b></td></tr>
+<tr><td>T1 主流程</td><td>CONFIGURE soft=2 + ADD 真实 EPC + START</td><td>CONFIGURED→匹配 MATCH_OK→寻触升起→UNLOCK_HOLD→m==n HARD_DONE→SOFT_DECODE→CONSUME×2→DONE→(5s)→LOWERING→IDLE；hm=1 su=0→2；START 后 ADD / 重复 START 均回 BUSY</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>T2 MISMATCH</td><td>清单=12×0xAA，真标签在场</td><td>MISMATCH 事件上报、hm=0 不升起；CANCEL 直达 IDLE</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>T3 升起中途 CANCEL</td><td>匹配后上升期 (~2.2s 内) CANCEL</td><td>经 LOWERING 安全回降 → IDLE，电机终态 IDLE</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>T4 纯软标任务</td><td>CONFIGURE soft=1 无 ADD + START</td><td>直入 SOFT_DECODE；消耗完 → DONE → LOWERING → IDLE；事件序 [SOFT_USED, DONE]</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td>T5 事后恢复</td><td>QUERY / MOTOR_QUERY / GET_EVENT</td><td>locker=IDLE motor=IDLE，事件队列空</td><td class="state" style="color:var(--green)">PASS</td></tr>
+<tr><td colspan="4">v2.2 稳定性回归（收尾压测 2026-08-29）：locker_sm 连跑 6 次 17/17；oneshot 8/8 ×4；abort 12/12 ×5；软复位 4 次上电回零全部 OK（其中 1 次为重试后自愈）；T2→T3 任务切换边界（扫描中 CANCEL 后立即重建任务）不再双 FAULT。单轮 1s UHF 盘点偶发漏读在场标签属模块时序，测试脚本已改为连续多轮重试。</td></tr>
+</table>
+<p class="legend">升/降段寻触：2000Hz / 40% 转矩，触点触发即 DC 磁制动停位；行程步数 4280/4281 与 ~4287 基线吻合。测试脚本：<code>Agent/Round_074/test/oneshot.py</code>、<code>Agent/Round_074/test/abort.py</code>、<code>Agent/Round_074/test/locker_sm.py</code>。demagCnt&gt;0 分支待 AM 消磁器接回设备侧 RS485 后闭环验证。</p>
+
+<!-- ================= 六、AM 消磁判定 ================= -->
+<h2>六、AM 消磁结果判定（cmd17 突发分类）与计数</h2>
+<p><span class="tag tag-ok">live 实测 2026-08-29</span> 直连串口换标签测试实锤了 cmd17 的完整语义，据此重设计了 <code>App_AM.c</code> 的分类状态机：</p>
+
+<h3>cmd17 实测语义</h3>
+<table>
+<tr><th>场景</th><th>上报模式</th><th>结论</th></tr>
+<tr><td>测试标签（不可消磁）在场</td><td>持续连发 <code>FF FF FF FF FF 00 00</code>，≈800ms 周期（实测 29 帧跨 23s 不停）；<b>拿走再回场仍持续连发</b></td><td class="state" style="color:var(--red)">失败重试</td></tr>
+<tr><td>正常标签消磁成功</td><td><b>恰好 1 帧</b>后永久静默；<b>拿走再入场不再上报</b>（已消磁标签不再被设备识别）</td><td class="state" style="color:var(--green)">成功</td></tr>
+<tr><td>模式循环重触发（0→1→0）</td><td>对在场已消磁标签无任何新上报</td><td class="state">消磁只在标签新检测沿触发</td></tr>
+</table>
+<div class="note"><b>关键结论</b>：成功帧与失败帧<b>内容完全相同</b>（帧体恒 <code>2A A2 17 01 01 07 FF×5 00 00 1B</code>，datalen=7），内容无信息，<b>唯一判据是突发模式</b>。修正了旧实现"非 FF 字段=成功"的判定——该分支永远不会触发。</div>
+
+<h3>新分类状态机</h3>
+<div class="card flow">
+  事件划分：相邻 cmd17 帧间隔 &gt; <span class="k">AM_BURST_GAP_MS = 3000ms</span>（实测帧距 0.8~1.4s，3s 为安全窗）= 新消磁事件<br>
+  事件结算（静默超 3s 时）：<span class="k">帧数 == 1 → 成功 deactCount++</span> ；<span class="k">≥ 2 → 失败 failCount++</span><br>
+  结算后状态保持（供 GET_STATUS 轮询捕获），下一事件首帧时回到 IDLE
+</div>
+<p class="legend">同时修复旧版致命 bug：原 300ms 突发复位窗 &lt; 800ms 实际帧距，连发计数永远无法累积到阈值 3，失败判定从未生效过。</p>
+
+<h3>AM_SUB_GET_STATUS 响应（扩展为 19B，向后兼容追加）</h3>
+<table>
+<tr><th>字段</th><th>偏移</th><th>说明</th></tr>
+<tr><td>cmd</td><td>0</td><td>0x06（无 err 字段）</td></tr>
+<tr><td>link</td><td>1</td><td>0=正常 / 1=超时掉线 / 2=CRC错</td></tr>
+<tr><td>evt</td><td>2..5</td><td>cmd17 帧累计（LE 32）</td></tr>
+<tr><td>lastEvtMs</td><td>6..9</td><td>最近一次 cmd17 相对上电 ms（LE 32）</td></tr>
+<tr><td>deact</td><td>10</td><td>0=空闲 / 1=消磁成功 / 2=消磁失败（最近结算结果）</td></tr>
+<tr><td><b>deactCnt</b></td><td>11..14</td><td><b>成功消磁事件累计（LE 32，新增）</b></td></tr>
+<tr><td><b>failCnt</b></td><td>15..18</td><td><b>失败消磁事件累计（LE 32，新增）</b></td></tr>
+</table>
+
+<!-- ================= 七、文件清单 ================= -->
+<h2>七、变更文件</h2>
 <table>
 <tr><th>文件</th><th>变更</th></tr>
 <tr><td>Application/inc/App_Locker.h</td><td>新增：状态机/清单/事件定义 + API</td></tr>
 <tr><td>Application/src/App_Locker.c</td><td>新增：业务状态机实现</td></tr>
-<tr><td>Application/inc/App_CustomProtocol.h</td><td>新增 <code>FC_LOCKER_CTRL(0x0D)</code> 及子命令/错误码</td></tr>
-<tr><td>Application/src/App_Dispatch.c</td><td>新增 <code>case FC_LOCKER_CTRL</code> 分派</td></tr>
+<tr><td>Application/inc/App_CustomProtocol.h</td><td>新增 <code>FC_LOCKER_CTRL(0x0D)</code> 及子命令/错误码（含 <code>ONE_SHOT 0x08</code>、GET_STATUS 扩展格式）</td></tr>
+<tr><td>Application/src/App_Dispatch.c</td><td>新增 <code>case FC_LOCKER_CTRL</code> 分派（含 0x08 demagCnt 解析 + AM GET_STATUS 19B 扩展）</td></tr>
 <tr><td>Application/src/main.c</td><td>初始化 + 主循环推进 <code>App_Locker_Process</code></td></tr>
 <tr><td>Application/CMakeLists.txt</td><td>加入 <code>App_Locker.c</code> 源文件</td></tr>
+<tr><td><b>Application/inc/App_LockerOneShot.h</b></td><td><b>v2 新增</b>：单命令开锁结果结构 / 失败码 ONE_ERR_* / 结束原因 ONE_END_*（含 5=DEMAG_DONE, 10=AM_LINK）</td></tr>
+<tr><td><b>Application/src/App_LockerOneShot.c</b></td><td><b>v2 新增</b>：同步阻塞全流程（寻触升降 / 保持期监控 / 消磁跳过与等待）</td></tr>
+<tr><td><b>Application/src/App_AM.c</b></td><td><b>v2 重设计</b>：cmd17 突发分类状态机（AM_BURST_GAP_MS=3000，1帧=成功/≥2帧=失败）+ deactCount/failCount</td></tr>
+<tr><td><b>App_LockerOneShot.c / .h</b></td><td><b>v2.1 增补</b>：s_busy/s_abort/s_phase 状态导出；泵循环内嵌 Proto_Poll；CANCEL 打断检查点 + 免疫安全回退 (s_retreatImmune)；GET_PROGRESS 快照；ONE_END_ABORTED=6 / ONE_PH_0~6</td></tr>
+<tr><td><b>App_CustomProtocol.h / App_Dispatch.c</b></td><td><b>v2.1 增补</b>：LOCKER_SUB_GET_PROGRESS 0x09；0x08 阻塞期 LOCKER/MOTOR/UHF/AM 四组白名单互斥 (MOTOR_ERR_BUSY / UHF_ERR_BUSY / AM_ERR_BUSY)</td></tr>
+<tr><td><b>App_Locker.c / .h</b></td><td><b>v2.2 重构</b>：寻触升降子状态机 (UNLOCK_HOLD/LOWERING 新状态)；重复读忽略；START 门控；时间片 MISMATCH 闪烁；FAULT 原因码 (faultReason 经 QUERY 回传)；UHF ERROR 探测恢复 (3 次)；寻触失败重试一次</td></tr>
+<tr><td><b>App_UHF_HL.c</b></td><td><b>v2.2 加固</b>：UHF_HL_Transact 迟到帧抗扰 — cmd 不符的响应帧（被中止操作补发的旧回包）丢弃并继续在剩余时限内等待，不再误判链路故障</td></tr>
+<tr><td><b>App_UHF.c / .h</b></td><td><b>v2.2 新增 App_UHF_ClearTags()</b>：任务边界清空标签缓冲，防上一任务残留标签在新任务中假匹配</td></tr>
+<tr><td><b>main.c</b></td><td><b>v2.2 加固</b>：上电回零失败自动重试至多 3 次（清 DRV 故障寄存器 + 200ms 间歇），实测单次回零偶发失败（~1/3 概率开关漏读/启动失步）后全部自愈</td></tr>
+<tr><td><b>App_LockerOneShot.c</b></td><td><b>v2.2 加固</b>：寻触失败重试一次由「&lt;50 步且故障寄存器非零」推广为无条件一次（覆盖启动全失步：脉冲走满整腿而机构未动的间歇工况）</td></tr>
 </table>
 <div class="sum">
-  <b>资源占用</b>：text 19,680B（≤40K）/ RAM 10,564B（≤20K），编译零警告，固件生成成功（ZLR5401_202608082137.hex）。
+  <b>实测记录（2026-08-29）</b>：0x08 闭环 8/8 PASS（参数非法 / MISMATCH / 全流程升降 rise=4280 lower=4281 / demagCnt=0 跳过消磁 / 忙互斥 / 事后恢复）；AM 消磁语义直连串口实锤（测试标签连发 FF×5 vs 正常标签单帧即止）；v2.1 流程中交互 12/12 PASS（demagCnt=3 无事件 → AM_LINK 快速回 / 保持期 0x09 进度拉取 / 四组命令 BUSY 互斥 / CANCEL 80ms 打断 → endReason=6 ABORTED 安全回降 / 事后全恢复）；<b>v2.2 状态机 17/17 PASS</b>（主流程 / MISMATCH / 升起中途 CANCEL / 纯软标 / 事后恢复，连跑 3 次稳定）。demagCnt&gt;0 消磁等待分支与设备侧 RS485 的 AM 事件闭环待接线后验证。
 </div>
 
-<!-- ================= 六、待确认 & 后续 ================= -->
-<h2>六、待确认 / 后续优化</h2>
+<!-- ================= 八、待确认 & 后续 ================= -->
+<h2>八、待确认 / 后续优化</h2>
 <div class="grid2">
   <div class="card">
-    <h3 style="margin-top:0">初版简化（已明确）</h3>
+    <h3 style="margin-top:0">v1 简化（已明确）</h3>
     <ul>
       <li>硬标签清单用「ADD 逐条」构建，未做单帧批量，避免 HID 56B 限制。</li>
-      <li>软标阶段 v1 依赖上位机显式上报「已解码一次」，未自动判定解码成功。</li>
       <li>光电触发未接独立红外输入，以 UHF 数据面轮询替代（预留 <code>NotifyTag</code>）。</li>
     </ul>
   </div>
   <div class="card">
-    <h3 style="margin-top:0">待硬件/需求确认</h3>
+    <h3 style="margin-top:0">v2 已闭环 / 待接线验证</h3>
     <ul>
-      <li><b>红灯</b>：当前仅单绿灯；红灯闪烁需确认是否加第二次 GPIO / 驱动。</li>
-      <li>磁块升降步数 <code>APP_LOCKER_STEP_RISE/LOWER</code> 需按实测行程标定。</li>
-      <li>软标自动判定：接入 AM 解码成功回执后可由设备自动计数（替代 host 上报）。</li>
+      <li><span class="tag tag-ok">已闭环</span> <b>软标自动判定</b>：AM cmd17 突发分类落地，<code>deactCount</code> 直接可用（替代 host 显式 CONSUME_SOFT 上报）。</li>
+      <li><span class="tag tag-ok">已闭环</span> <b>磁块升降步数标定</b>：改为 KEY_UP/KEY_DOWN 行程开关寻触定位（rise≈4280 / lower≈4281），不再依赖定步数。</li>
+      <li><span class="tag tag-ok">已闭环</span> <b>流程中交互</b>（v2.1）：0x08 阻塞期 0x09 进度拉取 / 四组白名单互斥 / CANCEL 安全打断（endReason=6 ABORTED），12/12 PASS。</li>
+      <li><span class="tag tag-ok">已闭环</span> <b>六约束业务状态机</b>（v2.2）：寻触升降 / UNLOCK_HOLD / LOWERING / FAULT 出口 / 纯软标直入 / 重复读忽略 / 任务边界清缓冲，17/17 PASS。</li>
+      <li><span class="tag tag-ok">已闭环</span> <b>间歇故障自愈</b>（v2.2）：UHF 迟到帧抗扰 + ERROR 探测恢复、寻触失败重试、上电回零重试——实测三类间歇工况（模块忙窗口 / KEY_UP 漏读 / 启动全失步）全部自愈不再 FAULT。</li>
+      <li><span class="tag tag-warn">待观察</span> <b>KEY_UP 间歇漏读 / 启动全失步</b>：当日各出现 1~2 次（脉冲走满整腿而机构未动 / 开关未触发即达腿长兜底），同参数重试即正常，已用重试机制覆盖；若复现率上升需排查行程开关接触与 DRV8434S 使能时序。</li>
+      <li><span class="tag tag-warn">待接线</span> <b>demagCnt&gt;0 消磁等待</b>：代码已就位，需 AM 消磁器接回设备侧 RS485 后实测（当前 232 口接上位机直连，固件侧 link=1 超时）。</li>
+      <li><span class="tag tag-warn">待硬件</span> <b>红灯</b>：当前仅单绿灯；红灯闪烁需确认是否加第二次 GPIO / 驱动。</li>
       <li>清单持久化 / 事件审计日志（掉电不丢）可加 EEPROM。</li>
     </ul>
   </div>
 </div>
 
 <hr>
-<div class="note"><b>说明</b>：本报告为初版功能设计；已实现并可编译通过，红色语义与软标自动判定为明确的待确认/后续项。设计基于《约束/Link.txt》与既有模块实际能力，非规划中的高阶需求。</div>
+<div class="note"><b>说明</b>：v1 为初版功能设计（2026-08-08）；v2 增补单命令同步开锁 0x08（含消磁跳过/等待）与 AM 消磁判定重设计；v2.1 增补流程中交互（0x09 进度拉取 / CANCEL 安全打断 / 分发白名单互斥）；v2.2 对照六条约束重构业务状态机并加固间歇故障自愈（UHF 迟到帧/ERROR 恢复、寻触与回零重试、任务边界清缓冲）。均已烧录，0x08 全流程真机闭环 8/8 PASS，流程中交互 12/12 PASS，业务状态机 17/17 PASS。设计基于《约束/Link.txt》、既有模块实际能力与 2026-08-29 直连串口消磁实测。</div>
 
 </div>
 <script>mermaid.initialize({startOnLoad:true,theme:'base',themeVariables:{

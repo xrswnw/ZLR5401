@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_048 — UHF 操作优化实施报告</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1040px; margin:0 auto; padding:24px 28px 60px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:38px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13.5px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:13px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:13px; line-height:1.5;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .card .tt{font-weight:600; color:var(--navy);}
+  .ok{background:#f2faf6; border-left:5px solid var(--green);}
+  .warn{background:#fffbe6; border-left:5px solid var(--gold);}
+  .tag{display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px;
+       color:#fff; background:var(--blue);}
+  .tag.g{background:var(--green);}
+  ul,ol{font-size:14.5px;}
+  li{margin:4px 0;}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+        color:var(--muted); font-size:12px; text-align:center;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>ZLR5401 UHF 操作优化 · 实施报告</h1>
+  <div class="sub">Agent/Round_048 &nbsp;·&nbsp; 2026-08-26 &nbsp;·&nbsp; 盘点实时 EPC 推送 + 自动扫描(测距) + 蜂鸣/超时/防过度 &nbsp;·&nbsp; 已编译验证</div>
+</div>
+
+<div class="wrap">
+
+<h2>1. 结论小结</h2>
+<p>本轮实现 <b>UHF 操作优化</b> 两项需求，均已编译通过（<code>build_app.sh</code>，0 error / 0 warning）：</p>
+<ul>
+  <li><b>盘点实时返回 EPC</b>：新增标签实时推送回调 + <code>UHF_SUB_PUSH_EPC</code> 主动上报帧，盘点到一帧 EPC 即经 USB 推给主机，<b>不再需要主机反复 <code>GET_TAGS</code> 分步拉取</b>。</li>
+  <li><b>自动扫描（测距）</b>：新增 <code>UHF_SUB_SET_SCAN</code> 持续自动盘点，读到场内 EPC 即推送 + 蜂鸣器 100ms 短鸣，用于测试读距；并实现<u>空闲超时自动停扫</u>与<u>防过度节流</u>。</li>
+</ul>
+
+<h2>2. 需求映射</h2>
+<table>
+  <tr><th>需求</th><th>实现</th><th>对应代码</th></tr>
+  <tr><td>盘点实时返回标签 EPC（避免分步取）</td>
+      <td>盘点/扫描每解出一帧有效 EPC 即回调 → 协议层主动推送 <code>UHF_SUB_PUSH_EPC</code> 帧</td>
+      <td><code>App_UHF.c</code> <code>uhf_tag_push</code> / <code>App_Dispatch.c</code> <code>uhf_push_epc</code></td></tr>
+  <tr><td>扩展自动扫描用于测试距离</td>
+      <td>新增 <code>App_UHF_ScanStart</code> 持续自动盘点（就绪且未忙即反复发 0x21 单标签盘点）</td>
+      <td><code>App_UHF.c</code> <code>ScanStart / ScanStop / Process</code></td></tr>
+  <tr><td>自动读场内 EPC 即可</td>
+      <td>自动扫描读到的 EPC 同上走实时推送，无需手工逐条取</td>
+      <td>同上</td></tr>
+  <tr><td>存在 EPC 蜂鸣器 100ms 动作</td>
+      <td>读到标签触发 <code>App_NewPeriph_BeepPulse(100)</code> 一次性脉冲；并让 IR 光电周期闪烁让出控制权，保证 100ms 不被立刻覆盖</td>
+      <td><code>App_NewPeriph_HL.c</code> BeepPulse</td></tr>
+  <tr><td>考虑超时和过度</td>
+      <td>① 空闲窗口 <code>timeout</code> 内无标签自动停扫；② 相邻动作最小间隔 <code>minInt</code> 节流抑制刺耳/洪泛；③ 空缓冲覆盖等原保护保留</td>
+      <td><code>App_UHF.c</code> <code>App_UHF_Process</code></td></tr>
+</table>
+
+<h2>3. 协议变更</h2>
+<table>
+  <tr><th>cmd</th><th>方向</th><th>data</th><th>说明</th></tr>
+  <tr><td><code>0x0D</code> SET_SCAN</td><td>H→D</td>
+      <td><code>[cmd, timeoutL, timeoutH, beepEn, minIntL, minIntH]</code></td>
+      <td>启动自动扫描(测距)；<code>timeout</code>(ms, 下限 200)=无标签空闲窗口自动停扫；<code>beepEn</code>=1 读到蜂鸣 100ms；<code>minInt</code>=节流间隔(0 取消)</td></tr>
+  <tr><td><code>0x0E</code> SCAN_STOP</td><td>H→D</td><td><code>[cmd]</code></td><td>停止自动扫描并停止当前盘点</td></tr>
+  <tr><td><code>0x0F</code> PUSH_EPC</td><td>D→H</td><td><code>[cmd, epcLen, epc..]</code></td><td>设备主动推送一帧盘点到的 EPC（FC=0x0B）</td></tr>
+</table>
+<div class="card"><div class="tt">实时推送与请求-响应并存</div>
+<p>原 <code>INVENTORY</code>(0x03) / <code>GET_TAGS</code>(0x0A) 保留不变，向后兼容。实时推送是叠加能力：任何盘点/扫描（含开锁器复用）每次读到 EPC 都会推一帧，主机可即时呈现。</p></div>
+
+<h2>4. 蜂鸣设计（短鸣 vs IR 闪烁不冲突）</h2>
+<p>蜂鸣器同一 GPIO 被 <u>光电 IR 遮挡周期闪烁</u> 复用。本轮新增一次性脉冲调度：</p>
+<ul>
+  <li><code>App_NewPeriph_BeepPulse(100)</code>：立即响，记录截止时刻，<code>App_IrBuzzer_Process</code> 在脉冲未到期阶段<b>让出控制权</b>，保证 100ms 短鸣完整呈现；到期自动静音。</li>
+  <li><b>防过度</b>：扫描内相邻标签动作间隔 &lt; <code>minInt</code> 时跳过蜂鸣（同标签高频重复不刺耳、不上报洪泛），但仍推送实时 EPC 事件。</li>
+</ul>
+
+<h2>5. 关键实现要点</h2>
+<pre><code>// App_UHF.c — 标签推送 + 扫描节流
+static void uhf_tag_push(const AppUHFTag_t *t) {
+    ... 入缓冲, s_scanLastTagMs = now ...
+    if (s_scanActive &amp;&amp; s_scanBeep) {                 // 防过度: 节流蜂鸣
+        if (iv==0 || 间隔>=minInt) { App_NewPeriph_BeepPulse(100); }
+    }
+    if (s_tagCb) s_tagCb(t);                          // 实时推送 EPC
+}
+
+// App_UHF.c — 自动扫描驱动 + 空闲超时停扫
+if (s_scanActive) {
+    if (s_scanIdleBaseMs==0) s_scanIdleBaseMs = now;
+    if (s_scanLastTagMs &gt; s_scanIdleBaseMs) s_scanIdleBaseMs = s_scanLastTagMs;
+    if (s_scanTimeoutMs &amp;&amp; (now - s_scanIdleBaseMs) &gt;= s_scanTimeoutMs) {
+        s_scanActive = 0; App_UHF_Stop();             // 超时自动停扫
+    } else if (!App_UHF_IsBusy()) {
+        App_UHF_Inventory();                          // 维持持续盘点
+    }
+}
+
+// App_Dispatch.c — 实时推送
+static void uhf_push_epc(const AppUHFTag_t *tag) {
+    r = { UHF_SUB_PUSH_EPC, tag->epcLen, epc.. };
+    Proto_TxFrame(PROTO_CH_NONE, FC_UHF_CTRL, r, len); // 主动上报(非请求响应)
+}</code></pre>
+
+<h2>6. 编译验证</h2>
+<div class="card ok"><div class="tt">✅ build_app.sh 通过</div>
+<p>grep error/warning 均 0 条；最终输出 <code>Application build done + firmware generated.</code> 固件正常生成。</p></div>
+
+<h2>7. 建议（后续可考虑）</h2>
+<ul>
+  <li>上位机侧：订阅 <code>PUSH_EPC</code> 帧即时刷新盘点列表；结合 RSSI（当前模块 0x21 无元数据，RSSI 暂恒 0）如需测距分级需改走带元数据盘点。</li>
+  <li>若希望将<b>悲剧距离定量</b>（非仅"读得到/读不到"），可后续扩展 GET_TAGS 携带 RSSI 或升级为多标签带元数据盘点指令。</li>
+  <li>开锁器当前复用同一 UHF 盘点；实时推送上线后，上位机可能同时收到开锁器业务推送，建议由上位机按业务/命令上下文过滤。</li>
+</ul>
+
+</div>
+<div class="foot">ZLR5401 · Agent/Round_048 · 变更日志见 BackupArea Changelog.log（Round_048）</div>
+</body>
+</html>

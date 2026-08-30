@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 电机测试指令 - 实施报告 (Round_006)</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+         max-width: 1000px; margin: 24px auto; padding: 0 20px; color: #222; line-height: 1.6; }
+  h1 { border-bottom: 3px solid #1a9e4b; padding-bottom: 8px; }
+  h2 { color: #1a9e4b; margin-top: 32px; border-left: 5px solid #1a9e4b; padding-left: 10px; }
+  code { background: #f0f4f8; padding: 1px 5px; border-radius: 3px; font-family: Consolas,monospace; }
+  pre { background: #1e1e2e; color: #d0d0d0; padding: 12px; border-radius: 6px; overflow: auto; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 14px; }
+  th { background: #eef3f8; }
+  .ok { background: #eafaf1; border-left: 4px solid #1a9e4b; padding: 8px 12px; margin: 12px 0; }
+  .note { background: #fffbe6; border-left: 4px solid #e6a700; padding: 8px 12px; margin: 12px 0; }
+</style>
+</head>
+<body>
+
+<h1>ZLR5401 电机测试指令 — 实施报告</h1>
+<p class="small" style="color:#666;font-size:13px;">Agent/Round_006 · 2026-08-25 · 已完成实施并经硬件验证</p>
+
+<h2>1. 结论</h2>
+<div class="ok">
+电机测试指令已完成：并入 <code>FC_MOTOR_CTRL (0x0A)</code> 作第 7 号子命令 <code>TEST(0x07)</code>。
+编译通过、合并固件成功烧录、经 USB HID 硬件实测通过（BUSY/完成/状态等均正确）。
+</div>
+
+<h2>2. 需求回溯</h2>
+<table>
+  <tr><th>需求</th><th>实现</th><th>状态</th></tr>
+  <tr><td>增加一条指令：电机测试</td><td>FC_MOTOR_CTRL 子命令 <code>0x07 TEST</code></td><td>✔ 已实现</td></tr>
+  <tr><td>最快速度正转→上触点→立即反转→下触点</td><td>最高速(2000 微步/s)+满转矩(100%)，行程开关触点驱动换向</td><td>✔ 已实现</td></tr>
+  <tr><td>首字节=测试次数，单次触发两触点为止</td><td>data=[cmd, passes]，1 次往返=上+下两触点</td><td>✔ 已实现</td></tr>
+  <tr><td>状态机管理，正在测试返回忙</td><td>RUN 态再下发回 <code>MOTOR_ERR_BUSY(3)</code></td><td>✔ 硬件实测通过</td></tr>
+  <tr><td>执行完自动停转置 DONE→IDLE</td><td>完成 N 次后 <code>App_Stepper_Stop()</code> → DONE → IDLE</td><td>✔ 硬件实测通过</td></tr>
+</table>
+
+<h2>3. 改动文件</h2>
+<table>
+  <tr><th>文件</th><th>改动</th></tr>
+  <tr><td>Application/inc/App_MotorTest.h（新建）</td><td>电机行程测试模块接口/状态机/超时与防抖常量</td></tr>
+  <tr><td>Application/src/App_MotorTest.c（新建）</td><td>行程测试状态机实现（极性无关、防抖、消重触、单程超时、电机故障保护）</td></tr>
+  <tr><td>Application/inc/App_CustomProtocol.h</td><td><code>MOTOR_CMD_TEST 0x07</code> + <code>MOTOR_ERR_BUSY 3</code> 宏与注释</td></tr>
+  <tr><td>Application/src/App_Dispatch.c</td><td>FC_MOTOR_CTRL 分发 <code>case MOTOR_CMD_TEST</code>，BUSY/PARAM/FAULT 映射</td></tr>
+  <tr><td>Application/src/main.c</td><td>8.10 <code>App_MotorTest_Init()</code>；主循环 <code>App_MotorTest_Process()</code></td></tr>
+  <tr><td>Application/CMakeLists.txt</td><td>追加 <code>src/App_MotorTest.c</code></td></tr>
+  <tr><td>Protocol/App_Protocol.html</td><td>TEST 子命令、错误码 3、代码引用同步</td></tr>
+</table>
+
+<h2>4. 协议定义</h2>
+<pre><code>// FC=0x0A 子命令 (新增)
+MOTOR_CMD_TEST   0x07   // data: [cmd, passes]  passes=往返次数(1~255)
+                        // 流程: 最高速正转→触点→立即反转→触点(完成1次)→重复passes次→停转
+                        // 进行中再下发: 回 MOTOR_ERR_BUSY(3)
+MOTOR_ERR_BUSY   3      // TEST 进行中</code></pre>
+<p>响应：<code>[0x07, err]</code>。可用 <code>MOTOR_CMD_QUERY(0x05)</code> 轮询状态（state 0=IDLE/1=RUN/2=FAULT）。</p>
+
+<h2>5. 状态机（App_MotorTest.c）</h2>
+<pre><code>IDLE ─START(passes)─► RUN ─(任一触点触发, 防抖20ms)─► 换向
+      RUN 每完成一次"反转行程" = 1 次往返
+      done ≥ passes ─► App_Stepper_Stop() ─► DONE ─(QUERY可读)─► IDLE
+      RUN  ─(电机FAULT / 单程10s超时)─► FAULT ─(Stop/重新Start)─► IDLE</code></pre>
+<ul>
+  <li><b>极性无关</b>：任一行程开关触发即换向，自校准，不依赖方向位物理正负。</li>
+  <li><b>防抖</b>：触点需连续保持 20ms 才判定有效。</li>
+  <li><b>消重触</b>：两触点都释放后才允许下一次触发，避免在同一触点反复计数。</li>
+  <li><b>保护</b>：单程超时 10s → FAULT；DRV8434S 电机故障 → 立即停转。</li>
+</ul>
+
+<h2>6. 编译与烧录</h2>
+<ul>
+  <li><code>cmake --build Build</code>：通过。新增 <code>App_MotorTest.c</code> 无警告（仅既有 <code>EP_TX_VALID</code> 冗余宏警告保留）。</li>
+  <li><code>./gen_firmware.sh all</code> → 合并固件 <code>ZLR5401_202608252248.hex</code>。</li>
+  <li><code>./flash_all.sh</code>：Cortex-M4 识别，51200 字节烧录+校验+复位成功。</li>
+</ul>
+<p class="note">烧录过程中曾遇 J-Link "Cannot connect to the probe"（探针 DLL 层连接失败，脚本未校验退出码而误报成功）；重新插拔探针后连接恢复，重试烧录成功。</p>
+
+<h2>7. 硬件验证（USB HID）</h2>
+<div class="ok">
+设备枚举 <code>0x5377:0x5378 SwCcrd / SW COMPOSITE</code> 正常。
+经 <code>/private/tmp/motor_test.py</code> / <code>motor_busy.py</code> 实测：
+<pre>START N=1            -> [0x07, err=0]   启动成功
+QUERY                -> state=1 (RUN), fault=0x00
+START(运行中再次下发) -> [0x07, err=3]   MOTOR_ERR_BUSY ✔
+电机触点往返 N 次后     -> 自动停转, state 回到 0 (IDLE), fault=0x00
+再次 START           -> err=0   ⚙可再次启动</pre>
+电机按预期高速正转→行程开关触发→立即反转→触发另一触点，完成往返后停转，未误报故障。
+</div>
+
+<h2>8. 追记：BUSY 验证说明</h2>
+<p>首次测试脚本在连续两次下发 START 间未加延时，HID 帧缓冲竞争导致第二次读回旧响应而误判"第二次 start 返回 OK"。
+经 <code>motor_busy.py</code>（下发间加延时 + 打印原始帧）复核，运行中再下发实际返回 <code>[0x07, 0x03]</code>=BUSY，固件行为正确，非缺陷。</p>
+
+<h2>9. 遗留 / 建议</h2>
+<ul>
+  <li>单程超时阈值 10s 为默认值，可依机械行程长度调整（<code>MT_TEST_TIMEOUT_MS</code>）。</li>
+  <li>防抖时长 20ms（<code>MT_DEBOUNCE_MS</code>）经验值，实机抖动噪声小时可下调。</li>
+  <li>未触碰看门狗（<code>USE_IWDG=0</code> 保持）。</li>
+</ul>
+
+</body>
+</html>

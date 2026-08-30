@@ -2,6 +2,7 @@
 #include "App_Stepper.h"
 #include "App_NewPeriph_HL.h"
 #include "App_SysTick_HL.h"
+#include "App_RgbLed_Pattern.h"
 
 /* =====================================================================
  * 电机行程测试状态机.
@@ -119,6 +120,12 @@ void App_MotorTest_GetProgress(uint8_t *total, uint8_t *done)
 void App_MotorTest_Process(void)
 {
     uint32_t now = SysTickHl_GetMs();
+
+    /* RGB 灯语: 测试运行 -> 黄快闪; 其余态撤销 (错误/完成交主循环仲裁) */
+    if (s_state == MT_STATE_RUN)
+        App_RgbLedPat_Set(RGBSRC_MOTORTEST, RGBPAT_TEST_FAST);
+    else
+        App_RgbLedPat_Clear(RGBSRC_MOTORTEST);
 
     if (s_state == MT_STATE_RUN)
     {

@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_049 — UHF 多标签盘点实施报告</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1040px; margin:0 auto; padding:24px 28px 60px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:38px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13.5px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:13px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:13px; line-height:1.5;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .card .tt{font-weight:600; color:var(--navy);}
+  .ok{background:#f2faf6; border-left:5px solid var(--green);}
+  ul,ol{font-size:14.5px;}
+  li{margin:4px 0;}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+        color:var(--muted); font-size:12px; text-align:center;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>ZLR5401 UHF 多标签盘点 · 实施报告</h1>
+  <div class="sub">Agent/Round_049 &nbsp;·&nbsp; 2026-08-26 &nbsp;·&nbsp; 依据 EX10 协议: 0x22 同步盘存(带超时)+0x29 取缓冲 &nbsp;·&nbsp; 已编译验证</div>
+</div>
+
+<div class="wrap">
+
+<h2>1. 结论小结</h2>
+<p>依据厂商协议《EX10系列模块通信协议-2026-01-19》核实并落地 <b>多标签同步盘点</b>，替代此前的单标签 0x21 实现，编译通过（0 error / 0 warning）。</p>
+<ul>
+  <li><b>一次请求拿全场</b>：<code>INVENTORY</code> 由单标签 0x21 改为 <b>0x22 同步盘存</b>（在内部超时窗口内盘存场内所有标签）→ 状态机转入 <code>GETBUF</code> → <b>0x29 取回缓冲</b>，上位机<b>仅一帧交互即返回场内全部标签</b>，状态机自动管理。</li>
+  <li><b>超时由 API 提供</b>：新增 <code>App_UHF_InventoryTimeout(ms)</code> 与复用协议的 <code>SET_SCAN.timeout</code>，直接作为 0x22 的 Timeout 域。</li>
+  <li><b>RSSI 真值</b>：0x29 元数据含 RSSI（有符号 dBm），顺带弥补之前 RSSI 恒 0 的缺口，测距可定量。</li>
+</ul>
+
+<h2>2. 需求映射</h2>
+<table>
+  <tr><th>需求 / 澄清</th><th>实现</th><th>代码</th></tr>
+  <tr><td>仅一帧交互就返回场内标签</td>
+      <td>内部状态机：INVENTORY(发 0x22) → 响应→GETBUF(发 0x29) → 取回全部标签→READY；标签逐条实时推 PUSH_EPC + 入 TagTake 缓冲</td>
+      <td><code>App_UHF.c</code> uhf_inventory_start / decode 0x22/0x29</td></tr>
+  <tr><td>状态机管理好</td>
+      <td>新增 <code>APP_UHF_GETBUF</code> 态，纳入 Stop/IsBusy/空闲超时；0x22→0x29 由状态机驱动</td>
+      <td><code>App_UHF.h</code> / <code>App_UHF.c</code></td></tr>
+  <tr><td>超时时间 API 提供</td>
+      <td><code>App_UHF_InventoryTimeout(ms)</code>；<code>SET_SCAN.timeout</code> 复用为 0x22 Timeout</td>
+      <td><code>App_UHF.c</code></td></tr>
+  <tr><td>自动读取场内 EPC / 蜂鸣 / 防过度</td>
+      <td>沿用 SET_SCAN 驱动 0x22 流程；读到蜂鸣 100ms 节流 + 空闲超时停扫</td>
+      <td><code>App_UHF.c</code> Process</td></tr>
+</table>
+
+<h2>3. 协议核实 (EX10 文档 §5.3 / §5.4)</h2>
+<table>
+  <tr><th>指令</th><th>发送 Data</th><th>响应 Data</th></tr>
+  <tr><td>0x22 同步盘存</td>
+      <td><code>[Option(1), SearchFlags(2), Timeout(2)]</code> → 本实现发送 <code>00 00 00 TT HH</code></td>
+      <td><code>[status(2), Option(1), SearchFlags(2), TagsFound(1|4)]</code></td></tr>
+  <tr><td>0x29 取缓冲</td>
+      <td><code>[MetadataFlags(2), ReadOption(1)]</code> → 本实现 <code>00 17 00</code>（含 RSSI）</td>
+      <td><code>[status(2), MF(2), Option(1), TagCount(1), 每标签块…]</code></td></tr>
+</table>
+<p>0x29 每标签块（MetadataFlags=0x0017）：<code>ReadCount(1) RSSI(1) AntID(1) Timestamp(4) EPCLen(2) PC(2) EPCID(N) TagCRC(2)</code>。<code>TagsFound&gt;255</code> 时该字段为 4 字节（SearchFlags.BIT4=1）。本实现按 ≤255 单字节处理（场内标签数远小于此，如需可扩展）。</p>
+
+<h2>4. 状态机</h2>
+<pre><code>READY --Inventory(0x22)--> INVENTORY ──0x22响应(tagsFound>0)--> GETBUF ──0x29响应--> READY
+                              └──tagsFound==0 / 超时──────────────────────────► READY
+GETBUF 同列为忙态: Stop/空闲超时(1500ms) 均可中断回 READY</code></pre>
+<p>新增 <code>APP_UHF_GETBUF = 7</code>，纳入 <code>App_UHF_IsBusy()</code>、<code>App_UHF_Stop()</code> 与忙态超时保护，状态机完整闭环。</p>
+
+<h2>5. 实时推送 (PUSH_EPC) 带 RSSI</h2>
+<pre><code>data = [UHF_SUB_PUSH_EPC(0x0F), epcLen, rssi(有符号dBm), epc..]</code></pre>
+<p>每读到一帧有效 EPC（0x29 解析出）即经 USB 主动推送，主机实时收到标签及其信号强度。</p>
+
+<h2>6. 编译验证</h2>
+<div class="card ok"><div class="tt">✅ build_app.sh 通过</div>
+<p>grep error/warning 均 0；输出 <code>Application build done + firmware generated.</code>。
+注意：<code>App_UHF_Inventory()</code>（单参版本）现内部转到 0x22，默认 1000ms；开锁器复用同一盘点接口，不影响其既有流程。</p></div>
+
+<h2>7. 待实测提示（骨架级风险）</h2>
+<ul>
+  <li>0x22 / 0x29 帧格式依《EX10系列模块通信协议-2026-01-19》编写，尚未在真模块上联调确认；尤其 0x29 元数据块偏移、TagCount 字节位置宜用文档 §5.4 实例核对。</li>
+  <li>箱内若 >255 标签需处理 4 字节 TagsFound（当前按 1 字节，单天线/测距场景基本不会触达）。</li>
+  <li>建议上位机先验证一帧 INVENTORY 后逐个 PUSH_EPC 到达即可。</li>
+</ul>
+
+</div>
+<div class="foot">ZLR5401 · Agent/Round_049 · 变更日志见 BackupArea Changelog.log（Round_049）</div>
+</body>
+</html>

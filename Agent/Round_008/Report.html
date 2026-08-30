@@ -3,125 +3,136 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Round_008 — 业务逻辑校对报告</title>
+<title>ZLR5401 协议指令全集测试报告 — Round_008</title>
 <style>
-  :root{
-    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
-    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  :root {
+    --bg:#0f1115; --panel:#161a22; --border:#262c38; --text:#e6e9ef;
+    --muted:#8b94a3; --pass:#3fb950; --fail:#f85149; --incon:#d29922;
+    --skip:#6e7681; --accent:#58a6ff;
   }
-  *{box-sizing:border-box;}
-  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
-       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
-  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
-          padding:26px 28px; border-bottom:4px solid var(--sky);}
-  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
-  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
-  .wrap{max-width:1040px; margin:0 auto; padding:24px 28px 60px;}
-  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
-     margin:38px 0 14px; font-size:20px;}
-  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
-  p{font-size:14.5px;}
-  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
-        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
-  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13.5px;}
-  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
-  tr:nth-child(even) td{background:#f6fafe;}
-  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
-       font-family:Consolas,Menlo,monospace; font-size:13px;}
-  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
-      overflow:auto; font-size:13px; line-height:1.5;}
-  pre code{background:none; color:inherit; padding:0;}
-  .card{background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:12px 0;}
-  .card .tt{font-weight:600; color:var(--navy);}
-  .ok{background:#f2faf6; border-left:5px solid var(--green);}
-  .warn{background:#fffbe6; border-left:5px solid var(--gold);}
-  .bad{background:#fdf0ef; border-left:5px solid var(--red);}
-  .tag{display:inline-block; padding:1px 8px; border-radius:10px; font-size:12px;
-       color:#fff; background:var(--blue);}
-  .tag.g{background:var(--green);}
-  .tag.y{background:var(--gold);}
-  .tag.r{background:var(--red);}
-  ul,ol{font-size:14.5px;}
-  li{margin:4px 0;}
-  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
-        color:var(--muted); font-size:12px; text-align:center;}
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--text); line-height:1.6; }
+  .wrap { max-width:1100px; margin:0 auto; padding:24px; }
+  h1 { font-size:24px; border-bottom:2px solid var(--border); padding-bottom:12px; }
+  h2 { font-size:19px; margin-top:36px; color:var(--accent); border-left:4px solid var(--accent); padding-left:10px; }
+  h3 { font-size:15px; margin-top:22px; }
+  .meta { color:var(--muted); font-size:13px; }
+  .cards { display:flex; gap:12px; flex-wrap:wrap; margin:18px 0; }
+  .card { background:var(--panel); border:1px solid var(--border); border-radius:10px;
+          padding:16px 22px; min-width:120px; text-align:center; }
+  .card .num { font-size:30px; font-weight:700; }
+  .card .lbl { color:var(--muted); font-size:12px; margin-top:4px; }
+  .pass .num{color:var(--pass);} .fail .num{color:var(--fail);}
+  .incon .num{color:var(--incon);} .skip .num{color:var(--skip);} .total .num{color:var(--accent);}
+  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
+  th,td { border:1px solid var(--border); padding:6px 10px; text-align:left; }
+  th { background:var(--panel); color:var(--muted); font-weight:600; }
+  td.v { white-space:nowrap; font-weight:600; }
+  .b-pass{color:var(--pass);} .b-fail{color:var(--fail);}
+  .b-incon{color:var(--incon);} .b-skip{color:var(--skip);}
+  .fix { background:var(--panel); border:1px solid var(--accent); border-radius:10px; padding:14px 18px; margin:12px 0; }
+  .code { font-family:"SF Mono",Menlo,monospace; background:#0b0e13; border:1px solid var(--border);
+          padding:2px 6px; border-radius:4px; font-size:12px; color:#e6edf3; }
+  .warn { color:var(--incon); font-weight:600; }
+  code { font-family:"SF Mono",Menlo,monospace; font-size:12px; }
+  ul { margin:8px 0; padding-left:20px; }
+  li { margin:4px 0; }
+  .tail { color:var(--muted); font-size:12px; margin-top:40px; border-top:1px solid var(--border); padding-top:12px; }
 </style>
 </head>
 <body>
-<div class="topbar">
-  <h1>ZLR5401 开锁器业务逻辑校对 · 结题报告</h1>
-  <div class="sub">Agent/Round_008 &nbsp;·&nbsp; 2026-08-26 &nbsp;·&nbsp; 依据《约束/Link.txt + Plan.html》校对，只校对不改码 &nbsp;·&nbsp; 已生成 Plan + 本报告</div>
-</div>
-
 <div class="wrap">
 
-<h2>1. 结论小结</h2>
-<p>当前工程 <b>主流程已按《约束/Link.txt》落地</b>：上位机下发「硬标签 EPC 清单 + 软标数」→
-UHF 比对 → 匹配升起绿灯 / 不匹配红灯不升、结果回传 → m==n 进软标 → 次数尽结账完成。
-状态机覆盖完整、结构清晰，未发现阻断交付的缺陷。</p>
+<h1>ZLR5401 协议指令全集测试报告</h1>
+<div class="meta">
+  轮次：Round_008 ｜ 生成：2026-08-27 ｜ 测试架构：Python + hidapi USB HID（VID/PID 0x5377:0x5378）
+  <br>测试范围：除 AM(0x0C) 外全部协议指令帧/参数 ｜ 闭环验证：命令 → 回读/事件/状态迁移 ｜ 固件 hex <span class="code">ZLR5401_202608270119.hex</span>
+</div>
 
-<p>校对发现 <b>1 个 P0、4 个 P1、6 个 P2</b> 可增量项，均为"语义/增强"性质，不影响已实现功能，
-也未自动改动任何代码。</p>
+<h2>1. 结论摘要</h2>
+<div class="cards">
+  <div class="card total"><div class="num">68</div><div class="lbl">用例总数</div></div>
+  <div class="card pass"><div class="num">59</div><div class="lbl">PASS</div></div>
+  <div class="card fail"><div class="num">0</div><div class="lbl">FAIL</div></div>
+  <div class="card incon"><div class="num">5</div><div class="lbl">INCONCLUSIVE</div></div>
+  <div class="card skip"><div class="num">4</div><div class="lbl">SKIP</div></div>
+</div>
+<p>
+  全覆盖跑通：<b>0 FAIL</b>。发现并<b>修复 1 处固件缺陷</b>（电机 CLEAR 无法退出行程测试故障态），修复后全量复测无回归。
+  5 处 INCONCLUSIVE 均为「固件行为 ≠ 文档」的协议文档滞后点，按约定不判固件缺陷，留人工裁定改固件或改文档（详见 §5）。
+</p>
 
-<h2>2. 约束逐条符合情况</h2>
+<h2>2. 测试架构与分层</h2>
+<p>用例按依赖分层，链路否定用例与破坏性用例单独隔离执行，避免污染顺序用例的稳定连接。</p>
 <table>
-  <tr><th>约束</th><th>判定</th><th>一句话依据</th></tr>
-  <tr><td>R1 上位机下发 EPC 清单</td><td><span class="tag g">符合</span></td><td>FC_LOCKER_CTRL/CONFIGURE+ADD</td></tr>
-  <tr><td>R2 接收硬 EPC + 软标数</td><td><span class="tag g">符合</span></td><td>App_Locker_Configure/AddTag，容量 16</td></tr>
-  <tr><td>R3 光电触发</td><td><span class="tag y">部分</span></td><td>UHF 轮询代替，无真光电硬件联动</td></tr>
-  <tr><td>R4 比对/升降/回传</td><td><span class="tag g">符合</span></td><td>匹配升+绿上报；不匹配红闪不升+上报</td></tr>
-  <tr><td>R5 2min + 30s/m</td><td><span class="tag y">部分</span></td><td>公式对，窗口重置语义偏差（P1-2）</td></tr>
-  <tr><td>R6 m==n 进软标</td><td><span class="tag g">符合</span></td><td>hardMatched>=hardCount</td></tr>
-  <tr><td>R7 软标解码消耗</td><td><span class="tag y">部分</span></td><td>手动 0x06，未与 AM 事件自动联动（P2-1）</td></tr>
-  <tr><td>R8 次数尽结账完成</td><td><span class="tag g">符合</span></td><td>softUsed>=softCount→DONE→5s→IDLE</td></tr>
+  <tr><th>层</th><th>功能</th><th>用例</th><th>策略</th></tr>
+  <tr><td>A</td><td>协议自检</td><td>A1–A3(7)</td><td>帧构建/CRC/地址/响应函数自测试（不依赖设备）</td></tr>
+  <tr><td>B</td><td>链路否定</td><td>B1–B8</td><td>坏CRC/保留位/长度/异址 → 设备静默；广播响应</td></tr>
+  <tr><td>C–J</td><td>功能命令</td><td>见 §3</td><td>写命令后回读/QUERY/事件/状态迁移闭环验证</td></tr>
+  <tr><td>E/F</td><td>破坏性</td><td>RESET / 进Boot</td><td>独立连接、`--destructive` / `--boot-test` 门控</td></tr>
+</table>
+<p class="meta">注：本次用户批准电机行程测试门控与 RESET，但<b>未批准 ENTER_BOOT/EXIT_BOOT</b>（F1/F2），故破坏性 Boot 往返未执行。</p>
+
+<h2>3. 功能命令覆盖矩阵</h2>
+<table>
+  <tr><th>FC</th><th>命令</th><th>用例</th><th>结果</th></tr>
+  <tr><td>0x01</td><td>HANDSHAKE（UID↔uidHash）</td><td>C1–C3</td><td class="v b-pass">PASS</td></tr>
+  <tr><td>0x07</td><td>DEVICE_INFO</td><td>D1–D2</td><td class="v b-pass">PASS</td></tr>
+  <tr><td>0x0A</td><td>MOTOR MOVE/SPEED/TORQUE/QUERY/CLEAR/TEST/HEALTH/STATS</td><td>G1–G14</td><td class="v b-pass">10 PASS·<span class="b-incon">2 INCON</span>·2 SKIP</td></tr>
+  <tr><td>0x0B</td><td>UHF OPEN/SET_GET_CONFIG/INVENTORY/READ/WRITE/GET_TAGS/STATUS/CHECK_ANT/SCAN/DUMP/STOP/CLOSE</td><td>H1–H16</td><td class="v b-pass">14 PASS·<span class="b-incon">2 INCON</span></td></tr>
+  <tr><td>0x0D</td><td>LOCKER CONFIGURE/ADD/QUERY/START/GET_EVENT/CONSUME_SOFT/CANCEL</td><td>I1–I12</td><td class="v b-pass">11 PASS·<span class="b-incon">1 INCON</span>·1 SKIP</td></tr>
+  <tr><td>0x0E</td><td>RGB 控制与回读</td><td>J1–J4</td><td class="v b-pass">PASS</td></tr>
+  <tr><td>0x08/0x09</td><td>RESET / ENTER+EXIT_BOOT</td><td>E1–E2, F1–F2</td><td class="v b-pass">E2 PASS·E1/F 门控</td></tr>
 </table>
 
-<h2>3. 状态机审计结论</h2>
+<h2>4. 缺陷修复日志（闭环：发现→修码→备份→烧录→复验）</h2>
+<div class="fix">
+  <b>#1 电机 CLEAR 无法退出行程测试故障/忙态 —— 已修复</b>
+  <ul>
+    <li><b>现象</b>：TEST 出现故障或卡在 BUSY 后，发 <span class="code">MOTOR_CLEAR(0x06)</span> 返回 OK，但 QUERY 仍恒定上报 <span class="code">state=3 (FAULT)</span>，无法复位。</li>
+    <li><b>根因</b>：QUERY 优先上报行程测试态（[App_Dispatch.c:154](Application/src/App_Dispatch.c#L154)），而 <span class="code">MOTOR_CMD_CLEAR</span>（[App_Dispatch.c:178](Application/src/App_Dispatch.c#L178)）只调 <span class="code">App_Stepper_ClearFault()</span> 清步进故障，<b>未调 <span class="code">App_MotorTest_Stop()</span></b> 复位行程测试态机 → 设备卡死上报 FAULT。</li>
+    <li><b>修复</b>：CLEAR 分支补调 <span class="code">App_MotorTest_Stop()</span>，与 STOP 一致地复位测试态。</li>
+    <li><b>备份</b>：<span class="code">Round_057_20260827_011900</span>｜<b>编译</b>：OK（ZLR5401_202608270119.hex）｜<b>烧录</b>：J-Link 0x08006000</li>
+    <li><b>复验</b>：TEST→FAULT(3) 后 CLEAR → <b>state=0 fault=0</b>；STOP → state=0。全量复测 <b>0 FAIL</b>，无回归。</li>
+  </ul>
+</div>
+<div class="fix">
+  <b>#2（非缺陷，物理前提）行程测试 TEST 启动即 FAULT diag1=3</b>
+  <ul>
+    <li>TEST 启动判 <span class="code">MT_FR_WRONG</span>（方向极性错触）实为<b>正确保护</b>：当下机构停驻在上行程警戒线（KEY_UP 按下），正程启动会被 <span class="code">start_leg(0)</span> 拦截以防越过警戒线。</li>
+    <li><b>处置</b>：需人工将机构移离行程端点居中后再跑 TEST 往返（G12）。非固件缺陷。</li>
+  </ul>
+</div>
+
+<h2>5. 协议文档滞后点（INCONCLUSIVE，待人工裁定）</h2>
+<table>
+  <tr><th>用例</th><th>文档描述</th><th>固件实测行为</th><th>建议</th></tr>
+  <tr><td>G5</td><td>SPEED 范围 1..2000</td><td>越界被 <span class="code">App_Stepper_SetSpeedHz</span> 夹取到 MIN/MAX，返回 err=0</td><td class="warn">改文档（固件为安全夹取，非缺陷）</td></tr>
+  <tr><td>G6b</td><td>TORQUE 范围 6..100</td><td>越界被夹取到 6..100，返回 err=0</td><td class="warn">改文档</td></tr>
+  <tr><td>I3b</td><td>ADD EPC ≤ 12B</td><td>ADD 14B 被 <span class="code">App_Locker_AddTag</span> 静默截断为 12B，返回 OK</td><td class="warn">改文档（固件截断合理）</td></tr>
+  <tr><td>H6/H8</td><td>INVENTORY/写后读</td><td>贴片在场 → H6 报 OK count=1；H8 写后立即读返回 BUSY（串行化）</td><td>物理前提/串行化，非缺陷</td></tr>
+</table>
+
+<h2>6. 建议（追加）</h2>
 <ul>
-  <li>业务状态 {IDLE, CONFIGURED, SOFT_DECODE, DONE, FAULT} 覆盖约束主流程，迁移动线清晰。</li>
-  <li>死状态 <code>LOCKER_UNLOCK_HOLD</code>（App_Locker.h:41）定义但<b>恒未使用</b>——当前用 CONFIGURED 承载"升起保持"，可清理或按设计并入（P2-5）。</li>
-  <li>UHF 链路断 → 业务 FAULT 联动正确；升降走 Stepper（TIM4 硬件 STEP + S 型加减速 + DC 磁制动），健康监控已覆盖堵转/限时。</li>
-  <li>软标阶段无超时边界；磁块升起后无反作弊复核——两处为安全/语义偏差点（P1-1、P1-4）。</li>
+  <li><b>协议文档更新</b>：将 G5/G6b SPEED/TORQUE 越界行为、I3b ADD 超长截断行为补充进 <span class="code">Protocol/App_Protocol.html</span>，消除「固件≠文档」歧义。</li>
+  <li><b>CLEAR 语义统一</b>：修复后 CLEAR 已能在任意态恢复，建议文档明确 CLEAR 与 STOP 都可复位。</li>
+  <li><b>Boot 往返</b>：如需验证进/出 Boot（F1/F2），可另行批准 <span class="code">--boot-test</span> 单独执行。</li>
 </ul>
 
-<h2>4. 主要发现（摘录）</h2>
-<div class="card bad"><span class="tt">P0-1 清单有效期 / 关店清空缺失</span>
-  约束隐含"结账窗口内放好标签"，但无清单到期强制回 IDLE 或清空策略；无人值守时清单常驻。
-  对应 Plan §6.1#9 / §6.3#3 的离线/过期策略。需客户确认离线语义后补。</div>
-<div class="card warn"><span class="tt">P1-4 反作弊复核缺失</span>
-  Plan §3.2 明确的重点：磁块升起后若"当前 EPC 被摘换成非清单"，应立即下降 + 报警。
-  当前升起后不再复核。这是反作弊有效性的核心缺口。</div>
-<div class="card warn"><span class="tt">P1-2 R5 窗口语义</span>
-  每次匹配都整体重置 2min+30s 窗口 → 多标签时总时长超约束意图（"预留总时长" vs "每次顺延"）。</div>
-<div class="card warn"><span class="tt">P1-1 软标阶段无超时</span>
-  进入 SOFT_DECODE 已清空窗口，若上位机不再消耗将永久停留。</div>
+<h2>7. 附：运行命令</h2>
+<pre class="code" style="padding:12px; line-height:1.9;">
+# 全量非破坏（实物门控关闭，物理行程/磁吸用例 SKIP）
+python3 run_all.py --no-motor-test --no-locker-motion --out report_verify   # 68 例：59 PASS / 0 FAIL
 
-<h2>5. 对照《Plan.html》扩展建议</h2>
-<table>
-  <tr><th>建议</th><th>现状</th></tr>
-  <tr><td>看门狗</td><td>USE_IWDG=0（按指示暂启用），喂狗调用保留</td></tr>
-  <tr><td>协议 CRC</td><td>已实现</td></tr>
-  <tr><td>电机软启停优化</td><td>超预期（TIM4 + S 曲线 + DC 制动）</td></tr>
-  <tr><td>离线/清单过期</td><td><span class="tag r">缺失</span> P0-1</td></tr>
-  <tr><td>反作弊</td><td><span class="tag r">缺失</span> P1-4</td></tr>
-  <tr><td>事件日志持久化</td><td>部分（环形缓冲无断电持久）</td></tr>
-  <tr><td>RFID 升降态差异化轮询</td><td>未差异化（恒频）</td></tr>
-</table>
+# 破坏性复位（独立连接，可另跑）：RESET 需单独 --destructive
+python3 run_all.py --destructive-only --destructive --out report_reset
+</pre>
 
-<h2>6. 已做 / 未做</h2>
-<div class="card ok"><span class="tt">已做</span>：通读 Locker/UHF/AM/Stepper/Dispatch/main，逐条映射约束，
-构建状态机审计，输出 <code>Plan.html</code>（含 P0/P1/P2 整改计划 + 验证方案）与<b>本报告</b>。</div>
-<div class="card warn"><span class="tt">未做</span>：未改任何功能代码（本轮仅校对，约束/需求未要求改码）；
-整改项列为计划，待用户查看后再执行。烧录/硬件实测未触发软件改动，故未重测（无码可烧）。</div>
-
-<h2>7. 建议下一步</h2>
-<ol>
-  <li>审阅 <code>Plan.html</code>，确认 P0/P1 取舍（尤其 P0-1 离线语义、P1-4 反作弊、P1-2 窗口语义需与客户/方案对齐）。</li>
-  <li>若确认执行整改：按 P1 → P2 顺序逐一落地（P0 需先定需求语义），完成后回归 R1–R8 行程 + 实机联调。</li>
-  <li>软标自动化（P2-1）与反作弊（P1-4）为业务收益最高、建议优先。</li>
-</ol>
-
-<div class="foot">ZLR5401 · Agent/Round_008 · 业务逻辑校对结题 · 2026-08-26 · 只校对不改码 · 待用户审阅 Plan</div>
+<div class="tail">
+  报告由 Claude 于 Round_008 闭环验证后生成。测试脚本：Agent/Round_008/test/ ｜ 计划文档：Agent/Round_008/Plan.html
+</div>
 </div>
 </body>
 </html>
