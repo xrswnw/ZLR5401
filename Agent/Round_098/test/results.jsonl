@@ -3394,3 +3394,288 @@
 {"phase": "P5", "id": "AM6d", "name": "GET_WAVE_PAGE 越界页", "verdict": "PASS", "msg": "resp=090901 (按实现记录)"}
 {"phase": "P5", "id": "AM3a", "name": "复位后 App 就绪", "verdict": "PASS", "msg": "9.1s"}
 {"phase": "P5", "id": "AM3b", "name": "复位后 AM 配置持久", "verdict": "PASS", "msg": "读回一致"}
+{"phase": "P6-Locker", "id": "L1", "name": "QUERY 空闲态", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "L2", "name": "GET_EVENT 空队列 -> NO_EVENT(3)", "verdict": "PASS", "msg": "d=0703"}
+{"phase": "P6-Locker", "id": "L3a", "name": "CONFIGURE hardCount=17 -> PARAM", "verdict": "PASS", "msg": "d=0102"}
+{"phase": "P6-Locker", "id": "L3b", "name": "CONFIGURE soft=2 -> OK, state=CONFIGURED(1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L4", "name": "CONFIGURE 忙时 -> BUSY(1)", "verdict": "PASS", "msg": "d=0101"}
+{"phase": "P6-Locker", "id": "L5a", "name": "ADD 短帧 (epcLen=8, 实2B) -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L5b", "name": "ADD epcLen=13 超上限 -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L6", "name": "ADD 合法 [epcLen=12]+12B -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L7", "name": "CANCEL (未升起直回 IDLE)", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "L8", "name": "START 空任务 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "L9a-1", "name": "假EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9a", "name": "START 假EPC任务 -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9b", "name": "START 后 ADD -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9c", "name": "重复 START -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9d", "name": "非软标态 CONSUME_SOFT -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9e", "name": "CANCEL 收尾 -> IDLE", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "B0", "name": "真EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B1", "name": "START 真EPC任务 -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B2", "name": "CONFIGURED(1)->匹配->SOFT(3)", "verdict": "PASS", "msg": "轨迹=[1, 3]"}
+{"phase": "P6-Locker", "id": "B3", "name": "事件 MATCH_OK(0)+HARD_DONE(2), EPC 回传正确", "verdict": "PASS", "msg": "codes=[0, 2] EPC✓"}
+{"phase": "P6-Locker", "id": "B3m", "name": "匹配后电机升起 (state=1 运行或已到顶)", "verdict": "PASS", "msg": "motor=1"}
+{"phase": "P6-Locker", "id": "B4a", "name": "CONSUME_SOFT #1 -> SOFT_USED", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B4b", "name": "CONSUME_SOFT #2 -> DONE(4)", "verdict": "PASS", "msg": "err=0 state=4"}
+{"phase": "P6-Locker", "id": "B5", "name": "DONE(4)->LOWERING(6)->IDLE(0) 回降闭环", "verdict": "PASS", "msg": "轨迹=[4, 6, 0]"}
+{"phase": "P6-Locker", "id": "B6", "name": "事件序 SOFT_USED×2 + DONE(5)", "verdict": "PASS", "msg": "codes=[3, 3, 5]"}
+{"phase": "P6-Locker", "id": "B6m", "name": "回降后电机 IDLE", "verdict": "PASS", "msg": "motor=0"}
+{"phase": "P6-Locker", "id": "B7", "name": "MISMATCH 事件 (外来EPC=真标签, 不升起)", "verdict": "PASS", "msg": "EPC=33553463a4000158eb7e7507"}
+{"phase": "P6-Locker", "id": "B8", "name": "失配后仍 CONFIGURED(1) 不动磁块", "verdict": "PASS", "msg": "state=1 motor=0"}
+{"phase": "P6-Locker", "id": "B9", "name": "MISMATCH 后 CANCEL -> IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "C1", "name": "GET_PROGRESS 空闲统一多标签布局 phase=0 (holdMs 3 字节全零)", "verdict": "PASS", "msg": "d=0900000000000000000000"}
+{"phase": "P6-Locker", "id": "C2a", "name": "0x08 废弃: 短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2b", "name": "0x08 废弃: 原完整帧布局亦 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C3", "name": "0x0A 单标 (PC4 触发): err=0 终帧 + 收尾电机 IDLE", "verdict": "PASS", "msg": "end=2 conf=0/1 rise≈0 motor=0"}
+{"phase": "P6-Locker", "id": "C3-ir", "name": "PC4 红外门当前读高 (无人工放标) — 深路径按 IR=触发分支验证", "verdict": "OBS", "msg": "fin=0a0002000001000000000000e204"}
+{"phase": "P6-Locker", "id": "C4a", "name": "流程中 GET_PROGRESS 有相位 (IR 态依从)", "verdict": "PASS", "msg": "phase=2"}
+{"phase": "P6-Locker", "id": "C4b", "name": "流程中 CANCEL -> 立即 OK", "verdict": "PASS", "msg": "d=0400"}
+{"phase": "P6-Locker", "id": "C4c", "name": "打断终帧 err=0 endReason=6(ABORTED), 电机安全回 IDLE", "verdict": "PASS", "msg": "fin=0a0006000001000000000000fe02 motor=0"}
+{"phase": "P6-Locker", "id": "C4d", "name": "打断后 Locker 回 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "D1a", "name": "短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1b", "name": "epcCnt=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1c", "name": "epcCnt=5 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1d", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1e", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1f", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D4a", "name": "短窗(<3s确认门限) -> PARTIAL_TIMEOUT(2), 零确认零升降", "verdict": "PASS", "msg": "fin=0a00020000010000000000000208 pushes=['0f0001d00700', '0d02000001d007'] 电机=0"}
+{"phase": "P6-Locker", "id": "D3a", "name": "流程中 ADD -> BUSY", "verdict": "PASS", "msg": "d=0201"}
+{"phase": "P6-Locker", "id": "D3b", "name": "流程中 GET_PROGRESS 多标签布局 (phase 1/2, total=1)", "verdict": "PASS", "msg": "d=0900010000000100000000"}
+{"phase": "P6-Locker", "id": "D4", "name": "长窗全流程终帧 err=0 end=1(ALL_OK) 确认/位图/升降步数齐", "verdict": "PASS", "msg": "end=1 bmp=1 conf=1/1 rise=4321 pushes=[15, 11, 13] 电机=0"}
+{"phase": "P6-Locker", "id": "D5", "name": "确认推送 0x0B 含真EPC (判据耗时≈3s门限)", "verdict": "PASS", "msg": "EPC✓ 判据耗时✓"}
+{"phase": "P6-Locker", "id": "D6", "name": "流程后 Locker IDLE, 电机 IDLE", "verdict": "PASS", "msg": "state=0 motor=0"}
+{"phase": "P6-Locker", "id": "L1", "name": "QUERY 空闲态", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "L2", "name": "GET_EVENT 空队列 -> NO_EVENT(3)", "verdict": "PASS", "msg": "d=0703"}
+{"phase": "P6-Locker", "id": "L3a", "name": "CONFIGURE hardCount=17 -> PARAM", "verdict": "PASS", "msg": "d=0102"}
+{"phase": "P6-Locker", "id": "L3b", "name": "CONFIGURE soft=2 -> OK, state=CONFIGURED(1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L4", "name": "CONFIGURE 忙时 -> BUSY(1)", "verdict": "PASS", "msg": "d=0101"}
+{"phase": "P6-Locker", "id": "L5a", "name": "ADD 短帧 (epcLen=8, 实2B) -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L5b", "name": "ADD epcLen=13 超上限 -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L6", "name": "ADD 合法 [epcLen=12]+12B -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L7", "name": "CANCEL (未升起直回 IDLE)", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "L8", "name": "START 空任务 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "L9a-1", "name": "假EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9a", "name": "START 假EPC任务 -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9b", "name": "START 后 ADD -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9c", "name": "重复 START -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9d", "name": "非软标态 CONSUME_SOFT -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9e", "name": "CANCEL 收尾 -> IDLE", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "B0", "name": "真EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B1", "name": "START 真EPC任务 -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B2", "name": "CONFIGURED(1)->匹配->SOFT(3)", "verdict": "PASS", "msg": "轨迹=[1, 3]"}
+{"phase": "P6-Locker", "id": "B3", "name": "事件 MATCH_OK(0)+HARD_DONE(2), EPC 回传正确", "verdict": "PASS", "msg": "codes=[0, 2] EPC✓"}
+{"phase": "P6-Locker", "id": "B3m", "name": "匹配后电机升起 (state=1 运行或已到顶)", "verdict": "PASS", "msg": "motor=1"}
+{"phase": "P6-Locker", "id": "B4a", "name": "CONSUME_SOFT #1 -> SOFT_USED", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B4b", "name": "CONSUME_SOFT #2 -> DONE(4)", "verdict": "PASS", "msg": "err=0 state=4"}
+{"phase": "P6-Locker", "id": "B5", "name": "DONE(4)->LOWERING(6)->IDLE(0) 回降闭环", "verdict": "PASS", "msg": "轨迹=[4, 6, 0]"}
+{"phase": "P6-Locker", "id": "B6", "name": "事件序 SOFT_USED×2 + DONE(5)", "verdict": "PASS", "msg": "codes=[3, 3, 5]"}
+{"phase": "P6-Locker", "id": "B6m", "name": "回降后电机 IDLE", "verdict": "PASS", "msg": "motor=0"}
+{"phase": "P6-Locker", "id": "B7", "name": "MISMATCH 事件 (外来EPC=真标签, 不升起)", "verdict": "PASS", "msg": "EPC=33553463a4000158eb7e7507"}
+{"phase": "P6-Locker", "id": "B8", "name": "失配后仍 CONFIGURED(1) 不动磁块", "verdict": "PASS", "msg": "state=1 motor=0"}
+{"phase": "P6-Locker", "id": "B9", "name": "MISMATCH 后 CANCEL -> IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "C1", "name": "GET_PROGRESS 空闲统一多标签布局 phase=0 (holdMs 3 字节全零)", "verdict": "PASS", "msg": "d=0900000000000000000000"}
+{"phase": "P6-Locker", "id": "C2a", "name": "0x08 废弃: 短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2b", "name": "0x08 废弃: 原完整帧布局亦 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C3", "name": "0x0A 单标 (PC4 触发): err=0 终帧 + 收尾电机 IDLE", "verdict": "PASS", "msg": "end=2 conf=0/1 rise≈0 motor=0"}
+{"phase": "P6-Locker", "id": "C3-ir", "name": "PC4 红外门当前读高 (无人工放标) — 深路径按 IR=触发分支验证", "verdict": "OBS", "msg": "fin=0a0002000001000000000000e204"}
+{"phase": "P6-Locker", "id": "C4a", "name": "流程中 GET_PROGRESS 有相位 (IR 态依从)", "verdict": "PASS", "msg": "phase=2"}
+{"phase": "P6-Locker", "id": "C4b", "name": "流程中 CANCEL -> 立即 OK", "verdict": "PASS", "msg": "d=0400"}
+{"phase": "P6-Locker", "id": "C4c", "name": "打断终帧 err=0 endReason=6(ABORTED), 电机安全回 IDLE", "verdict": "PASS", "msg": "fin=0a0006000001000000000000fe02 motor=0"}
+{"phase": "P6-Locker", "id": "C4d", "name": "打断后 Locker 回 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "D1a", "name": "短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1b", "name": "epcCnt=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1c", "name": "epcCnt=5 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1d", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1e", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1f", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D4a", "name": "短窗(<3s确认门限) -> PARTIAL_TIMEOUT(2), 零确认零升降", "verdict": "PASS", "msg": "fin=0a00020000010000000000000208 pushes=['0f0001d00700', '0d02000001d007'] 电机=0"}
+{"phase": "P6-Locker", "id": "D3a", "name": "流程中 ADD -> BUSY", "verdict": "PASS", "msg": "d=0201"}
+{"phase": "P6-Locker", "id": "D3b", "name": "流程中 GET_PROGRESS 多标签布局 (phase 1/2, total=1)", "verdict": "PASS", "msg": "d=0900010000000100000000"}
+{"phase": "P6-Locker", "id": "D4", "name": "长窗全流程终帧 err=0 end=1(ALL_OK) 确认/位图/升降步数齐", "verdict": "PASS", "msg": "end=1 bmp=1 conf=1/1 rise=4321 pushes=[15, 11, 13] 电机=0"}
+{"phase": "P6-Locker", "id": "D5", "name": "确认推送 0x0B 含真EPC (判据耗时≈3s门限)", "verdict": "PASS", "msg": "EPC✓ 判据耗时✓"}
+{"phase": "P6-Locker", "id": "D6", "name": "流程后 Locker IDLE, 电机 IDLE", "verdict": "PASS", "msg": "state=0 motor=0"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=0 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=0"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.3s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "0x08 废弃: 旧单窗布局帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "0x08 废弃: 双窗布局帧 (原 irWait/hold 拆分) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "0x08 废弃: 含 demagCnt 尾字节帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O6", "name": "S2 会话 Locker 周期", "verdict": "SKIP", "msg": "无在场标签"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=0 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=0"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.3s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "0x08 废弃: 旧单窗布局帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "0x08 废弃: 双窗布局帧 (原 irWait/hold 拆分) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "0x08 废弃: 含 demagCnt 尾字节帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O6", "name": "S2 会话 Locker 周期", "verdict": "SKIP", "msg": "无在场标签"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=1 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=1"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.3s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "0x08 废弃: 旧单窗布局帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "0x08 废弃: 双窗布局帧 (原 irWait/hold 拆分) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "0x08 废弃: 含 demagCnt 尾字节帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O6", "name": "S2 会话 Locker 周期", "verdict": "SKIP", "msg": "无在场标签"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=1 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=1"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.3s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "0x08 废弃: 旧单窗布局帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "0x08 废弃: 双窗布局帧 (原 irWait/hold 拆分) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "0x08 废弃: 含 demagCnt 尾字节帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O6", "name": "S2 会话 Locker 周期", "verdict": "SKIP", "msg": "无在场标签"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P0", "id": "HW-UHF", "name": "UHF 在场标签", "verdict": "PASS", "msg": "EPC=['33553463a4000158eb7e7507']"}
+{"phase": "P0", "id": "HW-AM", "name": "AM 链路探测", "verdict": "PASS", "msg": "query resp=050000"}
+{"phase": "P0", "id": "HW-SW", "name": "行程开关/回零基线", "verdict": "PASS", "msg": "errBits=0x0000(0) switchErr=0"}
+{"phase": "P0", "id": "HW-IR", "name": "光电门控行为", "verdict": "PASS", "msg": "err=0(光电已触发, 有遮挡) — 门控通过分支"}
+{"phase": "P0", "id": "HW-JLINK", "name": "JLink 通道", "verdict": "PASS", "msg": "JLinkExe 可用 (VTref 曾瞬断, 已恢复)"}
+{"phase": "P0", "id": "HW-UHF", "name": "UHF 在场标签", "verdict": "PASS", "msg": "EPC=['33553463a4000158eb7e7507']"}
+{"phase": "P0", "id": "HW-AM", "name": "AM 链路探测", "verdict": "PASS", "msg": "query resp=050000"}
+{"phase": "P0", "id": "HW-SW", "name": "行程开关/回零基线", "verdict": "PASS", "msg": "errBits=0x0000(0) switchErr=0"}
+{"phase": "P0", "id": "HW-IR", "name": "光电门控行为", "verdict": "PASS", "msg": "err=0(光电已触发, 有遮挡) — 门控通过分支"}
+{"phase": "P0", "id": "HW-JLINK", "name": "JLink 通道", "verdict": "PASS", "msg": "JLinkExe 可用 (VTref 曾瞬断, 已恢复)"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=1 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=1"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "FAIL", "msg": "d=0202"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "FAIL", "msg": "d=0700010002"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "FAIL", "msg": "d=0700010002"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=1 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=1"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.4s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "0x08 废弃: 旧单窗布局帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "0x08 废弃: 双窗布局帧 (原 irWait/hold 拆分) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "0x08 废弃: 含 demagCnt 尾字节帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O6a", "name": "GET_CONFIG 基线 (存档待还原)", "verdict": "PASS", "msg": "sess=0"}
+{"phase": "P9-OptFix", "id": "O6b", "name": "SET_CONFIG session=2 生效", "verdict": "PASS", "msg": "sess=2"}
+{"phase": "P9-OptFix", "id": "O6c", "name": "S2 会话下连续 2 周期均完成匹配闭环 (ScanSession S0 生效)", "verdict": "PASS", "msg": "2/2"}
+{"phase": "P9-OptFix", "id": "O6d", "name": "配置还原 (SET err=0)", "verdict": "PASS", "msg": "sess=0 setErr=0"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=1 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=1"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.4s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "0x08 废弃: 旧单窗布局帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "0x08 废弃: 双窗布局帧 (原 irWait/hold 拆分) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "0x08 废弃: 含 demagCnt 尾字节帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O6a", "name": "GET_CONFIG 基线 (存档待还原)", "verdict": "PASS", "msg": "sess=0"}
+{"phase": "P9-OptFix", "id": "O6b", "name": "SET_CONFIG session=2 生效", "verdict": "PASS", "msg": "sess=2"}
+{"phase": "P9-OptFix", "id": "O6c", "name": "S2 会话下连续 2 周期均完成匹配闭环 (ScanSession S0 生效)", "verdict": "PASS", "msg": "2/2"}
+{"phase": "P9-OptFix", "id": "O6d", "name": "配置还原 (SET err=0)", "verdict": "PASS", "msg": "sess=0 setErr=0"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
