@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_012 — 多标签解锁 UNLOCK_MULTI 实施报告</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1040px; margin:0 auto; padding:24px 28px 60px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:38px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13.5px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:13px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:13px; line-height:1.5;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .card .tt{font-weight:600; color:var(--navy);}
+  .ok{background:#f2faf6; border-left:5px solid var(--green);}
+  .warn{background:#fdf8ec; border-left:5px solid var(--gold);}
+  ul,ol{font-size:14.5px;}
+  li{margin:4px 0;}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+        color:var(--muted); font-size:12px; text-align:center;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>ZLR5401 多标签同步解锁 0x0A · 实施报告</h1>
+  <div class="sub">Agent/Round_012 &nbsp;·&nbsp; 2026-09-02 &nbsp;·&nbsp; Plan.html (v1) 执行轮 &nbsp;·&nbsp; 台架 PASS 17 / FAIL 0 (M1~M7 闭环) &nbsp;·&nbsp; M2/M3/M9 待条件</div>
+</div>
+
+<div class="wrap">
+
+<h2>1. 结论小结</h2>
+<p>按 Plan.html 落地 <b>LOCKER_SUB_UNLOCK_MULTI (0x0A) 多标签同步解锁</b>：单帧下发 m≤4 张期望 EPC + 软标数，设备阻塞自治执行——光电门控 → UHF 持续校对（每标签独立状态机 + 双门限稳定确认 + 单向掩码防重报）→ 首确认升起 → 每确认一张推帧+蜂鸣 → 硬标段结束回降 → 软标解码计数 → 终帧结账。编译一次通过；协议文档 §13 增补完毕；台架用例 M1~M9 待测（本轮范围仅编译验证）。</p>
+<ul>
+  <li><b>新增 <code>App_LockerUnlock.c/.h</code></b>（0x0A 主流程）与 <b><code>App_LockerSeek.c/.h</code></b>（0x08/0x0A 共享泵循环+寻触驱动，指针绑定各自 CANCEL/免疫标志）。</li>
+  <li><b>0x08 OneShot 重构复用</b>：删本地泵/寻触，改调 LockerSeek；与 0x0A 双向前置互斥检查。</li>
+  <li><b>推送事件帧 0x0B~0x0F</b> 经命令来向通道原路回；解锁态内仅 CANCEL/QUERY/GET_PROGRESS 放行，MOTOR/UHF/AM 控制类（含读-only 白名单外）BUSY。</li>
+</ul>
+
+<h2>2. 需求映射</h2>
+<table>
+  <tr><th>约束 (Demand.md)</th><th>实现</th><th>代码</th></tr>
+  <tr><td>① 解锁态仅响应停止与状态获取（64B 单帧、限 EPC 数）</td>
+      <td>分发层 FC_LOCKER_CTRL 入口白名单：Unlock 运行中仅 CANCEL/QUERY/GET_PROGRESS；MOTOR/UHF/AM FC 门扩 <code>(OneShot_IsBusy() || Unlock_IsBusy())</code>（只读子命令仍放行）；RGB SET / SELFTEST RERUN 同步加忙检查。m≤4×12B 单帧装下</td>
+      <td><code>App_Dispatch.c</code></td></tr>
+  <tr><td>② 光电闸门 = IR (PC4)</td>
+      <td>受理后先等放标：连续 <code>UNLK_IR_CONFIRM_MS=200ms</code> 高电平触发，窗满 <code>err=11 NO_IR</code>（不动磁块）</td>
+      <td><code>App_LockerUnlock.c</code> ⑵</td></tr>
+  <tr><td>③ 多标签设计：校对期不响应命令，EPC 符合一张上报一帧；盘点去重防抖；标签稳定后静默</td>
+      <td>每标签 <code>PENDING→TRACKING→CONFIRMED</code>；确认双门限=在场连续 3s + 累计≥2 hits（单轮 ~1/4 漏读，禁"连续N轮"判据）；离场超 3s 窗回 PENDING；<b>CONFIRMED 单向掩码</b>——后续读到静默忽略（设备侧去重）；每确认推 <code>0x0B</code>+蜂鸣 200ms+绿单闪</td>
+      <td><code>App_LockerUnlock.c</code> ⑸ / <code>App_LockerUnlock.h</code> 宏表</td></tr>
+  <tr><td>④ 状态机严格约束</td>
+      <td>首确认即升 KEY_UP（模型甲：保持至硬标段结束）；硬标段四出口（ALL_OK/PARTIAL/CANCEL/UHF_LOST）统一经回降（免疫打断）；软标段消磁计数驱动；全阶段可 <code>GET_PROGRESS</code> 拉取 phase</td>
+      <td><code>App_LockerUnlock.c</code> ⑸~⑻</td></tr>
+  <tr><td>⑤ 确认帧内容：EPC+序号+已确认/总数+用时；每条蜂鸣 200ms</td>
+      <td><code>0x0B: [seq, epcLen, epc.., confirmed, total, 判据耗时(2), 流程耗时(2)]</code>；<code>UNLK_BEEP_TAG_MS=200</code>/<code>UNLK_BEEP_DONE_MS=300</code> 等全部可调参数宏集中</td>
+      <td><code>push_tag()</code> / 宏表</td></tr>
+</table>
+
+<h2>3. 文件清单</h2>
+<table>
+  <tr><th>文件</th><th>动作</th><th>内容</th></tr>
+  <tr><td><code>Application/src/App_LockerSeek.c</code> + <code>inc/App_LockerSeek.h</code></td><td>新增</td><td>0x08/0x0A 共享：泵循环（RGB Tick/UHF/Stepper/AM/Proto_Poll/喂狗/<b>BeepPulseActive</b>/20ms 节拍）+ 寻触驱动（停滞/超步/超时/瞬态重试一次，与 MotorHoming 判据一致 2000Hz/40%）。<code>LockerSeek_BindAbort()</code> 指针绑定各流程的 CANCEL/免疫标志</td></tr>
+  <tr><td><code>Application/src/App_LockerUnlock.c</code> + <code>inc/App_LockerUnlock.h</code></td><td>新增</td><td>0x0A 主流程 + 推帧助手（0x0F/0x0B/0x0C/0x0D/0x0E）+ 进度快照 + UNLK_* 宏表</td></tr>
+  <tr><td><code>Application/src/App_LockerOneShot.c</code></td><td>重构</td><td>删本地泵/寻触（~120 行）改调 LockerSeek；新增 <code>App_LockerUnlock_IsBusy()</code> 前置互斥</td></tr>
+  <tr><td><code>Application/src/App_Dispatch.c</code></td><td>增补</td><td>0x0A case（参数校验/Run+Finish/按 err 组终帧变体）；Unlock 解锁态门 + CANCEL 路由 + GET_PROGRESS 多标签布局；MOTOR/UHF/AM/RGB/SELFTEST 忙门扩展</td></tr>
+  <tr><td><code>Application/inc/App_CustomProtocol.h</code></td><td>增补</td><td><code>LOCKER_SUB_UNLOCK_MULTI 0x0A</code> + 事件帧 0x0B~0x0F + 帧布局注释</td></tr>
+  <tr><td><code>Application/CMakeLists.txt</code></td><td>增补</td><td>SOURCES 显式列表注册两个新 .c</td></tr>
+  <tr><td><code>Protocol/App_Protocol.html</code></td><td>增补</td><td>§13 表 + <b>13.3 UNLOCK_MULTI 流程/推送帧</b> + <b>13.4 终帧/错误码</b> + 附录常量 + 页脚 Round 105</td></tr>
+  <tr><td><code>Protocol/App_Locker_Report.html</code></td><td>备注</td><td>v3 段：0x0A 落地状态（编译通过，台架待测）</td></tr>
+  <tr><td><code>Agent/Round_012/test/unlock_multi.py</code></td><td>新增</td><td>M1/M2/M3/M4/M5/M6/M7/M9 台架脚本（含异步推帧收集 drain_terminal）</td></tr>
+</table>
+
+<h2>4. 协议增补摘要</h2>
+<pre><code>请求 0x0A: [cmd, tmo(2), hold(2), softCnt, epcCnt, epcLen, epcCnt*epcLen]
+受理推帧 0x0F: [0x0F, 0, phase=1, winMs(3 LE)]            ← W 公式 120s+(m-1)*30s, cap 240s
+确认推帧 0x0B: [0x0B, seq, epcLen, epc.., confirmed, total, 判据(2), 流程(2)] + 蜂鸣200ms
+失配推帧 0x0C: [0x0C, epcLen, epc.., rounds]              ← 不终止, 窗兜底
+硬标完成 0x0D: [0x0D, endReason, bitmap, confirmed, total, elapsed(2)]
+软标推帧 0x0E: [0x0E, done, softCnt]
+终帧 0x0A:    err=0 → [endReason, bitmap, confirmed, total, rise(2), lower(2),
+                        softDone, softCnt, elapsed(2)]
+             err=1 BUSY → 三态 / 3,4 UHF → uhfRawErr / 7 HOMING → switchErr
+             8,9 MOTOR → [fault,diag1,diag2,steps(3),phase,retreat] 或 [steps(3),phase,retreat]
+             2,10,11 (PARAM/AM_LINK/NO_IR) 无诊断字段
+GET_PROGRESS (0x0A 流程中): [cmd, err, phase, holdMs(2), total, confirmed, bitmap, softCnt, softDone]</code></pre>
+<p>endReason: <code>1</code>=ALL_OK / <code>2</code>=PARTIAL_TIMEOUT（bitmap 明示）/ <code>4</code>=UHF_LOST（5s 确认窗）/ <code>6</code>=ABORTED。phase: <code>1</code>=WAIT_TAG / <code>2</code>=VERIFY / <code>3</code>=RISE / <code>4</code>=LOWER / <code>5</code>=SOFT / <code>6</code>=DONE。</p>
+
+<h2>5. 与 Plan 的偏差 (2 处，均为实现期发现)</h2>
+<table>
+  <tr><th>偏差</th><th>Plan 原案</th><th>实施</th><th>原因</th></tr>
+  <tr><td>受理帧子码</td><td>ACK 用 0x0A 回显（err=0/phase=WAIT_TAG）</td><td>独立事件码 <code>0x0F EVT_START</code></td>
+      <td>终帧同为 0x0A 回显 err=0/endReason=1(ALL_OK)，与 ACK (err=0/phase=1) 无法区分——<b>帧语义碰撞</b>，故 ACK 升格为专属事件码，终帧独占 0x0A 作为流程结束标志</td></tr>
+  <tr><td>失配判据口径</td><td>"连续 3 轮外来独占"（轮口径未细化）</td><td>轮结束折叠判定 + episode 单帧标志</td>
+      <td>泵循环 20ms 迭代若按迭代计，"3 轮"60ms 即误触发；改为仅在盘点轮结束（UHF 空闲）时结算 roundExp/roundFgn；另加 <code>mismatchPushed</code>——同一失配事件只推一帧，再见到清单标签后重新武装，避免长时错误标签在场刷屏</td></tr>
+</table>
+
+<h2>6. 关键实现点</h2>
+<ul>
+  <li><b>BeepPulse 陷阱（Round_089 教训固化）</b>：<code>BeepPulse(ms)</code> 只开蜂鸣，关断依赖 <code>BeepPulseActive()</code> 轮询——而它此前只在主循环调用。共享泵 <code>LockerSeek_Pump()</code> 已补入该调用，0x08/0x0A 阻塞期间 200ms/300ms 蜂鸣才能自动停（M8 用例专项听感验证点）。</li>
+  <li><b>互斥双保险</b>：0x08↔0x0A 各自前置检查对方 IsBusy（流程层）+ 分发层 FC 门（0x0A 运行时 FC_LOCKER_CTRL 仅白名单子命令放行）。</li>
+  <li><b>灯语复用 RGBSRC_ONESHOT 槽位</b>：两流程互斥不新增仲裁源；扫描等待=青慢闪 / 升起=绿常亮 / 软标=白常亮 / 回降=灭 / 确认=绿单闪 / 失配=红闪3s / 完成=绿三连闪。</li>
+  <li><b>EPC 索引防溢出</b>：清单展开用 16 位中间量 <code>epc[(uint16_t)i * epcLen + k]</code>。</li>
+</ul>
+
+<h2>7. 编译验证</h2>
+<div class="card ok"><div class="tt">✅ build_app.sh 通过 (一次通过)</div>
+<p>新增/重构 5 个编译单元无 error；产物 App_202609021008.bin (80K)。FLASH 73912B / 232KB = <b>31.11%</b>，RAM 13820B / 48KB = <b>28.12%</b>。</p></div>
+
+<h2>8. 测试与台架闭环 (2026-09-02, 四轮: PASS 17 / FAIL 0 / 记录 5)</h2>
+<table>
+  <tr><th>用例</th><th>状态</th><th>结果</th></tr>
+  <tr><td>P1 参数非法 ×5</td><td><b>PASS 5/5</b></td><td>均 err=2 PARAM，立即回帧不动磁块</td></tr>
+  <tr><td>M1 单张全流程 (m=1)</td><td><b>PASS</b></td><td>end=ALL_OK bitmap=01 rise/lower=4321/4321 (≈4287 基线) elapsed=8676ms；ACK/确认/硬标帧各 1；<b>判据耗时 3010ms 精准命中 3000ms 双门限 A</b>；总耗时 9.0s</td></tr>
+  <tr><td>M4 部分超时 (m=2 只放真标, W=12s)</td><td><b>PASS</b></td><td>end=PARTIAL_TIMEOUT <b>confirmed=1/2 bitmap=01</b> (bit0=真标已确认, bit1=假标未确认) 硬标帧=1</td></tr>
+  <tr><td>M5 失配不终止 (假 EPC, 真标在场)</td><td><b>PASS</b></td><td>失配帧=1 (末外来 EPC=真标 EPC) 确认帧=0 rise=0 未升, 窗满 PARTIAL 收尾不终止</td></tr>
+  <tr><td>M6 解锁态响应矩阵</td><td><b>PASS 6/6</b></td><td>0x08/CONFIGURE/MOTOR MOVE/UHF OPEN 均 BUSY NAK；GET_PROGRESS 10B 多标签布局 (phase=WAIT_TAG/VERIFY)；QUERY 放行</td></tr>
+  <tr><td>M7 CANCEL (WAIT_TAG)</td><td><b>PASS</b></td><td>CANCEL 立即回 OK，endReason=6 ABORTED 终帧，rise/lower=0 磁块未动</td></tr>
+  <tr><td>R1 事后恢复</td><td><b>PASS</b></td><td>locker=0 motor=0</td></tr>
+  <tr><td>M2 双真标 / M3 逐张放取</td><td>SKIP</td><td>感应区仅 1 张真标；M3 人工时序，待双标签台架</td></tr>
+  <tr><td>M7-补充 升起中/回降中打断 / M8 蜂鸣听感</td><td>SKIP/人工</td><td>时序难自动构造；M8 请现场听感确认 (200ms 短鸣自动停 + 300ms 完成长鸣)</td></tr>
+  <tr><td>M9 软标计数 (含 AM 模式时序)</td><td>SKIP</td><td>AM 消磁器未接回设备侧 RS232，接回后测</td></tr>
+</table>
+<div class="card warn"><div class="tt">⚠️ 台架过程发现并修复 (Round_107)</div>
+<p><b>终帧字段拷贝 bug</b>：第 3 轮 M1/M4 语义全对但终帧 confirmed/total/bitmap 恒 0——<code>unlk_run</code> 内部推帧用模块静态 <code>s_confirmed/s_total/s_bitmap</code>，从未拷入 <code>out</code> 结果结构 (dispatch 终帧取 out)。推帧 (0x0B/0x0D) 一直正确，仅终帧漏拷。修复：硬标段收尾处三字段拷入 out（覆盖 ABORTED/软标全部后续出口）。第 4 轮 M1 bitmap=01 / M4 confirmed=1/2 验证通过。</p>
+<p><b>PC4 光电</b>：第 1/2 轮 NO_IR 为人工未触发；第 3 轮起配合放标后即时触发 (60s 窗流程中光电 <2s 内读到, holdMs 起跳)，传感器工作正常，v2.3 同源遗留项就此闭环。</p></div>
+<div class="card warn"><div class="tt">⚠️ 台架 harness 教训 (已修入脚本)</div>
+<p>流程运行期普通 <code>transaction()</code> 会把管道内的异步推帧 (0x0F 受理帧等) 误配对为响应——首轮 M6 全部帧错位。新增 <code>tx_sub()</code>: 发送后跳过 <code>data[0]=0x0B~0x0F</code> 推帧、按回显子码配对。上位机接入时同理：<b>推帧与响应同为 func=0xF2, 必须按 data[0] 分发</b>。另: 确认帧耗时字段解析下标曾错位 (取到 61451ms 假值) 已修。</p></div>
+
+<h2>9. 备份</h2>
+<p>实现轮变更前全量快照：<code>Round_105_20260902_100058</code>（Changelog 已记录）。回滚即整目录还原。</p>
+
+<h2>10. 追加 (Round_106, 2026-09-02): AM 模式时序收紧</h2>
+<p>用户追加约束：<b>EPC 校验通过后才开启 AM 消磁模式；软标结束或超时再切回 AM 检测模式（不消磁）</b>。0x08/0x0A 两流程同步落地：</p>
+<table>
+  <tr><th>流程</th><th>原时序</th><th>新时序</th></tr>
+  <tr><td>0x0A UNLOCK_MULTI</td>
+      <td>⑶ 消磁准备即切 DEACTIVATE（校对全程 2~4min 均可消磁）</td>
+      <td>⑶ 仅探链 + <b>强制 DETECT_ONLY</b>（防上次流程残留消磁模式在校对期误消软标）；⑦ 软标段入口（硬标段结束、EPC 校验已通过）才切 DEACTIVATE + 记计数基线；软标结束（达标 / 5min 窗满 / 打断）出口切回 DETECT_ONLY</td></tr>
+  <tr><td>0x08 ONE_SHOT</td>
+      <td>⑴.6 消磁准备即切 DEACTIVATE（盘点校对期即可消磁）</td>
+      <td>⑴.6 仅探链 + 强制 DETECT_ONLY；期望 EPC 命中后（⑷ 升起前）才切 DEACTIVATE + 记基线；流程结束（含失败/打断全部出口，Run 包装层统一处理）切回 DETECT_ONLY</td></tr>
+</table>
+<p>实现要点：两模块各设 <code>s_amDemagOn</code> 标志——仅当 DEACTIVATE 实际切换成功才置位，<code>Run()</code> 包装层出口检测该标志后 best-effort 切回，保证任意提前返回（motor_fail/ABORTED/AM_LINK 等）都覆盖、未触碰 AM 的流程零额外 RS232 流量。切换失败语义：⑶/⑴.6 或命中后切换失败 → <code>err=10 AM_LINK</code>；出口切回失败仅忽略（流程结果优先回帧）。编译通过（FLASH 31.18%）。协议 13.1/13.3 流程步骤已同步。</p>
+
+<div class="foot">ZLR5401 · Agent/Round_012 · 多标签解锁 UNLOCK_MULTI 0x0A · 2026-09-02 · 台架 PASS 17/FAIL 0 · Plan 偏差 2 处（ACK→0x0F / 失配轮口径）· Round_106 AM 模式时序收紧 · Round_107 终帧字段修复 · M2/M3/M8/M9 待条件</div>
+</div>
+</body>
+</html>

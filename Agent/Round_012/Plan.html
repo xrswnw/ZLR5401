@@ -1,0 +1,397 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_012 — 多标签解锁 · 单帧下发-逐张确认-逐帧上报 设计方案</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1060px; margin:0 auto; padding:24px 28px 60px;}
+  .toc{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 22px;
+       box-shadow:0 1px 4px rgba(11,42,74,.06);}
+  .toc b{color:var(--navy);}
+  .toc ol{margin:8px 0 0; padding-left:20px;}
+  .toc li{margin:3px 0; font-size:14px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:40px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:12.5px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+       overflow:auto; font-size:12.5px; line-height:1.55;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-left:5px solid var(--sky);
+        border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .ok{border-left:5px solid var(--green);}
+  .warn{border-left:5px solid var(--gold);}
+  .bad{border-left:5px solid var(--red);}
+  .tag{display:inline-block; padding:1px 8px; border-radius:10px; font-size:11.5px;
+       color:#fff; background:var(--blue); margin-right:4px;}
+  .tag.g{background:var(--green);}
+  .tag.y{background:var(--gold);}
+  .tag.r{background:var(--red);}
+  .tag.b{background:#5b7a9a;}
+  .tag.p{background:#8e44ad;}
+  ul,ol{font-size:14px;}
+  li{margin:4px 0;}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+        color:var(--muted); font-size:12px; text-align:center;}
+  .flow{display:flex; flex-wrap:wrap; gap:6px; align-items:center; font-size:13px; margin:10px 0;}
+  .flow .step{background:#fff; border:1.5px solid var(--blue); color:var(--blue);
+              border-radius:6px; padding:3px 10px; font-weight:600;}
+  .flow .arrow{color:var(--muted);}
+  .dot{display:inline-block; width:12px; height:12px; border-radius:3px;
+       vertical-align:-1px; margin-right:5px; border:1px solid rgba(0,0,0,.2);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>Round_012 — 多标签解锁 · 单帧下发 → 逐张稳定确认 → 逐帧上报 设计方案</h1>
+  <div class="sub">ZLR5401 开锁器 · 纯方案轮（计划不执行，待审查）· 2026-09-02 · 依据 Agent/Round_012/Demand.md（需求经对话确认）</div>
+</div>
+<div class="wrap">
+
+<div class="toc">
+<b>目录</b>
+<ol>
+  <li>背景与设计输入</li>
+  <li>设计总览与定位（与现有两条路径的关系）</li>
+  <li>命令与帧设计（64B 单帧预算 / 帧格式 / 响应策略）</li>
+  <li>解锁态命令响应矩阵（约束 1）</li>
+  <li>多标签校对详细设计（约束 3：状态模型 / 去重防抖判据 / 静默 / 帧流时序 / 场景表）</li>
+  <li>蜂鸣器设计（每张 200ms + 阻塞循环推进要点）</li>
+  <li>严格状态机设计（约束 4）</li>
+  <li>可调参数宏定义清单（约束 6）</li>
+  <li>实现方案（文件改动清单）</li>
+  <li>验证方案（台架用例）</li>
+  <li>设计决策记录（D1~D8）</li>
+  <li>相关建议</li>
+  <li>范围边界（本轮不做的事）</li>
+</ol>
+</div>
+
+<h2>1. 背景与设计输入</h2>
+<p>零售结账六条约束（客户付款 → 上位机传 EPC → 接收硬标 EPC+软标数 → 放标光电触发 →
+比对绿升红闪不升+结果回传+2min/30s窗口+m=n → 软标逐个解码计数 → 结账完成）已在
+ONE_SHOT 0x08 v2.3（单标签）上闭环验证。本轮将语义泛化为<b>多标签整合主路径</b>，四条
+硬性设计约束 + 本轮新增两条：</p>
+<table>
+<tr><th>#</th><th>约束</th><th>设计落点</th></tr>
+<tr><td>1</td><td>解锁命令下发后进入解锁态，仅响应停止与状态获取；参照 64B 单帧，限制 EPC 数量</td><td>§3 / §4</td></tr>
+<tr><td>2</td><td>光电闸门存在，就是 IR（PC4）</td><td>§7 状态机 WAIT_TAG</td></tr>
+<tr><td>3</td><td>EPC 校对中不响应上位机命令；EPC 稳定确认一张上报一帧；盘点去重+防抖；考虑标签静默可行性</td><td>§5（核心章）</td></tr>
+<tr><td>4</td><td>状态机严格约束</td><td>§7</td></tr>
+<tr><td>5</td><td>确认帧内容 = EPC + 序号 + 已确认数/总数 + 用时；每张确认后蜂鸣器响 200ms</td><td>§3 / §6</td></tr>
+<tr><td>6</td><td>时长、数量等参数全部宏定义，方便后续调整</td><td>§8</td></tr>
+</table>
+
+<h2>2. 设计总览与定位</h2>
+<p>现有两条路径的分工保持不变，新路径定位为<b>第三条、面向零售结账的整合主路径</b>：</p>
+<table>
+<tr><th>路径</th><th>载体</th><th>定位</th><th>本轮动作</th></tr>
+<tr><td>ONE_SHOT 0x08 v2.3</td><td>单标签同步流</td><td>单标签快速通道（已 17/17×3 闭环）</td><td><b>保留不动</b></td></tr>
+<tr><td>Locker 业务状态机 (CONFIGURE/ADD/START)</td><td>非阻塞编排</td><td>调试/上位机轮询式多标签</td><td><b>保留不动</b></td></tr>
+<tr><td><b>多标签解锁（本方案）</b></td><td>新子命令 0x0A，阻塞自治</td><td>零售结账主路径：单帧下发 → 每确认一张推一帧</td><td>新建</td></tr>
+</table>
+<p>整体流程一图：</p>
+<pre>
+上位机                                设备（阻塞自治）
+  │── 解锁命令(1帧: EPC×m + softCnt) ──>  回 ACK → 进解锁态
+  │                                     [WAIT_TAG] 待放标, IR 门控, 窗=W
+  │<────────── IR 触发(200ms 去抖) ──────
+  │                                     [VERIFY] 持续盘点, 首确认即升起
+  │<── 确认帧: EPC_i+序号+已确认/总数+用时 ──  + 蜂鸣 200ms
+  │<── 确认帧: EPC_j ...                │  (每稳定一张一帧+一声)
+  │<── 硬标完成帧: n==m 或 窗满(实况) ───  回降磁块
+  │                                     [SOFT] softCnt=0 跳过
+  │<── 软标解码帧 ×k / (k==softCnt) ─────
+  │<── 结账终帧 ────────────────────────  [DONE] → IDLE, 退出解锁态
+</pre>
+
+<h2>3. 命令与帧设计</h2>
+
+<h3>3.1 64B 单帧预算与 EPC 数量上限</h3>
+<p>USB HID 单帧 64B，扣帧头/地址/功能码/长度/校验后数据区约 <b>57B</b>。解锁命令固定开销 8B
+（子命令 1 + 每轮盘点时限 2 + 解锁窗 2 + 软标数 1 + EPC 数 1 + 统一 EPC 长 1），
+剩 49B。典型 12B(96bit) EPC → <b>m ≤ 4 张</b>（12×4=48）；实测标签若 EPC 不足 12B，
+按统一 epcLen 动态放宽到 5~7 张。数量上限直接吃单帧容量，<b>不做 ADD 多帧累加</b>（见 D1）。</p>
+
+<h3>3.2 解锁命令帧（新子命令 0x0A，func=0x0D）</h3>
+<pre>
+data[0]    = 0x0A  子命令
+data[1..2] = tmoMs     每轮盘点时限 (LE, 0→默认 1000)
+data[3..4] = holdMaxMs 解锁窗 W (LE, 0→公式 W=UNLK_HOLD_BASE_MS+(m-1)*UNLK_HOLD_EXTRA_MS)
+data[5]    = softCnt   软标数量 N (0→硬标完成即结账)
+data[6]    = epcCnt    硬标数量 m (1..UNLK_MAX_TAGS)
+data[7]    = epcLen    统一 EPC 字节长 (1..UNLK_EPC_MAX)
+data[8..]  = m × epcLen 字节, 依次为期望 EPC (设备内按集合比对, 与顺序无关)
+</pre>
+<p>设备在 IDLE 且通过前置检查（回零就绪/电机空闲/UHF/AM 不忙）→ 立即回 <b>ACK 帧</b>
+（err=0、phase=WAIT_TAG、W 实际值）并进入解锁态；不满足 → 回 BUSY/错误帧，不进入。</p>
+
+<h3>3.3 设备主动推送帧（func=0x0D^0xFF=0xF2）</h3>
+<table>
+<tr><th>子码</th><th>帧名</th><th>触发</th><th>data 布局（[0]=子码后）</th></tr>
+<tr><td>0x0B</td><td><b>确认帧</b></td><td>某期望 EPC 达稳定确认判据（每张一帧）</td>
+    <td>seq(1) + epcLen(1) + EPC + confirmed(1) + total(1) + confirmMs(2,LE 自 IR 触发起算) + elapsedMs(2)</td></tr>
+<tr><td>0x0C</td><td>失配事件帧</td><td>连续 UNLK_MISMATCH_CONFIRM_ROUNDS 轮只读到清单外 EPC 且无任何清单标签在场</td>
+    <td>epcLen(1) + EPC(最后外来) + rounds(1)</td></tr>
+<tr><td>0x0D</td><td>硬标完成帧</td><td>n==m 或窗满（部分完成）→ 进回降前</td>
+    <td>endReason(1) + confirmedBitmap(1, bit i=EPC_i) + confirmed(1) + total(1) + elapsedMs(2)</td></tr>
+<tr><td>0x0E</td><td>软标解码帧</td><td>每次解码成功计数 +1</td><td>softDone(1) + softCnt(1)</td></tr>
+<tr><td>0x0A</td><td>结账终帧</td><td>SOFT 结束/跳过后</td>
+    <td>err(1) + endReason(1) + confirmedBitmap + softDone + rise/lower steps + elapsed（沿用 ONE_SHOT 终帧风格）</td></tr>
+</table>
+<p><b>终帧 data[0]=0x0A</b> 与命令子码一致，上位机以"收到 0x0A 回显帧"为流程结束标志
+（与 0x08 单标签通道的收帧约定完全同构）。确认帧 seq 按<b>确认先后顺序</b>编号，
+上位机匹配以 EPC 为准、不依赖顺序。</p>
+
+<h3>3.4 状态获取（0x09 GET_PROGRESS 扩展）</h3>
+<p>解锁态全程可用：phase + confirmedBitmap + softDone + holdMs + 当前在场标签数。
+一次查询即可还原整体进度，帧内塞得下（m≤4 → 位图 1B）。</p>
+
+<h3>3.5 响应策略（约束 1 + 3 的合并口径）</h3>
+<p>"校对过程中不响应上位机命令" 取语义为 <b>不执行</b>，而非不回话：解锁态内除
+STOP 与状态获取外，任何命令回 <b>BUSY NAK 单帧</b>（现 dispatch 白名单机制扩展）。
+理由：纯静默无法区分"设备忙"与"设备死"，NAK 一帧成本极低且阻塞泵循环内协议层本来就在收发。</p>
+
+<h2>4. 解锁态命令响应矩阵（约束 1）</h2>
+<table>
+<tr><th>命令</th><th>WAIT_TAG</th><th>VERIFY</th><th>SOFT</th><th>LOWERING</th><th>说明</th></tr>
+<tr><td>解锁命令 0x0A</td><td>BUSY</td><td>BUSY</td><td>BUSY</td><td>BUSY</td><td>解锁态内不接受新任务</td></tr>
+<tr><td>STOP/CANCEL</td><td>✅ 回 IDLE</td><td>✅ 走回降</td><td>✅ 实况结账</td><td>免疫</td><td>安全动作必须走完</td></tr>
+<tr><td>进度查询 0x09</td><td>✅</td><td>✅</td><td>✅</td><td>✅</td><td>只读零副作用</td></tr>
+<tr><td>其余一切命令</td><td>BUSY NAK</td><td>BUSY NAK</td><td>BUSY NAK</td><td>BUSY NAK</td><td>含 0x08/CONFIGURE/START 等</td></tr>
+</table>
+<p>解锁态边界：ACK 帧发出时刻进入，结账终帧（或故障终帧）发完且磁块回降完毕退出。
+期间与 0x08/业务状态机/电机测试<b>互斥</b>（复用现有 busy 互斥判据）。</p>
+
+<h2>5. 多标签校对详细设计（约束 3，核心章）</h2>
+
+<h3>5.1 每标签独立状态模型</h3>
+<p>清单内每个 EPC 一条独立记录，四状态：</p>
+<pre>
+PENDING ──首次读到──> TRACKING ──判据达标──> CONFIRMED(推帧+蜂鸣) ──> MASKED(终态)
+  ^                     │
+  │    离场超 PRESENT 窗 │
+  └─────────────────────┘   (回 PENDING 重新累计)
+FOREIGN: 清单外 EPC → 不计数不升起, 只留最后一条做失配帧诊断
+</pre>
+<ul>
+<li>各记录互不干扰：两张同时放、先后放、放一张取走再放下一张，收敛到同一套规则。</li>
+<li><b>CONFIRMED → MASKED 单向不可逆</b>（杜绝重报竞态的根本手段）：已确认 EPC 后续读到
+    一律静默忽略——客户把已解锁标签一直放在设备上无任何副作用。</li>
+</ul>
+
+<h3>5.2 稳定确认判据（去重 + 防抖）</h3>
+<p>实测底数：单轮盘点 ~1s，在场标签单轮漏读率 ~1/4。判据必须同时压住两类误判：</p>
+<ul>
+<li><b>误确认</b>：手挥标签扫过场区（物理上 Gen2 解码成功=标签真实应答，"鬼读"概率极低，
+    需要防的是"瞬时掠过"）→ 时间维度上要求"稳定"。</li>
+<li><b>漏确认</b>：标签在场但某轮没读到（25% 概率）→ <b>禁止"连续 N 轮都读到"式判据</b>，
+    单次漏读清零会让确认时延发散。</li>
+</ul>
+<p><b>双门限判据（时间窗 + 命中数）</b>：</p>
+<pre>
+在场判定:   距最近一次读到 ≤ UNLK_PRESENT_WINDOW_MS (默认 3s, 容忍 2~3 轮连续漏读)
+确认判定:   TRACKING 起点起, 在场状态持续 ≥ UNLK_STABLE_CONFIRM_MS (默认 3s)
+            且累计读到 ≥ UNLK_CONFIRM_MIN_HITS 次 (默认 2)
+累计规则:   TRACKING 期间在场判定不破则计数不清零; 离场超窗 → 回 PENDING 重来
+时间轴:     轮:  1    2    3    4    5
+            读:  √    ×    √    √    (t≈4s 达标, 3s 在场 + 3 hits)
+</pre>
+<p>依据：25% 漏读下，在场 3s 至少读到 2 次的概率 &gt;95%；读到即真实，判据实际防的是掠过。
+参数全部是宏（§8），台架可调。</p>
+
+<h3>5.3 标签静默可行性（结论：设备侧掩码为主，不依赖模块）</h3>
+<table>
+<tr><th>层</th><th>机制</th><th>可行性结论</th></tr>
+<tr><td>设备侧掩码（主设计）</td><td>CONFIRMED 后移出待比对集合，读到即静默忽略</td>
+    <td><b>可靠、必做</b>。v2.2 已有同款机制（已解锁标签重复读静默），直接扩展为每标签记录</td></tr>
+<tr><td>标签/模块侧真静默</td><td>Gen2 Session S1/S2 flag 翻转：标签读一次后对后续轮次自动沉默，离场断电再上电才恢复</td>
+    <td><b>可选优化、不作依赖</b>。当前实测同标签跨轮重复上报（v2.2 为此做过去重），说明现用盘点模式不做 tag 侧静默。即使模块支持，也只省解析量、不改变正确性结构</td></tr>
+</table>
+
+<h3>5.4 帧流时序（上位机视角）</h3>
+<p>上位机整程只收不发（STOP/查询除外）。<b>EPC 稳定校对一张接收一帧，直至完成</b>——
+约束 3 的原文即此实现。磁块动作沿用<b>模型甲</b>：首确认即升起，n==m 或窗满回降（动作最少，
+复用已验证的寻触时序修复成果）。</p>
+
+<h3>5.5 场景推演表</h3>
+<table>
+<tr><th>场景</th><th>设备行为</th><th>上位机收到</th></tr>
+<tr><td>两张期望标签同时放</td><td>同轮读到两张，各自独立 TRACKING，近乎同时确认</td><td>确认帧×2 → 硬标完成帧(n=2=m)</td></tr>
+<tr><td>逐张放取（A 确认→拿走→放 B）</td><td>A 已 MASKED 不重报；B 从 PENDING 完整走判据</td><td>确认帧 A → 确认帧 B → 硬标完成帧</td></tr>
+<tr><td>A 确认前被拿走</td><td>回 PENDING；放回后重新累计</td><td>（该 EPC 确认帧后延）</td></tr>
+<tr><td>放错标签（清单外 EPC）</td><td>不升不计数；连续 K 轮<b>只有外来标签且无任何清单标签在场</b> → 红闪 3s + 推失配帧，<b>不终止</b>（客户可能换对的来）；清单标签在场期间外来读数不触发失配</td><td>失配事件帧（可多帧）；窗口/完成照常</td></tr>
+<tr><td>窗 W 到期 n&lt;m</td><td>部分完成：回降、以实况转软标/结账</td><td>硬标完成帧(endReason=PARTIAL, 位图明示谁没到) + 后续流程帧</td></tr>
+<tr><td>已确认标签一直放台上</td><td>MASKED 静默忽略，无任何动作</td><td>无（不重报）</td></tr>
+</table>
+
+<h2>6. 蜂鸣器设计（约束 5 新增）</h2>
+<p>硬件：板载蜂鸣器 PC12（高电平响），驱动 <code>App_NewPeriph_BeepPulse(ms)</code>
+（立即响、到期自动停，Round_010 起专职业务脉冲——IR 蜂鸣联动已按需求移除，
+本设计是<b>新的业务脉冲用途</b>，与被移除的 IR 联动无关）。</p>
+<table>
+<tr><th>事件</th><th>提示音</th><th>宏</th></tr>
+<tr><td><b>每张 EPC 稳定确认</b></td><td>短鸣 200ms（与确认帧同拍发出）</td><td><code>UNLK_BEEP_TAG_MS 200</code></td></tr>
+<tr><td>硬标段完成（n==m）</td><td>沿用结账完成 300ms 口径</td><td><code>UNLK_BEEP_DONE_MS 300</code></td></tr>
+</table>
+<div class="card bad">
+<b>实现要点（必做，否则 200ms 变长鸣）：</b>
+蜂鸣脉冲到期由 <code>App_NewPeriph_BeepPulseActive()</code> 推进，当前<b>仅主循环调用</b>
+（main.c:199）。本流程是阻塞式，主循环停转 → 脉冲永不到期 → 一触发就长响不止。
+必须把 <code>App_NewPeriph_BeepPulseActive()</code> 加入阻塞泵循环（与
+<code>App_RgbLedPat_Tick()</code> 同级，RGB 灯语当年进泵循环就是同一原因）。
+</div>
+<p>重触发规则：BeepPulse 为"延长截止时刻"式，两张确认间隔 ≥3s（判据决定）不存在粘连；
+若未来缩短判据需注意脉冲重叠=顺延而非叠响，属可接受表现。视觉+听觉同拍：确认时
+RGB 绿单闪（复用现有 MATCH_OK 图样）+ 蜂鸣 200ms。</p>
+
+<h2>7. 严格状态机设计（约束 4）</h2>
+<pre>
+IDLE ──解锁命令(合法)──> WAIT_TAG ──IR去抖触发──> VERIFY ──n==m 或 窗W满──> LOWER ──> SOFT ──k==softCnt 或软标窗满──> DONE ──5s──> IDLE
+  │                       │                        │                                              softCnt=0 → LOWER 直接→ DONE
+  │                       ├─窗W满未触发: NO_IR 帧 → IDLE (零副作用, 未动任何机构)
+  │                       └─STOP → IDLE (零成本退出)
+  │                                                ├─首确认: 磁块升起(KEY_UP, 内嵌于 VERIFY)
+  │                                                ├─STOP/UHF失联&gt;5s/电机故障: 终态帧→LOWER→IDLE
+  │                                                └─故障: 诊断冻结快照帧 (现 FAULT 机制照搬)
+  └──LOWER/回降段: 免疫一切命令 (安全动作必须走完)
+</pre>
+<p>严格性四原则：</p>
+<ol>
+<li><b>命令响应矩阵封闭</b>（§4 表写死每个状态对 STOP/查询/其他三类的响应，无"视情况"）。</li>
+<li><b>触发唯一</b>：每条转移仅一个事件可引发（计数达标/窗口超时/STOP/故障四类之一），无竞态。</li>
+<li><b>单向掩码</b>：CONFIRMED→MASKED 不可逆（根治重报竞态）。</li>
+<li><b>故障即定格</b>：故障帧携带冻结快照（fault/diag/steps/phase），退出必经安全回降。</li>
+</ol>
+<p>窗口公式：W = <code>UNLK_HOLD_BASE_MS</code>(120s) + (m−1) × <code>UNLK_HOLD_EXTRA_PER_TAG_MS</code>(30s)
+（"预留 2 分钟，每多一标签加 30s" 的直译；m=1→120s，m=4→210s）。命令 holdMaxMs=0 用公式；
+非零取 min(host, <code>UNLK_HOLD_MAX_MS</code>)。W 同时兼任 WAIT_TAG 等待窗与 VERIFY 校对预算，
+自 IR 触发时刻起算（放标即计时的直觉口径）。</p>
+
+<h2>8. 可调参数宏定义清单（约束 6）</h2>
+<p>全部集中于新头文件 <code>App_LockerUnlock.h</code>（一处可查、一处可调）：</p>
+<table>
+<tr><th>类别</th><th>宏</th><th>默认值</th><th>含义</th></tr>
+<tr><td rowspan="2">容量</td><td><code>UNLK_MAX_TAGS</code></td><td>4</td><td>单帧硬标数量上限（64B 容量决定）</td></tr>
+<tr><td><code>UNLK_EPC_MAX</code></td><td>12</td><td>EPC 字节长上限</td></tr>
+<tr><td rowspan="4">判据</td><td><code>UNLK_IR_CONFIRM_MS</code></td><td>200</td><td>IR 触发去抖（沿用 ONE_IR_CONFIRM_MS）</td></tr>
+<tr><td><code>UNLK_STABLE_CONFIRM_MS</code></td><td>3000</td><td>稳定确认：连续在场时长门限</td></tr>
+<tr><td><code>UNLK_PRESENT_WINDOW_MS</code></td><td>3000</td><td>在场判定窗（容忍连续漏读）</td></tr>
+<tr><td><code>UNLK_CONFIRM_MIN_HITS</code></td><td>2</td><td>稳定确认：累计最少命中次数</td></tr>
+<tr><td rowspan="3">失配/失联</td><td><code>UNLK_MISMATCH_CONFIRM_ROUNDS</code></td><td>3</td><td>外来独占连续轮数 → 失配帧（不终止）</td></tr>
+<tr><td><code>UNLK_UHF_LOST_CONFIRM_MS</code></td><td>5000</td><td>UHF 链路异常确认窗 → UHF_LOST 收尾</td></tr>
+<tr><td><code>UNLK_INVENTORY_TMO_MS</code></td><td>1000</td><td>每轮盘点时限（命令 tmoMs=0 缺省）</td></tr>
+<tr><td rowspan="3">窗口</td><td><code>UNLK_HOLD_BASE_MS</code></td><td>120000</td><td>解锁窗基数（首标签 2min）</td></tr>
+<tr><td><code>UNLK_HOLD_EXTRA_PER_TAG_MS</code></td><td>30000</td><td>每多一标签增量</td></tr>
+<tr><td><code>UNLK_HOLD_MAX_MS</code></td><td>240000</td><td>解锁窗绝对上限（&gt;60s，放开现 ONE_HOLD_MAX_MS 截断）</td></tr>
+<tr><td rowspan="2">蜂鸣</td><td><code>UNLK_BEEP_TAG_MS</code></td><td>200</td><td>每张确认提示音（本轮需求）</td></tr>
+<tr><td><code>UNLK_BEEP_DONE_MS</code></td><td>300</td><td>结账完成提示音（与现 Locker DONE 口径统一）</td></tr>
+<tr><td rowspan="2">软标/收尾</td><td><code>UNLK_SOFT_WINDOW_MS</code></td><td>300000</td><td>软标窗（沿用 SOFT_WINDOW_MS 5min）</td></tr>
+<tr><td><code>UNLK_DONE_IDLE_MS</code></td><td>5000</td><td>DONE 保持时长后回 IDLE</td></tr>
+<tr><td rowspan="4">寻触(共用)</td><td><code>UNLK_SEEK_SPEED_HZ</code> / <code>UNLK_SEEK_TORQUE_PCT</code></td><td>2000 / 40</td><td>寻触工况（与回零/OneShot 一致）</td></tr>
+<tr><td><code>UNLK_SEEK_STALL_MS</code></td><td>400</td><td>步数停滞判丢步</td></tr>
+<tr><td><code>UNLK_SEEK_TIMEOUT_MS</code></td><td>10000</td><td>寻触段超时</td></tr>
+<tr><td><code>UNLK_RISE_MAX</code> / <code>UNLK_LOWER_MAX</code></td><td>8970 / 9448</td><td>行程×2+裕量（与 OneShot 同源）</td></tr>
+</table>
+<p>错误码/结束原因/阶段码（<code>UNLK_ERR_*</code>/<code>UNLK_END_*</code>/<code>UNLK_PH_*</code>）
+沿用 ONE_SHOT v2.3 编号族并扩展（终帧 endReason：ALL_OK / PARTIAL_TIMEOUT / ABORTED /
+UHF_LOST / NO_IR / FAULT / SOFT_DONE），协议文档同步补全。</p>
+
+<h2>9. 实现方案（文件改动清单）</h2>
+<table>
+<tr><th>文件</th><th>改动</th></tr>
+<tr><td><code>Application/src/App_LockerUnlock.c</code> + <code>.h</code>（新）</td>
+    <td>主流程：状态机 + 每标签记录/判据/掩码 + 确认帧推送 + 蜂鸣 + 窗口公式；全部宏集中 .h</td></tr>
+<tr><td><code>Application/src/App_LockerSeek.c</code> + <code>.h</code>（新，从 App_LockerOneShot.c 提取）</td>
+    <td><code>one_pump</code> / <code>one_seek</code> / <code>one_seek_phase</code> 提为共享模块
+    （OneShot 与 Unlock 两个消费者），泵循环<b>增加 <code>App_NewPeriph_BeepPulseActive()</code></b>；
+    App_LockerOneShot.c 改为调用共享版</td></tr>
+<tr><td><code>Application/src/App_Dispatch.c</code></td>
+    <td>新子命令 0x0A 分发；解锁态白名单矩阵（STOP/0x09 放行，其余 BUSY NAK）——扩展现 OneShot 白名单机制</td></tr>
+<tr><td><code>Application/inc/App_CustomProtocol.h</code>（常量表）</td>
+    <td><code>LOCKER_SUB_UNLOCK_MULTI 0x0A</code> / <code>LOCKER_SUB_EVT_TAG 0x0B</code> /
+    <code>LOCKER_SUB_EVT_MISMATCH 0x0C</code> / <code>LOCKER_SUB_EVT_HARD_DONE 0x0D</code> /
+    <code>LOCKER_SUB_EVT_SOFT 0x0E</code> 及 UNLK_* 全码表</td></tr>
+<tr><td><code>Protocol/App_Protocol.html</code> / <code>App_Locker_Report.html</code></td>
+    <td>§13 增补 0x0A 全套（命令/推送帧/终帧/错误位/阶段位）；状态机文档更新</td></tr>
+<tr><td><code>Agent/Round_012/test/unlock_multi.py</code>（新）</td>
+    <td>台架验证脚本（§10 用例，基于 HidLink，收帧按 func=0xF2 + data[0] 区分）</td></tr>
+</table>
+
+<h2>10. 验证方案（台架用例）</h2>
+<table>
+<tr><th>#</th><th>用例</th><th>通过判据</th></tr>
+<tr><td>M1</td><td>单张全流程（m=1, soft=0）</td><td>ACK→确认帧(含 seq/confirmed/total/confirmMs)→硬标完成帧→终帧；蜂鸣 200ms×1+300ms×1（听感计时）；全程 ~8s</td></tr>
+<tr><td>M2</td><td>两张同时放（m=2）</td><td>确认帧×2（各自判据独立）→ n=2=m 完成帧；两声 200ms</td></tr>
+<tr><td>M3</td><td>逐张放取（A 确认→取走→放 B）</td><td>A 确认后 MASKED；B 重新累计并确认；无重复帧</td></tr>
+<tr><td>M4</td><td>部分超时（只放 1/m=2，窗 W 到期）</td><td>硬标完成帧 endReason=PARTIAL + 位图明示；实况进软标/结账</td></tr>
+<tr><td>M5</td><td>放错标签（清单外）</td><td>失配事件帧×N（红闪 3s）<b>流程不终止</b>；换正确标签后照常确认</td></tr>
+<tr><td>M6</td><td>响应矩阵</td><td>解锁态内发 0x08/CONFIGURE/其他 → 均 BUSY NAK 单帧；STOP/0x09 正常</td></tr>
+<tr><td>M7</td><td>STOP 各阶段（WAIT_TAG/VERIFY 升起中/回降中）</td><td>WAIT_TAG→IDLE 零动作；升起中→免疫回降后 ABORTED 终帧；回降中不被打断</td></tr>
+<tr><td>M8</td><td>蜂鸣专项</td><td>阻塞全程听感：每确认一短鸣 200ms 自动停（不长鸣——验证泵循环 BeepPulseActive 补丁）；两帧间隔 ≥3s 无粘连</td></tr>
+<tr><td>M9</td><td>软标计数（AM 解码器接回后；接回前以事件注入桩验证）</td><td>softCnt=2：解码帧×2(k=1,2) → 结账终帧 softDone=2</td></tr>
+</table>
+
+<h2>11. 设计决策记录（D1~D8）</h2>
+<table>
+<tr><th>#</th><th>决策</th><th>理由 / 取舍</th></tr>
+<tr><td>D1</td><td>新子命令 0x0A，<b>不动 0x08</b>；不做 ADD 多帧累加</td>
+    <td>0x08 v2.3 已 17/17×3 闭环且上位机已按新语义联调；单帧 m≤4 覆盖零售绝大多数单据，大清单属调试场景留给业务状态机路径</td></tr>
+<tr><td>D2</td><td>锁定态其余命令回 <b>BUSY NAK 单帧</b>，非纯静默</td><td>静默无法区分忙/死机；NAK 成本极低，泵循环内协议层本在收发</td></tr>
+<tr><td>D3</td><td>失配<b>推帧不终止</b>（与 0x08 终止语义不同）</td>
+    <td>多标签场景客户可能"放错→拿走→换对的"；终止会误杀换标流程，窗口兜底更稳；0x08 单标签保留终止（已验证不动）</td></tr>
+<tr><td>D4</td><td>W = 120s + (m−1)×30s，自 IR 触发起算；holdMaxMs 非零则 min(host, 上限)</td>
+    <td>"预留 2min，每多一标签加 30s" 直译；上限宏放开到 240s（现 ONE_HOLD_MAX_MS=60s 会截断 2min 规格）</td></tr>
+<tr><td>D5</td><td>磁块模型甲：首确认升起、n==m/窗满回降；<b>硬标收尾即回降，再进软标</b></td>
+    <td>动作最少、复用已修时序；软标解码器与硬标磁铁无关，磁块无需为软标保持升起（比现 Locker 全程升起更安全）</td></tr>
+<tr><td>D6</td><td>确认判据双门限（3s 在场 + ≥2 hits），禁止连续轮判据</td><td>25% 单轮漏读实测下，连续判据会发散；双门限误确认防掠过、漏确认概率 &lt;5%</td></tr>
+<tr><td>D7</td><td>静默=设备侧掩码为主；模块 Session 真静默只作台架实验</td>
+    <td>现盘点模式同标签跨轮重复上报（实测），不依赖不可控的模块行为；掩码正确性与模块无关</td></tr>
+<tr><td>D8</td><td>确认提示音 200ms/张，与完成音 300ms 分宏；蜂鸣到期推进入泵循环</td>
+    <td>需求指定 200ms；BeepPulseActive 仅主循环推进是阻塞流程长鸣隐患（main.c:199），必补</td></tr>
+</table>
+
+<h2>12. 相关建议</h2>
+<ul>
+<li><b>确认帧时间基准</b>写进协议注释：confirmMs 自 IR 触发时刻起算，方便上位机对账各张耗时。</li>
+<li><b>上位机勿依赖 seq 顺序</b>：确认顺序受盘点轮相位影响，跨标签无严格次序保证，以 EPC 匹配为准（协议文档注明）。</li>
+<li><b>NO_IR 现场验证</b>：v2.3 已实现但台架不可测（在场标签恒触发 PC4），本轮 M 用例同受此限，建议现场不放标签跑一次 W 窗满路径。</li>
+<li><b>蓝灯硬件补齐</b>（Round_010 遗留建议）：本方案 WAIT_TAG 青慢闪/保持白常亮等图样依赖蓝分量，无蓝灯时走既有降级表。</li>
+<li><b>容量扩展预留</b>：若未来单据超 4 张，优先压缩命令固定开销（tmoMs/holdMaxMs 可砍 4B→m=4 变 m≈5），不建议引入多帧组装（时序复杂度不成比例）。</li>
+</ul>
+
+<h2>13. 范围边界（本轮不做的事）</h2>
+<ul>
+<li>不改 ONE_SHOT 0x08 语义（已闭环已部署）；不删改业务状态机路径。</li>
+<li>不做 ADD 多帧累加大清单（容量受单帧约束是<b>接受的设计前提</b>，非缺陷）。</li>
+<li>不做模块 Session/选择性盘点（SELECT）固件级改造——静默由设备侧掩码承担。</li>
+<li>不做 AM 解码器协议新增（软标沿用现有消磁计数机制；AM 未接回设备侧前 M9 用桩）。</li>
+<li>不改 Boot 侧任何代码；不动 RGB 仲裁器既有图样（只新增复用）。</li>
+</ul>
+
+<div class="foot">
+  Round_012 · 多标签解锁设计方案 · 计划不执行，待审查 · 生成 2026-09-02 ·
+  依据 Agent/Round_012/Demand.md（需求经对话确认）· 前序: ONE_SHOT v2.3 (Round_101/102)
+</div>
+</div>
+</body>
+</html>

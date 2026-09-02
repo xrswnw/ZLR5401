@@ -122,11 +122,25 @@ void System_Init(void)
         }
     }
 
-    /* 8.8 AM 消磁器初始化 (RS232/USART1 驱动 + 配置, 不主动下发;
-     * 配置由 上位机 SET_CONFIG 下发或在 本机启动时按持久化配置复位) */
+    /* 8.8 AM 消磁器初始化 (RS232/USART1 驱动 + 状态复位, 不下发;
+     * 持久化配置复位移至 9.4 —— 见下) */
     App_AM_Init();
+
+    /* 8.9 开锁器业务编排层初始化 (IDLE, 默认锁定)*/
+    App_Locker_Init();
+
+    /* 8.10 电机行程测试状态机初始化 (IDLE, 不占用电机)*/
+    App_MotorTest_Init();
+
+    /* 9. 开全局中断 (最后一步 Sys_EnableInt, USB 准备就绪后才开)*/
+    __asm volatile ("cpsie i");
+
+    /* 9.4 AM 持久化配置复位 (开中断后执行 — 不可提前)
+     * App_AM_SetConfig 为阻塞收发: 等回帧依赖 USART1 RX 中断, 500ms
+     * 超时依赖 SysTick ms 计数. 此前放在 8.8 (步骤4~9 关中断期),
+     * 一旦 AM 解码器不在设备侧 (接上位机/未接), 回帧永不到且超时
+     * 永不成立 -> 死循环 -> IWDG 复位循环, 上电看似"不运行"。 */
     {
-        /* 加载上次持久化的 AM 配置到状态机, 使断电重启后保留上位机最后一次下发值 */
         AMUserCfg_t pc;
         if (AmParam_Load(&pc) == 0) {
             AppAMConfig_t c;
@@ -140,18 +154,10 @@ void System_Init(void)
             c.decodeVolt  = pc.decodeVolt;
             c.mode        = pc.mode;
             c.mainsFreq   = pc.mainsFreq;
+            IwdgHl_Feed();
             (void)App_AM_SetConfig(&c, 0);
         }
     }
-
-    /* 8.9 开锁器业务编排层初始化 (IDLE, 默认锁定)*/
-    App_Locker_Init();
-
-    /* 8.10 电机行程测试状态机初始化 (IDLE, 不占用电机)*/
-    App_MotorTest_Init();
-
-    /* 9. 开全局中断 (最后一步 Sys_EnableInt, USB 准备就绪后才开)*/
-    __asm volatile ("cpsie i");
 
     /* 9.5 上电行程自检/回零: 用行程开关建立绝对位置基准.
      * 必须在开全局中断后调用 —— 回零阻塞驱动依赖 TIM4 中断(推进 STEP)

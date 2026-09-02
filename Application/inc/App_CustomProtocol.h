@@ -103,8 +103,9 @@
 #define LOCKER_SUB_ONE_SHOT   0x08   /* data: [cmd,tmoL,tmoH,maxHoldL,maxHoldH,epcLen,epc..,(demagCnt)]
                                         单标签同步开锁: 一帧全流程 (UHF 就绪+盘点+比对+升 KEY_UP
                                         +保持期持续盘点监控+回降 KEY_DOWN), 阻塞至完成/失败回帧.
-                                        demagCnt: 消磁标签数, 缺省/0=跳过消磁流程; >0 时保持期
-                                        等待 AM 成功消磁事件数达标(endReason=5)即回降.
+                                        demagCnt: 消磁标签数, 缺省/0=跳过消磁流程; >0 时期望 EPC
+                                        命中后才切 AM 消磁模式 (校验期仅检测不消磁), 保持期等待
+                                        AM 成功消磁事件数达标(endReason=5)即回降, 结束切回检测模式.
                                         实现: App_LockerOneShot.c; 失败码/结束原因宏定义见
                                         App_LockerOneShot.h (ONE_ERR_x / ONE_END_x)。
                                         流程阻塞期间泵循环内嵌协议服务: GET_PROGRESS/CANCEL/
@@ -112,7 +113,35 @@
 #define LOCKER_SUB_GET_PROGRESS 0x09 /* data: [cmd]  流程中拉取进度:
                                         回 [cmd,err,phase,holdMs(2),steps(2),tagPresent,demagDone,
                                         epcLen,epc..]  phase 0=无流程 1前置 2UHF就绪 3盘点 4升起
-                                        5保持期 6回降 (ONE_PH_x, 见 App_LockerOneShot.h) */
+                                        5保持期 6回降 (ONE_PH_x, 见 App_LockerOneShot.h)。
+                                        0x0A 多标签流程进行中改回多标签布局:
+                                        [cmd,err,phase,holdMs(2),total,confirmed,bitmap,softCnt,softDone] */
+#define LOCKER_SUB_UNLOCK_MULTI 0x0A /* data: [cmd,tmoL,tmoH,holdL,holdH,softCnt,epcCnt,epcLen,
+                                        epcCnt*epcLen 字节]  多标签解锁整合主路径 (App_LockerUnlock.c):
+                                        单帧下发 m(<=4) 张期望 EPC + 软标数, 阻塞自治至结账完成。
+                                        阶段推送帧 (func 同 0x0D^0xFF, data[0] 为下述子码):
+                                          0x0F 受理帧: [0x0F,0,phase(1=WAIT_TAG),winMs(3 LE)]
+                                          0x0B 确认帧: [0x0B,seq,epcLen,epc..,confirmed,total,
+                                                        判据耗时(2 LE),流程耗时(2 LE)]  每张一帧+蜂鸣200ms
+                                          0x0C 失配事件帧: [0x0C,epcLen,epc..,rounds]  推帧不终止
+                                          0x0D 硬标完成帧: [0x0D,endReason,bitmap,confirmed,total,elapsed(2 LE)]
+                                          0x0E 软标解码帧: [0x0E,done,softCnt]
+                                        终帧 = 0x0A 回显 (流程结束标志): [0x0A,err,...]:
+                                          err=0: [endReason,bitmap,confirmed,total,rise(2),lower(2),
+                                                  softDone,softCnt,elapsed(2 LE)]
+                                          err=1 BUSY: [lockerState,uhfState,stepperState]
+                                          err=3/4 UHF: [uhfRawErr]  err=7 HOMING: [switchErr]
+                                          err=8 MOTOR_FAULT: [fault,diag1,diag2,steps(3),phase,retreat]
+                                          err=9 MOTOR_TIMEOUT: [steps(3),phase,retreat]
+                                          err=2 PARAM / 10 AM_LINK / 11 NO_IR: 无诊断字段
+                                        失败码/结束原因/阶段/参数宏见 App_LockerUnlock.h (UNLK_*)。
+                                        解锁态内 (受理帧起) 仅响应 CANCEL/GET_PROGRESS, 其余子命令
+                                        及 MOTOR/UHF/AM 控制类一律 BUSY。 */
+#define LOCKER_SUB_EVT_TAG      0x0B /* 设备推送: 某期望 EPC 稳定确认 (布局见上) */
+#define LOCKER_SUB_EVT_MISMATCH 0x0C /* 设备推送: 外来标签独占失配事件 */
+#define LOCKER_SUB_EVT_HARD_DONE 0x0D /* 设备推送: 硬标段结束 (n==m / 窗满部分 / CANCEL / 失联) */
+#define LOCKER_SUB_EVT_SOFT     0x0E /* 设备推送: 软标解码计数 +1 */
+#define LOCKER_SUB_EVT_START    0x0F /* 设备推送: 解锁命令已受理 (含实际解锁窗 W) */
 /* 逻辑错误码 (data[1]) — 0x01~0x07 子命令用 */
 #define LOCKER_ERR_OK         0
 #define LOCKER_ERR_BUSY       1     /* 非空闲, 需先取消 */

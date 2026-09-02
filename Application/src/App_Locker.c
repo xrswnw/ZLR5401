@@ -230,7 +230,6 @@ int App_Locker_Configure(const AppLockerItem_t *items, uint16_t hardCount,
                          uint16_t softCount)
 {
     if (hardCount > APP_LOCKER_MAX_HARD) return -2;   /* 超上限 */
-    if (hardCount == 0u && softCount == 0u) return -2;
     if (App_Locker_IsIdle() == 0) return -1;          /* 忙, 需先取消 */
     Memset8((void*)&s_ctx, 0, sizeof(s_ctx));
     s_ctx.hardCount  = hardCount;

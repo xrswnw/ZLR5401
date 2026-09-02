@@ -8,12 +8,20 @@
  *
  * 请求帧带: UHF 盘点超时 + 最大保持窗 + 期望 EPC。固件同步阻塞执行:
  *   ⑴ 前置检查 (Locker IDLE / 电机 IDLE / 已回零)
- *   ⑴.5 消磁准备 (demagCnt>0: AM 探链+确保消磁模式; demagCnt=0 跳过消磁)
+ *   ⑴.5 光电门控: 等客户放置标签 (PC4 高=检测到, 200ms 去抖),
+ *       等待窗 = maxHoldMs, 窗满未触发 -> NO_IR 失败
+ *   ⑴.6 消磁准备 (demagCnt>0: AM 探链+强制检测模式 — 校验期不消磁;
+ *       demagCnt=0 跳过, 不触碰 AM)
  *   ⑵ UHF 就绪 (上电+配置)
- *   ⑶ 同步盘点一轮, 与期望 EPC 单标签比对
- *   ⑷ 命中 → 电机上行至 KEY_UP 上行程触点, 停住保持
- *   ⑸ 保持期监控: 消磁事件数达标(demagCnt>0) / 期望标签稳定移除 /
- *      保持窗超时 / 期望标签消失后读到其他 EPC / UHF 链路失联 → 任一先到即回降
+ *   ⑶ 持续校对: 反复盘点比对期望 EPC (单轮 ~1/4 漏读属正常, 未命中
+ *       继续轮); 读到标签但连续 3 轮均无期望 -> MISMATCH (红闪不升起);
+ *       校对预算 (maxHoldMs) 内无任何标签 -> NO_TAG
+ *   ⑷ 命中 → (demagCnt>0 先切 AM 消磁模式) 电机上行至 KEY_UP 上行程
+ *       触点, 停住保持; 流程结束 (含失败/打断) 切回 AM 检测模式
+ *   ⑸ 保持期监控 (先到先回降):
+ *       消磁事件数达标(demagCnt>0) / EPC 稳定确认(demagCnt=0: 连续
+ *       在场 3s -> 结账成功, 不等取走/窗满) / 保持窗超时 /
+ *       期望标签稳定移除 / 期望标签消失后读到其他 EPC / UHF 链路失联
  *   ⑹ 下行回退至 KEY_DOWN 下行程触点 (绝对基准), 停止
  *   ⑺ 回响应帧 (详细失败码 + 结束原因 + 诊断字段)
  *
@@ -30,16 +38,18 @@
 #define ONE_END_TAG_CHANGED   3u   /* 期望标签消失后读到其他 EPC */
 #define ONE_END_UHF_LOST      4u   /* 保持期 UHF 链路失联 (无法证实标签在场) */
 #define ONE_END_DEMAG_DONE    5u   /* 消磁标签数达标 (demagCnt>0 时先于其他原因) */
+#define ONE_END_STABLE_OK     7u   /* EPC 稳定确认 (demagCnt=0: 保持期连续在场达标 -> 结账成功) */
 #define ONE_END_ABORTED      6u   /* 上位机 CANCEL 打断 (安全回降后正常回帧) */
 
 /* ---- 流程阶段 (GET_PROGRESS 查询用) ---- */
 #define ONE_PH_NONE        0u   /* 无进行中流程 (空闲) */
 #define ONE_PH_PRECHK      1u   /* 前置检查 */
 #define ONE_PH_UHF_READY   2u   /* UHF 上电/配置 */
-#define ONE_PH_INVENTORY   3u   /* 初始盘点 + EPC 比对 */
+#define ONE_PH_INVENTORY   3u   /* 持续校对: 反复盘点 + EPC 比对 */
 #define ONE_PH_RISE        4u   /* 升起 (寻触 KEY_UP) */
 #define ONE_PH_HOLD        5u   /* 保持期 (监控/消磁等待) */
 #define ONE_PH_LOWER       6u   /* 回降 (寻触 KEY_DOWN) */
+#define ONE_PH_IR_WAIT      7u   /* 光电门控: 等待客户放置标签 (PC4) */
 
 /* ---- 失败码 ---- */
 #define ONE_ERR_OK             0u
@@ -53,6 +63,7 @@
 #define ONE_ERR_MOTOR_FAULT    8u   /* 升降中电机故障 (含触点不可达) */
 #define ONE_ERR_MOTOR_TIMEOUT  9u   /* 升降超时/步数停滞 */
 #define ONE_ERR_AM_LINK        10u  /* 消磁流程要求 demagCnt>0: AM 链路断/切消磁模式失败 */
+#define ONE_ERR_NO_IR          11u  /* 光电门控: 等待窗内 PC4 未触发 (标签未放置/传感器故障) */
 
 /* ---- 失败时安全回退状态 (err=8/9 时有效) ---- */
 #define ONE_RETREAT_OK      0u   /* 已回退至 KEY_DOWN */
@@ -62,6 +73,9 @@
 /* ---- 防抖/时限参数 (可按现场漏读率调整) ---- */
 #define ONE_INV_PERIOD_MS        1000u  /* 保持阶段盘点周期 */
 #define ONE_REMOVED_CONFIRM_MS   3000u  /* 期望标签连续未见达到此时长 -> 稳定移除 */
+#define ONE_STABLE_CONFIRM_MS    3000u  /* EPC 稳定确认: 连续在场此时长 -> 结账成功 (demagCnt=0) */
+#define ONE_MISMATCH_CONFIRM_ROUNDS 3u  /* 持续校对: 读到标签但连续此轮数无期望 -> MISMATCH */
+#define ONE_IR_CONFIRM_MS        200u   /* 光电门控去抖: PC4 连续高此时长 -> 放标触发 */
 #define ONE_UHF_LOST_CONFIRM_MS  5000u  /* 链路异常持续此时长 -> 失联回降 */
 #define ONE_HOLD_MAX_MS          60000u /* 保持窗硬上限 (maxHoldMs 参数钳位) */
 #define ONE_HOLD_DEFAULT_MS      30000u /* maxHoldMs=0 时的默认保持窗 */
@@ -101,7 +115,8 @@ typedef struct {
 /* 同步阻塞执行整个单标签开锁流程 (在 FC_LOCKER_CTRL 分发上下文调用)。
  * 返回时结果已填好; 调用方负责组响应帧。epcLen: 1~12。
  * demagCnt: 请求消磁的 AM 标签数; 0=跳过消磁流程 (不触碰 AM),
- * >0 时确保 AM 消磁模式后, 保持期等待成功消磁事件数达标即回降。 */
+ * >0 时期望 EPC 命中后才切 AM 消磁模式, 保持期等待成功消磁事件数
+ * 达标即回降, 流程结束切回检测模式 (不再消磁)。 */
 void App_LockerOneShot_Run(const uint8_t *epc, uint8_t epcLen,
                            uint16_t tmoMs, uint16_t maxHoldMs, uint8_t demagCnt,
                            LockerOneShotResult_t *out);
