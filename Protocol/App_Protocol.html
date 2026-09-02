@@ -112,7 +112,7 @@ li { margin: 3px 0; }
 <tr><td><code>0x0A</code></td><td>FC_MOTOR_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §10 (subCmd 0x01~0x09)</td><td>步进电机升降机构控制 + 健康监控</td></tr>
 <tr><td><code>0x0B</code></td><td>FC_UHF_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §11 (subCmd 0x01~0x0E, 0x10)</td><td>UHF 超高频读写模块控制</td></tr>
 <tr><td><code>0x0C</code></td><td>FC_AM_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §12 (subCmd 0x01~0x07)</td><td>AM 消磁器控制</td></tr>
-<tr><td><code>0x0D</code></td><td>FC_LOCKER_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §13 (subCmd 0x01~0x09)</td><td>开锁器业务编排 + ONE_SHOT 同步开锁</td></tr>
+<tr><td><code>0x0D</code></td><td>FC_LOCKER_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §13 (subCmd 0x01~0x0A)</td><td>开锁器业务编排 + UNLOCK_MULTI 同步解锁（唯一开锁通道）</td></tr>
 <tr><td><code>0x0E</code></td><td>FC_RGB_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §14 (subCmd 0x01)</td><td>RGB 三色指示灯手动设色 (G/R/B 位掩码)</td></tr>
 <tr><td><code>0x0F</code></td><td>FC_SELFTEST_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §15 (subCmd 0x01~0x03)</td><td>设备级自检错误位 (锁存位图, App 专属)</td></tr>
 <tr><td><code>0x10</code></td><td>FC_IO_DIAG</td><td>— (空参数)</td><td>10B: 见 §16</td><td>IO/外设状态一帧总览 (红外/行程/UHF/AM/回零/Locker/测试)</td></tr>
@@ -235,14 +235,12 @@ length=5 (FC + CRC32)</pre>
 <tr><td><code>0x0D</code></td><td><code>1</code></td><td><code>LOCKER_ERR_BUSY</code></td><td>忙（非空闲需先取消）</td></tr>
 <tr><td><code>0x0D</code></td><td><code>2</code></td><td><code>LOCKER_ERR_PARAM</code></td><td>参数非法/超上限</td></tr>
 <tr><td><code>0x0D</code></td><td><code>3</code></td><td><code>LOCKER_ERR_NO_EVENT</code></td><td>无待取事件</td></tr>
-<tr><td colspan="4"><em>FC=0x0D 子命令 0x08 (ONE_SHOT) / 0x09 (GET_PROGRESS) 的响应 <code>err</code> 为独立结果码 <code>ONE_ERR_*</code>（0~11，含 NO_IR=11 光电未触发），完整定义见 §13.2：</em></td></tr>
-<tr><td><code>0x0D</code></td><td><code>5</code></td><td><code>ONE_ERR_NO_TAG</code></td><td>整窗盘点未读到任何标签（0x08 专属）</td></tr>
-<tr><td><code>0x0D</code></td><td><code>6</code></td><td><code>ONE_ERR_MISMATCH</code></td><td>连续 3 轮读到标签但无期望 EPC，不升起（0x08 专属）</td></tr>
-<tr><td><code>0x0D</code></td><td><code>7</code></td><td><code>ONE_ERR_HOMING</code></td><td>未回零/行程开关错误，禁止运动（0x08 专属）</td></tr>
-<tr><td><code>0x0D</code></td><td><code>8</code></td><td><code>ONE_ERR_MOTOR_FAULT</code></td><td>升降中电机驱动器件故障（0x08 专属）</td></tr>
-<tr><td><code>0x0D</code></td><td><code>9</code></td><td><code>ONE_ERR_MOTOR_TIMEOUT</code></td><td>寻触超时/超步/停滞（0x08 专属）</td></tr>
-<tr><td><code>0x0D</code></td><td><code>10</code></td><td><code>ONE_ERR_AM_LINK</code></td><td>demagCnt&gt;0：AM 链路断/切消磁模式失败（0x08 专属）</td></tr>
-<tr><td><code>0x0D</code></td><td><code>11</code></td><td><code>ONE_ERR_NO_IR</code></td><td>光电门控窗内未检测到放标（0x08 专属）</td></tr>
+<tr><td colspan="4"><em>FC=0x0D 子命令 0x0A (UNLOCK_MULTI) 的响应 <code>err</code> 为独立结果码 <code>UNLK_ERR_*</code>（含 NO_IR=11 光电未触发），完整定义见 §13.3：</em></td></tr>
+<tr><td><code>0x0D</code></td><td><code>7</code></td><td><code>UNLK_ERR_HOMING</code></td><td>未回零/行程开关错误，禁止运动（0x0A）</td></tr>
+<tr><td><code>0x0D</code></td><td><code>8</code></td><td><code>UNLK_ERR_MOTOR_FAULT</code></td><td>升降中电机驱动器件故障（0x0A）</td></tr>
+<tr><td><code>0x0D</code></td><td><code>9</code></td><td><code>UNLK_ERR_MOTOR_TIMEOUT</code></td><td>寻触超时/超步/停滞（0x0A）</td></tr>
+<tr><td><code>0x0D</code></td><td><code>10</code></td><td><code>UNLK_ERR_AM_LINK</code></td><td>softCnt&gt;0：AM 链路断/切消磁模式失败（0x0A）</td></tr>
+<tr><td><code>0x0D</code></td><td><code>11</code></td><td><code>UNLK_ERR_NO_IR</code></td><td>光电门控窗内未检测到放标（0x0A）</td></tr>
 <tr><td colspan="4"><em>以下 FC=0x0F 设备自检结果码：</em></td></tr>
 <tr><td><code>0x0F</code></td><td><code>0</code></td><td><code>SELFTEST_ERR_OK</code></td><td>成功</td></tr>
 <tr><td><code>0x0F</code></td><td><code>1</code></td><td><code>SELFTEST_ERR_PARAM</code></td><td>参数错误（长度不足/未知子命令）</td></tr>
@@ -408,7 +406,7 @@ if (n >= 64 && report[0] == 0x02) {
 <tr><td><code>band</code></td><td>0x01/06/08/FF</td><td>工作频段 Region 码: 0x01=北美(默认) / 0x06=中国1 / 0x08=CE_LOW / 0xFF=全频段</td></tr>
 </table>
 <div class="note">SET_CONFIG 中 <code>band</code> 为可选项：设备收到 <code>dataLen&gt;=8</code> 时取 <code>data[7]</code>，否则保持默认 0x01（北美），兼容旧主机。<strong>持久化语义</strong>：值域校验通过即写参数区（重启保留），即使模块忙导致本次未同步下发（err 仍回 LINK 以提示）——配置已在 RAM 生效并落盘，GET_CONFIG 即时可读，下轮下发/下次 OPEN 时生效。</div>
-<div class="note"><u>业务扫描会话 S0 强制</u>：Locker/ONE_SHOT/UNLOCK_MULTI 扫描窗内，设备<strong>临时</strong>把 Gen2 session 切为 S0（只改运行配置，不落参数区），窗结束自动还原用户配置。原因：S2/S3 下标签盘存标志在连续场脉冲间不复位，首读后连续重扫永无匹配且无错误码。用户设置 S2 做多标签防重读的场景不受影响（仅扫描窗内临时切换）。</div>
+<div class="note"><u>业务扫描会话 S0 强制</u>：Locker/UNLOCK_MULTI 扫描窗内，设备<strong>临时</strong>把 Gen2 session 切为 S0（只改运行配置，不落参数区），窗结束自动还原用户配置。原因：S2/S3 下标签盘存标志在连续场脉冲间不复位，首读后连续重扫永无匹配且无错误码。用户设置 S2 做多标签防重读的场景不受影响（仅扫描窗内临时切换）。</div>
 
 <h3>11.3 QUERY 响应字段</h3>
 <table>
@@ -492,19 +490,19 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <!-- FC_LOCKER_CTRL -->
 <h2>13. FC_LOCKER_CTRL (0x0D) — 开锁器业务编排</h2>
 <div class="phase">
-<p>本命令把开锁器（硬标签 UHF 开锁 + 软标计数）业务编排状态机暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x0A；0x0B~0x0F 为设备主动推送事件帧，见 13.3），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。一帧装不下的多枚硬标签，可先 <code>ADD</code> 逐条追加再 <code>START</code>；多标签解锁任务用 <code>0x0A UNLOCK_MULTI</code> 单帧下发（≤4 张 EPC）。
+<p>本命令把开锁器（硬标签 UHF 开锁 + 软标计数）业务编排状态机暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x0A；0x0B~0x0F 为设备主动推送事件帧，见 13.2），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。一帧装不下的多枚硬标签，可先 <code>ADD</code> 逐条追加再 <code>START</code>；解锁任务（单标/多标）一律用 <code>0x0A UNLOCK_MULTI</code> 单帧下发（≤4 张 EPC，单标 epcCnt=1）。
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
 <tr><td><code>0x01</code></td><td>CONFIGURE</td><td>[cmd, hardCntL,hardCntH, softCntL,softCntH]</td><td>[cmd, err]</td><td>清空清单、置软标数 N（v1 精简；hardCnt 仅用于预检上限，不写入；<code>softCnt=0</code> 为合法的纯硬标任务，硬标经 <code>ADD</code> 累积）</td></tr>
 <tr><td><code>0x02</code></td><td>ADD</td><td>[cmd, epcLen, epc..]</td><td>[cmd, err]</td><td>追加一条硬标签 EPC（≤12B）</td></tr>
 <tr><td><code>0x03</code></td><td>START</td><td>[cmd]</td><td>[cmd, err]</td><td>上电 UHF + 开扫，进入可开锁</td></tr>
-<tr><td><code>0x04</code></td><td>CANCEL</td><td>[cmd]</td><td>[cmd, err]</td><td>取消当前任务，磁块回降、回 IDLE；0x08/0x0A 流程中则打断请求（立即回 OK，流程安全回降后回最终帧）</td></tr>
+<tr><td><code>0x04</code></td><td>CANCEL</td><td>[cmd]</td><td>[cmd, err]</td><td>取消当前任务，磁块回降、回 IDLE；0x0A 流程中则打断请求（立即回 OK，流程安全回降后回终帧）</td></tr>
 <tr><td><code>0x05</code></td><td>QUERY</td><td>[cmd]</td><td>[cmd, err, state, hmL,hmH, scL,scH, suL,suH, faultReason]</td><td>查询状态/计数</td></tr>
 <tr><td><code>0x06</code></td><td>CONSUME_SOFT</td><td>[cmd]</td><td>[cmd, err]</td><td>v1 软标：上位机上报已解码一次</td></tr>
 <tr><td><code>0x07</code></td><td>GET_EVENT</td><td>[cmd]</td><td>[cmd, err, code, epcLen, epc.., hmL,hmH, suL,suH, scL,scH, hcL,hcH]</td><td>取一条上报事件</td></tr>
-<tr><td><code>0x08</code></td><td>ONE_SHOT</td><td>[cmd, tmoL,tmoH, irWaitL,irWaitH, holdL,holdH, epcLen, epc.., (demagCnt)]</td><td>见 13.2（随 err 变体）</td><td>单标签同步开锁：<strong>阻塞执行全流程后回一帧</strong>（见 13.1）。irWait/hold 双窗口拆分见 13.1</td></tr>
-<tr><td><code>0x09</code></td><td>GET_PROGRESS</td><td>[cmd]</td><td>[cmd, err, phase, holdMs(2), steps(2), tagPresent, demagDone, epcLen, epc..]</td><td>0x08 阻塞期间随时可查的进度快照；<strong>0x0A 流程进行中为多标签布局</strong>：[cmd, err, phase, holdMs(2), total, confirmed, bitmap, softCnt, softDone]（0x08/0x0A 白名单互斥，其余命令回 BUSY）</td></tr>
-<tr><td><code>0x0A</code></td><td>UNLOCK_MULTI</td><td>[cmd, tmoL,tmoH, holdL,holdH, softCnt, epcCnt, epcLen, epcCnt*epcLen 字节]</td><td>见 13.4（随 err 变体）</td><td>多标签同步解锁：<strong>单帧下发 m≤4 张期望 EPC + 软标数，阻塞自治执行</strong>，期间推 0x0B~0x0F 事件帧，流程结束回 0x0A 终帧（见 13.3）</td></tr>
+<tr><td><code>0x08</code></td><td>ONE_SHOT <s>已废除</s></td><td>—</td><td>[cmd, 2]</td><td><strong>Round_011 废除</strong>：不再解析帧形状，一律回 PARAM。单标场景统一 <code>0x0A epcCnt=1</code>（见 13.1）</td></tr>
+<tr><td><code>0x09</code></td><td>GET_PROGRESS</td><td>[cmd]</td><td>[cmd, err, phase, holdMs(3), total, confirmed, bitmap, softCnt, softDone]</td><td>解锁流程进度快照（<strong>唯一布局</strong>，非流程时 phase=0 全零）。holdMs 3 字节（W≤240000）；流程中仅 CANCEL/QUERY/GET_PROGRESS 放行，其余回 BUSY</td></tr>
+<tr><td><code>0x0A</code></td><td>UNLOCK_MULTI</td><td>[cmd, tmoL,tmoH, holdL,holdH, softCnt, epcCnt, epcLen, epcCnt*epcLen 字节]</td><td>见 13.3（随 err 变体）</td><td>同步解锁（<strong>唯一开锁通道</strong>，单标/多标同一流程）：单帧下发 m≤4 张期望 EPC + 软标数，阻塞自治执行，期间推 0x0B~0x0F 事件帧（比对结果逐张回传），流程结束回 0x0A 终帧（见 13.2/13.3）</td></tr>
 </table>
 <div class="note">
 <div class="note-title">QUERY 字段</div>
@@ -519,61 +517,25 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <code>0</code>=OK, <code>1</code>=忙（非空闲需先取消）, <code>2</code>=参数非法/超上限, <code>3</code>=无待取事件。
 </div>
 
-<h3>13.1 ONE_SHOT (0x08) 单标签同步开锁流程</h3>
-<p><strong>请求</strong>：<code>[cmd, tmoL,tmoH, irWaitL,irWaitH, holdL,holdH, epcLen, epc.., (demagCnt)]</code> — <code>tmoMs</code> 单轮盘点超时（0→1000，上限 10000）；<code>irWaitMs</code> 光电门控+标签出现窗（0→10000 缺省，上限 60000）；<code>holdMs</code> 升起后保持窗（0→30000 缺省，上限 60000）；<code>epcLen</code> 1~12；<code>demagCnt</code> 软标消磁数（<strong>可省略，缺省 0=跳过消磁流程</strong>，不触碰 AM）。<em>帧长 &lt;8 / epcLen=0 或 &gt;12 / 8+epcLen &gt; 帧长 均 err=2 PARAM。</em>参数钳位后<strong>同步阻塞执行</strong>，期间仅 QUERY/GET_PROGRESS/CANCEL（及各 FC 只读命令）被放行，其余回 BUSY。<em>原 maxHold 单窗已拆为 irWait（放标等待）与 hold（升起保持）两个独立参数 — 原布局 [cmd,tmoL,tmoH,holdL,holdH,epcLen,..] 帧因缺 irWait 域回 PARAM，主机须按新布局下发。</em></p>
-<p><strong>流程</strong>（固件 App_LockerOneShot.c）：</p>
-<pre>⑴   前置检查 (Locker/UHF/电机空闲 + 已回零)
-⑴.5 <b>光电门控</b>: 等客户放标 (红外光电检测, 200ms 去抖), 窗=irWaitMs
-     [灯] 等放标=白慢闪
-     窗满未触发 -> err=11 NO_IR (不动磁块; 黄慢闪 2s 灯语)
-⑴.6 消磁准备 (demagCnt>0: AM 探链 + 强制检测模式 — <b>校验期仅检测
-     不消磁</b>; =0 跳过, 不触碰 AM)
-⑵   UHF 上电/配置 (扫描窗内强制 session S0, 结束还原)
-     [灯] 盘点校对中=蓝慢闪; 每解码到一张标签=蓝单闪
-⑶   <b>持续校对</b>: 反复盘点比对期望 EPC (单轮 ~1/4 漏读属正常),
-     预算=irWaitMs (自光电触发起)
-     命中 -> 升起; 连续 3 轮读到标签但无期望 -> MISMATCH (不升起);
-     窗内无任何标签 -> NO_TAG
-⑷   命中 -> (demagCnt>0 先切 AM <b>消磁模式</b> — EPC 校验通过才消磁)
-     上行至 KEY_UP 触点停住 [灯] 升起=绿常亮
-⑸   保持期监控 (窗=holdMs, 先到先回降):
-     消磁数达标(demagCnt>0) /
-     <b>EPC 稳定确认(demagCnt=0: 连续在场 3s -> 结账成功 end=7)</b> /
-     保持窗超时 / 期望标签稳定移除 / 移除后读到其他 EPC / UHF 失联
-⑹   下行回退至 KEY_DOWN 触点 [灯] 回降=灭; 流程结束(含失败/打断) AM 切回检测模式
-⑺   回最终帧 (13.2)</pre>
+<h3>13.1 0x08 单标签流程（Round_011 已废除）</h3>
+<p><strong>0x08 子命令不再解析任何帧形状，收到一律回 <code>[cmd, 2]</code> (PARAM)</strong>。单标签场景统一改用 <code>0x0A UNLOCK_MULTI</code>：<code>epcCnt=1</code> 即单标，解锁窗 W=120000ms 恰为 2min。废除动机：单标/多标两条通道共享同一光电门控与"命中即升起"逻辑，语义重复且双通道互斥检查徒增状态机分支面；0x08 独有的"保持期 3s 稳定即结账成功"判据与 0x0A 的"逐张确认 + n==m 结束"业务语义不一致，易产生结账误判。保留 0x08 码位显式回 PARAM（区别于未知子命令），便于上位机探测协议升级。</p>
 
-<h3>13.2 ONE_SHOT 响应格式（随 err 变体）</h3>
-<table>
-<tr><th>err</th><th>Device → Host (data)</th><th>说明</th></tr>
-<tr><td><code>0</code> OK</td><td>[cmd, 0, endReason, epcLen, epc.., riseL,riseH, lowerL,lowerH, demagDone]</td><td>全流程成功：<code>epc</code>=命中标签，<code>rise/lower</code>=升/降实际微步数，<code>demagDone</code>=本流程消磁数（demagCnt=0 恒 0）</td></tr>
-<tr><td><code>1</code> BUSY</td><td>[cmd, 1, lockerState, uhfState, stepperState]</td><td>三模块占用状态快照</td></tr>
-<tr><td><code>2</code> PARAM</td><td>[cmd, 2]</td><td>epcLen 非法/帧长不匹配</td></tr>
-<tr><td><code>3</code> UHF_OPEN</td><td>[cmd, 3, uhfRawErr]</td><td>UHF 上电/配置失败（<code>uhfRawErr</code>=App_UHF 原始码，int8）</td></tr>
-<tr><td><code>4</code> UHF_LINK</td><td>[cmd, 4, uhfRawErr]</td><td>持续校对阶段 UHF 通信失败</td></tr>
-<tr><td><code>5</code> NO_TAG</td><td>[cmd, 5, uhfRawErr]</td><td>整窗盘点未读到任何标签</td></tr>
-<tr><td><code>6</code> MISMATCH</td><td>[cmd, 6, tagsFound, epcLen, epc..]</td><td>持续校对确认失配：不升起、RGB 红闪 3s；<code>tagsFound</code>=累计读到标签数（1B），<code>epc</code>=读到的第一张非期望 EPC（供"读到≠期望"展示）</td></tr>
-<tr><td><code>7</code> HOMING</td><td>[cmd, 7, switchErr]</td><td>未回零/行程开关错误，禁止运动（bit0=上 bit1=下）</td></tr>
-<tr><td><code>8</code> MOTOR_FAULT</td><td>[cmd, 8, fault, diag1, diag2, steps(3), phase, retreat]</td><td>升降中电机驱动器件故障；<code>phase</code> 1=升段 2=降段；<code>retreat</code> 0=已回退下端 1=回退失败 2=未尝试</td></tr>
-<tr><td><code>9</code> MOTOR_TIMEOUT</td><td>[cmd, 9, steps(3), phase, retreat]</td><td>寻触超时/超步/停滞</td></tr>
-<tr><td><code>10</code> AM_LINK</td><td>[cmd, 10]</td><td>demagCnt&gt;0 时 AM 链路断/切消磁模式失败</td></tr>
-<tr><td><code>11</code> NO_IR</td><td>[cmd, 11]</td><td>光电门控窗内未检测到放标（客户未放标/光电传感器故障）</td></tr>
-</table>
-<div class="note">
-<div class="note-title">endReason（err=0 时的结束原因）</div>
-<code>1</code>=TAG_REMOVED 期望标签稳定移除 / <code>2</code>=HOLD_TIMEOUT 保持窗超时 / <code>3</code>=TAG_CHANGED 移除后读到其他 EPC / <code>4</code>=UHF_LOST 保持期链路失联 / <code>5</code>=DEMAG_DONE 消磁数达标 / <code>6</code>=ABORTED 上位机 CANCEL 打断（安全回降后正常回帧）/ <code>7</code>=<b>STABLE_OK</b> EPC 稳定确认结账成功（demagCnt=0 正常完成的推荐判据）。
-</div>
-<div class="note">
-<div class="note-title">GET_PROGRESS (0x09) phase 字段</div>
-<code>0</code>=无流程 / <code>1</code>=PRECHK 前置检查 / <code>2</code>=UHF_READY 上电配置 / <code>3</code>=INVENTORY 持续校对 / <code>4</code>=RISE 升起 / <code>5</code>=HOLD 保持期（<code>holdMs</code> 已保持时长，<code>tagPresent</code> 期望标签在场，<code>demagDone</code> 已消磁数）/ <code>6</code>=LOWER 回降 / <code>7</code>=<b>IR_WAIT 光电门控（等客户放标）</b>。非流程时 phase=0。
-</div>
-
-<h3>13.3 UNLOCK_MULTI (0x0A) 多标签同步解锁流程</h3>
-<p><strong>请求</strong>：<code>[cmd, tmoL,tmoH, holdL,holdH, softCnt, epcCnt, epcLen, epcCnt*epcLen 字节]</code> — <code>tmoMs</code> 每轮盘点时限（0→1000，上限 10000）；<code>holdMs</code>=0 时解锁窗 W 由公式计算，非零取 min(上位机值, 240000)；<code>softCnt</code> 软标消磁数（0=跳过软标段）；<code>epcCnt</code> 期望标签数 m（1~4）；<code>epcLen</code> 1~12。与 0x08 互斥（双向前置检查 + 分发白名单）。</p>
+<h3>13.2 UNLOCK_MULTI (0x0A) 同步解锁流程（唯一开锁通道）</h3>
+<p><strong>业务闭环</strong>（上位机视角，单标/多标同一流程）：</p>
+<pre>1. 客户付款
+2. 上位机把结账清单 (m 张硬标 EPC + 软标数 softCnt) 单帧下发给开锁器
+3. 客户把标签放到开锁器上, 光电 (PC4) 触发
+4. 持续比对: 清单内 EPC 稳定确认 -> 绿灯升起开锁 (逐张推 0x0B 回传);
+   清单外 EPC 独占 -> 红闪不升起 (推 0x0C 回传, 不终止流程)
+5. 硬标段预算 W = 2min + 30s/额外标签 (m=1 即单标 2min);
+   全部确认 (n==m) 硬标段立即结束进入软标段 (W 是预留上限, 非最短等待)
+6. 软标段: 每个软标对应一次解码 (AM), 每次推 0x0E;
+   次数用完 (或软标窗 5min 满, 以实况结账) -> 结账完成回 0x0A 终帧</pre>
+<p><strong>请求</strong>：<code>[cmd, tmoL,tmoH, holdL,holdH, softCnt, epcCnt, epcLen, epcCnt*epcLen 字节]</code> — <code>tmoMs</code> 每轮盘点时限（0→1000，上限 10000）；<code>holdMs</code>=0 时解锁窗 W 由公式计算，非零取 min(上位机值, 240000)；<code>softCnt</code> 软标消磁数（0=跳过软标段）；<code>epcCnt</code> 期望标签数 m（1~4，<strong>1 即单标流程</strong>）；<code>epcLen</code> 1~12。</p>
 <p><strong>解锁窗 W</strong>：<code>holdMs=0 → 120000 + (m-1)*30000 ms</code>（首标签 2min，每多一标签加 30s），绝对上限 240000ms；非零时取 min(上位机值, 上限)。W 自光电触发时刻起算，兼任光电等待窗与校对预算。</p>
 <p><strong>流程</strong>（固件 App_LockerUnlock.c）：</p>
-<pre>⑴ 前置检查 (0x08/Locker/UHF/电机空闲 + 已回零) -> 推 0x0F 受理帧 (含实际 W)
-⑵ <b>光电门控</b>: 等放标 (红外光电检测, 200ms 去抖), 窗=W; 窗满 -> err=11 NO_IR
+<pre>⑴ 前置检查 (Locker/UHF/电机空闲 + 已回零) -> 推 0x0F 受理帧 (含实际 W)
+⑵ <b>光电门控</b>: 等放标 (PC4, 200ms 去抖), 窗=W; 窗满 -> err=11 NO_IR
 ⑶ 消磁准备 (softCnt>0: AM 探链 + 强制检测模式 — <b>校验期仅检测
     不消磁</b>; =0 跳过)
 ⑷ UHF 上电/配置 + 连续盘点
@@ -590,20 +552,20 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 ⑺ 软标解码 (softCnt>0): 入口才切 AM <b>消磁模式</b> (EPC 校验已
     通过), 消磁计数每+1 推 0x0E; 达标或 5min 软标窗满 (以实况结账),
     出口切回检测模式 (不再消磁)
-⑻ 流程结束回 0x0A 终帧 (13.4): 全部结账完成时长鸣 300ms + 绿三连闪</pre>
+⑻ 流程结束回 0x0A 终帧 (13.3): 全部结账完成时长鸣 300ms + 绿三连闪</pre>
 <p><strong>解锁态响应矩阵</strong>：受理帧（0x0F）起至终帧发完，仅 <code>CANCEL</code> / <code>QUERY</code> / <code>GET_PROGRESS</code>（及各 FC 只读命令）被放行，其余 LOCKER 子命令与 MOTOR/UHF/AM 控制类一律回 BUSY。</p>
 
 <p><strong>推送事件帧</strong>（func=0x0D^0xFF，<code>data[0]</code>=事件码，经命令来向通道原路回）：</p>
 <table>
 <tr><th>码</th><th>名称</th><th>Device → Host (data)</th><th>说明</th></tr>
 <tr><td><code>0x0F</code></td><td>EVT_START 受理</td><td>[0x0F, 0, phase(=1 WAIT_TAG), winMs(3 LE)]</td><td>命令已受理，含实际生效的解锁窗 W（区别于终帧的流程开始标志）</td></tr>
-<tr><td><code>0x0B</code></td><td>EVT_TAG 确认</td><td>[0x0B, seq, epcLen, epc.., confirmed, total, 判据耗时(2 LE), 流程耗时(2 LE)]</td><td>一张期望 EPC 稳定确认：seq=确认序号(1..m)，confirmed/total=已确认/总数，判据耗时=自该标签首次读到（进入 TRACKING）至确认，流程耗时=自光电触发至本帧</td></tr>
-<tr><td><code>0x0C</code></td><td>EVT_MISMATCH 失配</td><td>[0x0C, epcLen, epc.., rounds]</td><td>外来标签独占失配事件：连续 3 轮只读到清单外 EPC 且无清单标签在场；<code>epc</code>=最后外来 EPC，<code>rounds</code>=累计轮数。推帧不终止流程</td></tr>
-<tr><td><code>0x0D</code></td><td>EVT_HARD_DONE 硬标完成</td><td>[0x0D, endReason, bitmap, confirmed, total, elapsed(2 LE)]</td><td>硬标段结束（进入回降前）：endReason 见 13.4 note，bitmap=确认位图（bit i=清单第 i 张），elapsed=自光电触发起 ms</td></tr>
+<tr><td><code>0x0B</code></td><td>EVT_TAG 确认</td><td>[0x0B, seq, epcLen, epc.., confirmed, total, 判据耗时(2 LE), 流程耗时(2 LE)]</td><td>一张期望 EPC 稳定确认：<strong>比对结果回传上位机</strong>（每确认一张一帧）。seq=确认序号(1..m)，confirmed/total=已确认 n/总数 m，判据耗时=自该标签首次读到（进入 TRACKING）至确认，流程耗时=自光电触发至本帧</td></tr>
+<tr><td><code>0x0C</code></td><td>EVT_MISMATCH 失配</td><td>[0x0C, epcLen, epc.., rounds]</td><td>外来标签独占失配事件：<strong>比对结果回传上位机</strong>。连续 3 轮只读到清单外 EPC 且无清单标签在场；<code>epc</code>=最后外来 EPC，<code>rounds</code>=累计轮数。推帧不终止流程</td></tr>
+<tr><td><code>0x0D</code></td><td>EVT_HARD_DONE 硬标完成</td><td>[0x0D, endReason, bitmap, confirmed, total, elapsed(2 LE)]</td><td>硬标段结束（进入回降前）：endReason 见 13.3 note，bitmap=确认位图（bit i=清单第 i 张），elapsed=自光电触发起 ms</td></tr>
 <tr><td><code>0x0E</code></td><td>EVT_SOFT 软标解码</td><td>[0x0E, done, softCnt]</td><td>软标每解码一次推一帧：done=累计已解码数（1..softCnt），softCnt=目标数</td></tr>
 </table>
 
-<h3>13.4 UNLOCK_MULTI 终帧格式（随 err 变体）</h3>
+<h3>13.3 UNLOCK_MULTI 终帧格式（随 err 变体）</h3>
 <table>
 <tr><th>err</th><th>Device → Host (data)</th><th>说明</th></tr>
 <tr><td><code>0</code> OK</td><td>[cmd, 0, endReason, bitmap, confirmed, total, riseL,riseH, lowerL,lowerH, softDone, softCnt, elapsedL,elapsedH]</td><td>流程结束：endReason/bitmap/confirmed/total 见下；<code>rise/lower</code>=升/降实际微步数（未升起时为 0）；<code>softDone</code>=软标已解码数（softCnt=0 恒 0）；<code>elapsed</code>=自光电触发至终帧 ms</td></tr>
@@ -622,8 +584,8 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <code>1</code>=ALL_OK 全部 m 张确认（n==m）/ <code>2</code>=PARTIAL_TIMEOUT 窗 W 满部分确认（bitmap 明示哪些已确认）/ <code>4</code>=UHF_LOST 链路失联确认窗（5s）仍坏 / <code>6</code>=ABORTED 上位机 CANCEL 打断（安全回降后以 ABORTED 结账，跳过软标段）。CANCEL 后回降完成前仍处解锁态。
 </div>
 <div class="note">
-<div class="note-title">GET_PROGRESS (0x09) 多标签布局 phase 字段（0x0A 流程中）</div>
-<code>1</code>=WAIT_TAG 光电门控 / <code>2</code>=VERIFY 持续校对 / <code>3</code>=RISE 升起 / <code>4</code>=LOWER 回降 / <code>5</code>=SOFT 软标解码 / <code>6</code>=DONE 终帧组包（瞬时）。<code>holdMs</code>=自光电触发已过 ms（未触发=0）；<code>total/confirmed/bitmap</code>=清单 m / 已确认 n / 确认位图；<code>softCnt/softDone</code>=软标目标/已解码。非流程时 phase=0。
+<div class="note-title">GET_PROGRESS (0x09) 进度布局（Round_011 起唯一布局，原 0x08 单标布局随流程废除）</div>
+回 <code>[cmd, err, phase, holdMs(3 LE), total, confirmed, bitmap, softCnt, softDone]</code>。<code>holdMs</code> 3 字节（W≤240000 超 16bit 回填范围）=自光电触发已过 ms（未触发=0）；<code>total/confirmed/bitmap</code>=清单 m / 已确认 n / 确认位图；<code>softCnt/softDone</code>=软标目标/已解码。<code>phase</code>：<code>1</code>=WAIT_TAG 光电门控 / <code>2</code>=VERIFY 持续校对 / <code>3</code>=RISE 升起 / <code>4</code>=LOWER 回降 / <code>5</code>=SOFT 软标解码 / <code>6</code>=DONE 终帧组包（瞬时）。非流程时 phase=0 且全字段为 0。
 </div>
 </div>
 
@@ -633,7 +595,7 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <p>控制板载 RGB 三色指示灯（绿/红/蓝三通道）。<code>data</code> 区首字节为子命令码 <code>cmd</code>（0x01），其后为参数。响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），并回显 <code>mask</code>。</p>
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
-<tr><td><code>0x01</code></td><td>SET</td><td>[cmd, mask, reserved]</td><td>[cmd, err, mask]</td><td>手动设色：<code>mask</code> bit0=G 绿 / bit1=R 红 / bit2=B 蓝，其余位与 <code>reserved</code> 预留（忽略）。仅设备空闲（Locker/OneShot/行程测试均未运行）时接受，作为手动灯语保持 <strong>10s 自动回收</strong>（业务灯语优先，到期自动灭）；<code>mask=0</code> 立即撤销。运行中回 <code>err=2 BUSY</code></td></tr>
+<tr><td><code>0x01</code></td><td>SET</td><td>[cmd, mask, reserved]</td><td>[cmd, err, mask]</td><td>手动设色：<code>mask</code> bit0=G 绿 / bit1=R 红 / bit2=B 蓝，其余位与 <code>reserved</code> 预留（忽略）。仅设备空闲（Locker/Unlock/行程测试均未运行）时接受，作为手动灯语保持 <strong>10s 自动回收</strong>（业务灯语优先，到期自动灭）；<code>mask=0</code> 立即撤销。运行中回 <code>err=2 BUSY</code></td></tr>
 </table>
 <div class="note">
 <div class="note-title">颜色掩码示例</div>
@@ -671,7 +633,7 @@ RGB 灯带由固件按业务状态自动指示（上位机不可控、亦无需�
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
 <tr><td><code>0x01</code></td><td>QUERY</td><td>[cmd]</td><td>[cmd, err, errBitsL, errBitsH, motorCommOk, drvFault, uhfLink, amLink, paramCrc, switchErr]</td><td>读锁存错误位 + 实时诊断快照（无阻塞），字段见 15.3</td></tr>
-<tr><td><code>0x02</code></td><td>RERUN</td><td>[cmd]</td><td>[cmd, err, errBitsL, errBitsH]</td><td>重探外设并刷新锁存位：<strong>阻塞约 3s</strong>（UHF 上电+回帧、AM 回帧超时），期间喂狗不复位。仅 Locker/OneShot 空闲时接受，否则回 <code>err=2 BUSY</code></td></tr>
+<tr><td><code>0x02</code></td><td>RERUN</td><td>[cmd]</td><td>[cmd, err, errBitsL, errBitsH]</td><td>重探外设并刷新锁存位：<strong>阻塞约 3s</strong>（UHF 上电+回帧、AM 回帧超时），期间喂狗不复位。仅 Locker/Unlock 空闲时接受，否则回 <code>err=2 BUSY</code></td></tr>
 <tr><td><code>0x03</code></td><td>CLEAR</td><td>[cmd, maskL, maskH]</td><td>[cmd, err, errBitsL, errBitsH]</td><td>按掩码清指定位（<code>mask</code> 与 15.1 bit 定义一致，可多选），响应回清位后的剩余位图</td></tr>
 </table>
 
@@ -823,21 +785,23 @@ AM_ERR_TIMEOUT            = 6
 LOCKER_SUB_CONFIGURE      = 0x01   // 清清单/置软标 [hardCnt, softCnt]
 LOCKER_SUB_ADD            = 0x02   // 追加硬标签 EPC [epcLen, epc..]
 LOCKER_SUB_START          = 0x03   // 上电UHF+开扫
-LOCKER_SUB_CANCEL         = 0x04   // 取消, 磁块回降; 0x08/0x0A中=打断请求
+LOCKER_SUB_CANCEL         = 0x04   // 取消, 磁块回降; 0x0A 流程中=打断请求
 LOCKER_SUB_QUERY          = 0x05   // 查询 [state, hm, sc, su, faultReason]
 LOCKER_SUB_CONSUME_SOFT   = 0x06   // 软标: 上位机上报已解码一次
 LOCKER_SUB_GET_EVENT      = 0x07   // 取一条事件 [code, epcLen, epc.., hm,su,sc,hc]
-LOCKER_SUB_ONE_SHOT       = 0x08   // 单标签同步开锁(阻塞) [tmo(2), hold(2), epcLen, epc.., (demagCnt)]
-LOCKER_SUB_GET_PROGRESS   = 0x09   // 0x08 进行中进度快照 [phase, holdMs(2), steps(2), tagPresent, demagDone, epcLen, epc..]
-                                   // 0x0A 进行中为多标签布局 [phase, holdMs(2), total, confirmed, bitmap, softCnt, softDone]
-LOCKER_SUB_UNLOCK_MULTI   = 0x0A   // 多标签同步解锁(阻塞, 详 13.3/13.4) [tmo(2), hold(2), softCnt, epcCnt, epcLen, epc..]
+LOCKER_SUB_ONE_SHOT       = 0x08   // [Round_011 已废除] 不解析帧形状, 一律回 [cmd, 2] PARAM;
+                                   // 单标场景统一走 0x0A epcCnt=1
+LOCKER_SUB_GET_PROGRESS   = 0x09   // 解锁进度快照(唯一布局) [phase, holdMs(3), total, confirmed,
+                                   // bitmap, softCnt, softDone]; 非流程时 phase=0 全零
+LOCKER_SUB_UNLOCK_MULTI   = 0x0A   // 同步解锁(唯一开锁通道, 详 13.2/13.3) [tmo(2), hold(2), softCnt,
+                                   // epcCnt, epcLen, epc..]; 单标 epcCnt=1, W=120000
 // 0x0A 流程推送事件帧 (data[0], func=0x0D^0xFF, 原路回)
 LOCKER_SUB_EVT_TAG        = 0x0B   // 期望 EPC 稳定确认: [seq, epcLen, epc.., confirmed, total, 判据(2), 流程(2)] + 蜂鸣200ms
 LOCKER_SUB_EVT_MISMATCH   = 0x0C   // 外来独占失配: [epcLen, epc.., rounds] 推帧不终止
 LOCKER_SUB_EVT_HARD_DONE  = 0x0D   // 硬标段结束(回降前): [endReason, bitmap, confirmed, total, elapsed(2)]
 LOCKER_SUB_EVT_SOFT       = 0x0E   // 软标解码+1: [done, softCnt]
 LOCKER_SUB_EVT_START      = 0x0F   // 解锁命令受理: [phase=1, winMs(3)] 含实际解锁窗 W
-// UNLOCK_MULTI (0x0A) 结果码 (终帧 data[1], 详 13.4)
+// UNLOCK_MULTI (0x0A) 结果码 (终帧 data[1], 详 13.3)
 UNLK_ERR_OK               = 0
 UNLK_ERR_BUSY             = 1     // 三模块状态 [lockerState, uhfState, stepperState]
 UNLK_ERR_PARAM            = 2
@@ -873,39 +837,12 @@ LOCKER_STATE_DONE         = 4
 LOCKER_STATE_FAULT        = 5
 LOCKER_STATE_LOWERING     = 6
 
-// ONE_SHOT (0x08) 结果码 (响应 data[1], 详 §13.2)
-ONE_ERR_OK                = 0     // 成功 (endReason 见下)
-ONE_ERR_BUSY              = 1     // Locker/UHF扫描/电机占用中
-ONE_ERR_PARAM             = 2     // epcLen 或帧长非法
-ONE_ERR_UHF_OPEN          = 3     // UHF 上电/配置失败
-ONE_ERR_UHF_LINK          = 4     // 持续校对阶段 UHF 通信失败
-ONE_ERR_NO_TAG            = 5     // 整窗盘点未读到任何标签
-ONE_ERR_MISMATCH          = 6     // 连续3轮读到标签但无期望EPC, 不升起
-ONE_ERR_HOMING            = 7     // 未回零/行程开关错误, 禁止运动
-ONE_ERR_MOTOR_FAULT       = 8     // 升降中电机驱动器件故障
-ONE_ERR_MOTOR_TIMEOUT     = 9     // 寻触超时/超步/停滞
-ONE_ERR_AM_LINK           = 10    // demagCnt>0: AM 链路断/切消磁模式失败
-ONE_ERR_NO_IR             = 11    // 光电门控窗内未检测到放标
-// endReason (err=0)
-ONE_END_TAG_REMOVED       = 1     // 期望标签稳定移除 (3s 防抖)
-ONE_END_HOLD_TIMEOUT      = 2     // 保持窗超时
-ONE_END_TAG_CHANGED       = 3     // 期望标签消失后读到其他 EPC
-ONE_END_UHF_LOST          = 4     // 保持期 UHF 链路失联 (5s 确认)
-ONE_END_DEMAG_DONE        = 5     // 消磁标签数达标 (demagCnt>0)
-ONE_END_ABORTED           = 6     // 上位机 CANCEL 打断
-ONE_END_STABLE_OK         = 7     // EPC 稳定确认结账成功 (demagCnt=0)
-// phase (GET_PROGRESS)
-ONE_PH_NONE               = 0     // 无进行中流程
-ONE_PH_PRECHK             = 1
-ONE_PH_UHF_READY          = 2
-ONE_PH_INVENTORY          = 3     // 持续校对
-ONE_PH_RISE               = 4
-ONE_PH_HOLD               = 5
-ONE_PH_LOWER              = 6
-ONE_PH_IR_WAIT            = 7     // 光电门控, 等客户放标</pre>
+// --- 0x08 ONE_SHOT: Round_011 废除 (单标统一 0x0A epcCnt=1), 以下结果码仅存档 ---
+// 历史语义: ONE_ERR_* 1~11 与 ONE_END_* 1~7 / ONE_PH_* 0~7 随流程一并移除;
+// 0x0A 对应语义见上 UNLK_ERR_* / UNLK_END_* 与 GET_PROGRESS 唯一布局。</pre>
 </div>
 
-<div class="foot">App USB Protocol · 版本 2 · Round 018 蓝白改版 + 协议一致性修正 · 2026-07-26 · Round 102 补 ONE_SHOT 0x08/GET_PROGRESS 0x09（光电门控/持续校对/EPC 稳定判定语义 + 全错误码表）· 2026-09-02 · Round 105 补 UNLOCK_MULTI 0x0A 多标签解锁（0x0B~0x0F 推送事件帧/终帧/双门限确认语义）· 2026-09-02 · Round 106 AM 模式时序收紧（EPC 校验通过才切消磁模式 / 软标结束或超时切回检测模式，0x08/0x0A 同步）· 2026-09-02 · Round 098 修正批（优化 #3~#4 MOVE/TEST 互斥与 TEST 完成语义 · #9 开机 UHF 配置自动恢复 · #10 AM 断线自动探测 · #11 后台回零窗口 BUSY · #12 协议同步 · #15 UHF QUERY NOT_READY · #20 ONE_SHOT irWait/hold 拆分 · #21 Locker 扫描会话 S0 · 新增 §16 FC_IO_DIAG） · Round 011 灯语方案 A（等待放标=白慢闪 / 盘点中=蓝慢闪 / 读到标签=蓝单闪 / NO_IR·NO_TAG=黄慢闪 2s / 链路断=红双闪，全流程详见 App_Unlock_Flow.html）+ 协议文档硬件层净化（去引脚/器件型号/总线表述，仅协议层语义）· 2026-09-02</div>
+<div class="foot">App USB Protocol · 版本 2 · Round 018 蓝白改版 + 协议一致性修正 · 2026-07-26 · Round 102 补 ONE_SHOT 0x08/GET_PROGRESS 0x09（光电门控/持续校对/EPC 稳定判定语义 + 全错误码表）· 2026-09-02 · Round 105 补 UNLOCK_MULTI 0x0A 多标签解锁（0x0B~0x0F 推送事件帧/终帧/双门限确认语义）· 2026-09-02 · Round 106 AM 模式时序收紧（EPC 校验通过才切消磁模式 / 软标结束或超时切回检测模式，0x08/0x0A 同步）· 2026-09-02 · Round 098 修正批（优化 #3~#4 MOVE/TEST 互斥与 TEST 完成语义 · #9 开机 UHF 配置自动恢复 · #10 AM 断线自动探测 · #11 后台回零窗口 BUSY · #12 协议同步 · #15 UHF QUERY NOT_READY · #20 ONE_SHOT irWait/hold 拆分 · #21 Locker 扫描会话 S0 · 新增 §16 FC_IO_DIAG） · Round 011 灯语方案 A（等待放标=白慢闪 / 盘点中=蓝慢闪 / 读到标签=蓝单闪 / NO_IR·NO_TAG=黄慢闪 2s / 链路断=红双闪，全流程详见 App_Unlock_Flow.html）+ 协议文档硬件层净化（去引脚/器件型号/总线表述，仅协议层语义）· 2026-09-02 · Round 011 续·解锁通道统一（用户裁决）：废除 0x08 ONE_SHOT 单标签流程，单标=0x0A epcCnt=1（W=2min+30s/额外标签，n==m 即硬标段结束进软标）；GET_PROGRESS 0x09 统一多标签布局且 holdMs 扩为 3 字节（W≤240000 超 16bit）；0x08 码位保留回 PARAM，固件 App_LockerOneShot 模块整体移除 · 2026-09-02</div>
 
 </div>
 </body>

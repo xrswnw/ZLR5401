@@ -31,7 +31,7 @@
  *    任意运行态 --电机/链路故障--> FAULT --CANCEL--> LOWERING/IDLE
  *
  *  磁块升降: KEY_UP/KEY_DOWN 行程开关寻触 (s_motor 子状态机, 判据与
- *  App_MotorHoming / App_LockerOneShot 一致: 2000Hz/40%, 停滞/超步/
+ *  App_MotorHoming 一致: 2000Hz/40%, 停滞/超步/
  *  超时兜底 + 失败重试一次)。旧定步数方案已废弃。
  * ===================================================================== */
 

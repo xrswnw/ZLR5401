@@ -1,4 +1,4 @@
-"""P6 — Locker 七状态机 + OneShot 0x08 + UNLOCK_MULTI 0x0A 业务闭环.
+"""P6 — Locker 七状态机 + 0x08 废弃校验 + UNLOCK_MULTI 0x0A 唯一解锁业务闭环.
 
 依赖: 真标签 33553463a4000158eb7e7507 在 UHF 天线上; PC4 红外门当前读高/抖动
 (外部传感器态), 深路径断言按 IR 实际态分叉记录.
@@ -18,9 +18,8 @@ CFG, ADD, START, CANCEL, QUERY, CONSUME, GETEV, ONE, PROG, MULTI = (
     0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0A)
 ST_IDLE, ST_CFG, ST_HOLD, ST_SOFT, ST_DONE, ST_FAULT, ST_LOWER = range(7)
 EV_MATCH, EV_MISMATCH, EV_HARD_DONE, EV_SOFT_USED, EV_TIMEOUT, EV_DONE = 0, 1, 2, 3, 4, 5
-ONE_ERR_PARAM, ONE_ERR_NO_IR = 2, 11
-ONE_END_ABORTED = 6
 UNLK_ERR_PARAM, UNLK_ERR_NO_IR = 2, 11
+UNLK_END_ABORTED = 6
 UNLK_PH_WAIT_TAG, UNLK_PH_VERIFY = 1, 2
 
 REAL_EPC = bytes.fromhex('33553463a4000158eb7e7507')
@@ -236,64 +235,70 @@ def run():
     a(CANCEL)
     rec.check("B9", "MISMATCH 后 CANCEL -> IDLE", ensure_idle(10), "state=0", "")
 
-    # ====== Part C: OneShot 0x08 ======
+    # ====== Part C: 0x08 废弃 + GET_PROGRESS 统一布局 + 0x0A 单标 (epcCnt=1) ======
+    # Round_011 用户裁决: OneShot 单标签流程整体移除, 单标场景 = UNLOCK_MULTI epcCnt=1
+    # (W=120000+0*30000 即 2min), GET_PROGRESS 统一为多标签布局。
     d = a(PROG)
-    rec.check("C1", "GET_PROGRESS 空闲 phase=0", d is not None and len(d) >= 3 and d[2] == 0,
+    rec.check("C1", "GET_PROGRESS 空闲统一多标签布局 phase=0 (holdMs 3 字节全零)",
+              d is not None and len(d) >= 11 and d[2] == 0 and d[3] == 0 and d[4] == 0
+              and d[5] == 0 and d[6] == 0,
               f"d={d.hex() if d else 'TO'}", "")
 
+    # C2: 0x08 码位保留但显式回 PARAM (帧形状不再解析)
     d = a(ONE, [1, 2])
-    rec.check("C2a", "ONE_SHOT 短帧 -> PARAM", d is not None and d[1] == ONE_ERR_PARAM, "err=2",
+    rec.check("C2a", "0x08 废弃: 短帧 -> PARAM", d is not None and d[1] == LOCKER_ERR_PARAM, "err=2",
               f"d={d.hex() if d else 'TO'}")
-    # Round_098 优化 #20 后帧布局: [cmd,tmoL,tmoH,irWaitL,irWaitH,holdL,holdH,epcLen,epc..,(demagCnt)]
-    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 0xB8, 0x0B, 0])
-    rec.check("C2b", "epcLen=0 -> PARAM", d is not None and d[1] == ONE_ERR_PARAM, "err=2", "")
-    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 0xB8, 0x0B, 13] + list(FAKE_EPC) + [0xCC])
-    rec.check("C2c", "epcLen=13 -> PARAM", d is not None and d[1] == ONE_ERR_PARAM, "err=2", "")
-    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 0xB8, 0x0B, 4, 1, 2])
-    rec.check("C2d", "帧长不足 -> PARAM", d is not None and d[1] == ONE_ERR_PARAM, "err=2", "")
+    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 0xB8, 0x0B, 0x00, 12] + list(REAL_EPC))
+    rec.check("C2b", "0x08 废弃: 原完整帧布局亦 -> PARAM",
+              d is not None and d[1] == LOCKER_ERR_PARAM, "err=2",
+              f"d={d.hex() if d else 'TO'}")
 
-    # C3: 短 IR 窗 (1200ms): PC4 低 -> NO_IR; PC4 高 -> 全流程. 断言按实际分支
+    # C3: 单标走 0x0A epcCnt=1, 短窗 (1200ms): PC4 未触 -> NO_IR;
+    #     触发 -> 窗短于 3s 确认判据 -> PARTIAL_TIMEOUT(conf=0); 命中不可能
     stash = []
-    lk.send_frame(1, FC, bytes([ONE, 0xE8, 0x03, 0xB0, 0x04, 0xB8, 0x0B, 12] + list(REAL_EPC)))
-    fin = collect(lk, ONE, 15, stash)
+    lk.send_frame(1, FC, bytes([MULTI, 0xE8, 0x03, 0xB0, 0x04, 0, 1, 12] + list(REAL_EPC)))
+    fin = collect(lk, MULTI, 15, stash)
     m = mq(lk)
-    if fin is not None and fin[1] == ONE_ERR_NO_IR:
-        rec.check("C3", "ONE_SHOT 短窗 NO_IR (PC4 未触, 电机不动)",
+    if fin is not None and fin[1] == UNLK_ERR_NO_IR:
+        rec.check("C3", "0x0A 单标短窗 NO_IR (PC4 未触, 电机不动)",
                   m == 0, f"err=11 电机={m}", f"fin={fin.hex()} motor={m}")
     elif fin is not None and fin[1] == 0:
-        # [08,0,end,epcLen,epc,rise(2),lower(2),demag]
-        rise = fin[5 + fin[3] + 1] | (fin[5 + fin[3] + 2] << 8) if len(fin) > 5 + fin[3] + 2 else -1
-        rec.check("C3", "ONE_SHOT 全流程 (PC4 触发): err=0 升降步数回传, 收尾电机 IDLE",
-                  m == 0 and rise > 1000, f"end={fin[2]} rise≈{rise} motor={m}",
+        # [0A,0,end,bitmap,conf,total,rise(2),lower(2),softDone,softCnt,elapsed(2)]
+        endR, bmp, conf, tot = fin[2], fin[3], fin[4], fin[5]
+        rise = fin[6] | (fin[7] << 8)
+        rec.check("C3", "0x0A 单标 (PC4 触发): err=0 终帧 + 收尾电机 IDLE",
+                  m == 0 and endR in (1, 2) and tot == 1 and conf in (0, 1)
+                  and (conf == 0 or rise > 1000) and bmp == conf,
+                  f"end={endR} conf={conf}/{tot} rise≈{rise} motor={m}",
                   f"fin={fin.hex()} motor={m}")
         rec.obs("C3-ir", "PC4 红外门当前读高 (无人工放标) — 深路径按 IR=触发分支验证",
                 f"fin={fin.hex()}")
     else:
-        rec.fail("C3", "ONE_SHOT 短窗响应缺失/异常", f"fin={fin.hex() if fin else 'TO'} motor={m}")
+        rec.fail("C3", "0x0A 单标短窗响应缺失/异常", f"fin={fin.hex() if fin else 'TO'} motor={m}")
 
-    # C4: CANCEL 打断 (长窗, 打断点依 IR 态落在 IR等待/盘点/升起/保持)
+    # C4: CANCEL 打断 0x0A 长窗单标 (打断点依 IR 态落在 等放标/校对/升起)
     stash = []
-    lk.send_frame(1, FC, bytes([ONE, 0xE8, 0x03, 0x80, 0x1F, 0x30, 0x75, 12] + list(REAL_EPC)))
+    lk.send_frame(1, FC, bytes([MULTI, 0xE8, 0x03, 0x30, 0x75, 0, 1, 12] + list(REAL_EPC)))
     time.sleep(0.8)
     lk.send_frame(1, FC, bytes([PROG]))
     prog = collect(lk, PROG, 3, stash)
     ph = prog[2] if prog is not None and len(prog) > 2 else -1
     rec.check("C4a", "流程中 GET_PROGRESS 有相位 (IR 态依从)",
-              ph in (1, 2, 3, 4, 5, 7), f"phase={ph}", f"prog={prog.hex() if prog else 'TO'}")
+              ph in (1, 2, 3), f"phase={ph}", f"prog={prog.hex() if prog else 'TO'}")
     lk.send_frame(1, FC, bytes([CANCEL]))
     canc = collect(lk, CANCEL, 3, stash)
     rec.check("C4b", "流程中 CANCEL -> 立即 OK", canc is not None and canc[1] == 0,
               f"d={canc.hex() if canc else 'TO'}", "")
-    fin = collect(lk, ONE, 10, stash)
+    fin = collect(lk, MULTI, 10, stash)
     m = mq(lk)
-    okfin = fin is not None and fin[1] == 0 and len(fin) >= 3 and fin[2] == ONE_END_ABORTED
-    rec.check("C4c", "打断最终帧 err=0 endReason=6(ABORTED), 电机安全回 IDLE",
+    okfin = fin is not None and fin[1] == 0 and len(fin) >= 3 and fin[2] == UNLK_END_ABORTED
+    rec.check("C4c", "打断终帧 err=0 endReason=6(ABORTED), 电机安全回 IDLE",
               okfin and m == 0, f"fin={fin.hex() if fin else 'TO'} motor={m}", "")
     st = q(lk)
     rec.check("C4d", "打断后 Locker 回 IDLE", st is not None and st[0] == ST_IDLE,
               f"state={st[0] if st else '?'}", "")
 
-    # ====== Part D: UNLOCK_MULTI 0x0A ======
+    # ====== Part D: UNLOCK_MULTI 0x0A 参数矩阵/多标流程 ======
     d = a(MULTI, [1])
     rec.check("D1a", "短帧 -> PARAM", d is not None and d[1] == UNLK_ERR_PARAM, "err=2", "")
     d = a(MULTI, [0xE8, 0x03, 0xD0, 0x07, 0, 0, 12])
@@ -331,9 +336,10 @@ def run():
     lk.send_frame(1, FC, bytes([PROG]))
     prog = collect(lk, PROG, 3, stash)
     ph = prog[2] if prog is not None and len(prog) > 2 else -1
+    # Round_011: holdMs 3 字节 -> total/confirmed 等后移 1 字节 (prog[6]=total)
     rec.check("D3b", "流程中 GET_PROGRESS 多标签布局 (phase 1/2, total=1)",
-              prog is not None and len(prog) >= 10 and ph in (UNLK_PH_WAIT_TAG, UNLK_PH_VERIFY)
-              and prog[5] == 1,
+              prog is not None and len(prog) >= 11 and ph in (UNLK_PH_WAIT_TAG, UNLK_PH_VERIFY)
+              and prog[6] == 1,
               f"d={prog.hex() if prog else 'TO'}", "")
     fin = collect(lk, MULTI, 25, stash)
     pushes = [p for p in stash if p[0] in (0x0F, 0x0B, 0x0C, 0x0D, 0x0E)]

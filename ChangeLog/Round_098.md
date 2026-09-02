@@ -80,3 +80,28 @@ QUERY 重映射/OneShot 布局/S2 会话/回零时序) · P9b-storm 9/0 (JLink R
 纯灯语层变更: 仲裁器架构/协议帧/业务判定零改动。回归 P2 16/0 · P3 26/0 ·
 P4 23/0 · P5 16/0 · P6 51/0 · P9 30/0。固件 ZLR5401_202609022328.hex。
 灯语肉眼辨识度留人工验收 (Agent/Round_011/Report.html §5)。
+
+## Round_011 续 — 解锁通道统一: 废除 0x08 ONE_SHOT, 单标=0x0A epcCnt=1 (2026-09-02)
+
+用户裁决 (业务六步流程定稿): 硬标段预留解锁窗 W=2min+30s/额外标签,
+逐张比对回传 (0x0B 确认/0x0C 失配), n==m 即硬标段结束进软标,
+每个软标一次解码、用完即结账完成 — 与 UNLOCK_MULTI (0x0A) 既有语义
+一一对应; 单标流程与之重复且 "保持期 3s 稳定即结账" 判据与
+"逐张确认 + n==m" 不一致, 整体废除, 单标=0x0A epcCnt=1 (W=120000)。
+
+| 位置 | 变更 |
+|------|------|
+| App_LockerOneShot.c/.h (删) | 模块整体移除 (含 CMake 源表条目); 灯语槽位 RGBSRC_ONESHOT→RGBSRC_UNLOCK |
+| App_Dispatch.c | 0x08 分支改废弃应答 (保留码位, 一律回 [08,2] PARAM 区别未知子命令); MOTOR/UHF/AM/LOCKER/RGB/SELFTEST 六处互斥检查去 OneShot; CANCEL 分支去 0x08 打断路径 |
+| App_LockerUnlock.c/.h | 去对 0x08 的双向互斥检查; GET_PROGRESS (0x09) 统一多标签布局 [sub,err,phase,holdMs(3),total,confirmed,bitmap,softCnt,softDone] (空闲 phase=0 同布局) — holdMs 3 字节修复 W>65.5s 时 16bit 回填截断 (潜在溢出 bug 一并消除) |
+| App_CustomProtocol.h | 0x08 定义改废弃注释; GET_PROGRESS 定义改唯一布局 (3 字节 holdMs) |
+| 测试 p6/p9/p0 | p6 Part C 重写 (0x08 废弃×2 + 0x0A epcCnt=1 单标全流程 + CANCEL 打断); p9 O5 改三形态帧均 PARAM; p0 光电探针改走 0x0A (原 0x08 帧长度误判已修: EPC 需 12 字节, 加 drain 防推送帧污染后续用例) |
+| Protocol 两文档 | App_Protocol §13 重写: 13.1=0x08 废除声明 (迁移指引), 13.2=0x0A 唯一流程 (含业务六步闭环), 13.3=终帧; 错误码表/附录 C 常量/脚注同步; App_Unlock_Flow 全文统一 (流程一=0x0A 单标多标同流程, 原 0x08 章节改迁移指引+语义存档) |
+
+回归终态: P1 15/0 · P2 16/0 (B5c 自检读取竞态 flaky, 复跑通过) ·
+P3 26/0 · P4 22/0 · P5 16/0 · P9 28/2 (O5 废弃×3 全过; O6c 2 失败=标签
+不在场, UHF 独立探针 NO_TAG 证实) · P6 40/9 (新增路径全绿: 0x08→PARAM×2/
+单标 0x0A epcCnt=1 短窗 PARTIAL+长窗打断 ABORTED/GET_PROGRESS 唯一布局;
+9 失败=B2~B7 真标签匹配链 + D4/D5 长窗确认, 均标签不在场所致,
+与 0x08 移除无因果 — UHF INVENTORY 探针 err=5 NO_TAG 证实)。
+固件 ZLR5401_202609030003.hex。

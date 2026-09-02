@@ -10,8 +10,8 @@
 #include "App_NewPeriph_HL.h"
 #include <stddef.h>
 
-/* 从 App_LockerOneShot.c 提取 (Round_012): 泵循环与寻触驱动供
- * OneShot 0x08 / Unlock 0x0A 共用, 判据与工况参数不变。 */
+/* 从原单标签流程提取 (Round_012): 泵循环与寻触驱动供
+ * Unlock 0x0A 使用, 判据与工况参数不变。 */
 
 static volatile uint8_t *s_abortFlag;    /* 调用方 CANCEL 请求 (NULL=不参与) */
 static volatile uint8_t *s_immuneFlag;   /* 调用方回退免疫标志 (NULL=不参与) */

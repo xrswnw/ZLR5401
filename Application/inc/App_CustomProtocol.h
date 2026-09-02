@@ -75,18 +75,18 @@
                                         amLink:      0=正常 非0=掉线
                                         paramCrc:    1=上电参数区曾 CRC 失败回落
                                         switchErr:   行程开关错误位 bit0=上 bit1=下 */
-#define SELFTEST_SUB_RERUN  0x02   /* data: [cmd]  重探外设并刷新锁存位 (阻塞~3s, 须 Locker/OneShot 空闲):
+#define SELFTEST_SUB_RERUN  0x02   /* data: [cmd]  重探外设并刷新锁存位 (阻塞~3s, 须 Locker/Unlock 空闲):
                                         回 [cmd,err,errBitsL,errBitsH] */
 #define SELFTEST_SUB_CLEAR  0x03   /* data: [cmd,maskL,maskH]  清指定位 (bit 定义同上, 可多选):
                                         回 [cmd,err,errBitsL,errBitsH] (清后的剩余位图) */
 #define SELFTEST_ERR_OK     0
 #define SELFTEST_ERR_PARAM  1
-#define SELFTEST_ERR_BUSY   2   /* RERUN 时 Locker/OneShot 非空闲 */
+#define SELFTEST_ERR_BUSY   2   /* RERUN 时 Locker/Unlock 非空闲 */
 
 /* ---- FC_RGB_CTRL (0x0E) — RGB 三色灯控制 ----
  * data: [mask, reserved]   mask=颜色位掩码(bit0=G,bit1=R,bit2=B, 其余预留), reserved=预留字节.
  * 响应: data[0]=mask(回显, err!=OK 时为 0), data[1]=err(0=OK). err 值见 RGB_ERR_*.
- * 仅设备空闲 (Locker/OneShot/行程测试均不运行) 时接受, 作为手动灯语保持
+ * 仅设备空闲 (Locker/Unlock/行程测试均不运行) 时接受, 作为手动灯语保持
  * 10s 自动回收 (业务灯语优先); mask=0 撤销. 运行中回 RGB_ERR_BUSY. */
 #define RGB_CMD_SET          0x01   /* data: [cmd,mask,reserved] */
 #define RGB_ERR_OK           0
@@ -111,22 +111,15 @@
                                         3=seek启动失败 4~6=升寻触失败 7=回降寻触失败 8=回降启动失败) */
 #define LOCKER_SUB_CONSUME_SOFT 0x06 /* data: [cmd]  v1 软标: 上位机上报已解码一次 */
 #define LOCKER_SUB_GET_EVENT  0x07   /* data: [cmd]  取一条上报事件 (见 AppLockerEvent_t) */
-#define LOCKER_SUB_ONE_SHOT   0x08   /* data: [cmd,tmoL,tmoH,maxHoldL,maxHoldH,epcLen,epc..,(demagCnt)]
-                                        单标签同步开锁: 一帧全流程 (UHF 就绪+盘点+比对+升 KEY_UP
-                                        +保持期持续盘点监控+回降 KEY_DOWN), 阻塞至完成/失败回帧.
-                                        demagCnt: 消磁标签数, 缺省/0=跳过消磁流程; >0 时期望 EPC
-                                        命中后才切 AM 消磁模式 (校验期仅检测不消磁), 保持期等待
-                                        AM 成功消磁事件数达标(endReason=5)即回降, 结束切回检测模式.
-                                        实现: App_LockerOneShot.c; 失败码/结束原因宏定义见
-                                        App_LockerOneShot.h (ONE_ERR_x / ONE_END_x)。
-                                        流程阻塞期间泵循环内嵌协议服务: GET_PROGRESS/CANCEL/
-                                        只读查询放行, 其余子命令及 UHF/AM/MOTOR 控制类回 BUSY */
-#define LOCKER_SUB_GET_PROGRESS 0x09 /* data: [cmd]  流程中拉取进度:
-                                        回 [cmd,err,phase,holdMs(2),steps(2),tagPresent,demagDone,
-                                        epcLen,epc..]  phase 0=无流程 1前置 2UHF就绪 3盘点 4升起
-                                        5保持期 6回降 (ONE_PH_x, 见 App_LockerOneShot.h)。
-                                        0x0A 多标签流程进行中改回多标签布局:
-                                        [cmd,err,phase,holdMs(2),total,confirmed,bitmap,softCnt,softDone] */
+#define LOCKER_SUB_ONE_SHOT   0x08   /* [Round_011 已废除] 单标签同步开锁流程整体移除:
+                                        单标场景统一走 0x0A (epcCnt=1, W=120000 即 2min)。
+                                        保留码位显式回 err=2 PARAM (区别于未知子命令);
+                                        主机不得再下发本子命令。 */
+#define LOCKER_SUB_GET_PROGRESS 0x09 /* data: [cmd]  流程中拉取进度 (Round_011 起统一
+                                        多标签布局, 非流程时 phase=0 全零):
+                                        回 [cmd,err,phase,holdMs(3 LE),total,confirmed,bitmap,
+                                        softCnt,softDone]  phase 见 App_LockerUnlock.h (UNLK_PH_x)。
+                                        holdMs 3 字节: W=2min+30s/EPC 超 16bit 回填范围。 */
 #define LOCKER_SUB_UNLOCK_MULTI 0x0A /* data: [cmd,tmoL,tmoH,holdL,holdH,softCnt,epcCnt,epcLen,
                                         epcCnt*epcLen 字节]  多标签解锁整合主路径 (App_LockerUnlock.c):
                                         单帧下发 m(<=4) 张期望 EPC + 软标数, 阻塞自治至结账完成。

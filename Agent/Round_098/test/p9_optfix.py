@@ -6,7 +6,7 @@
   O2  UHF CLOSE -> QUERY=NOT_READY(3) + IO_DIAG 联动 (#15/#8)
   O3  TEST 互斥/完成/二次 TEST (#3/#4)
   O4  QUERY state 重映射: 测试中 state=1, 完成后回落步进态 (#4)
-  O5  OneShot 双窗口帧布局 + demagCnt 可选字节 (#20)
+  O5  0x08 单标签流程废除 — 任意帧形状一律 PARAM (Round_011)
   O6  S2 会话下 Locker 全周期 x2 (#21)
   O7  复位后后台回零: UHF 先就绪(#9) + 回零中 MOVE=BUSY(#3) + READY(#11)
 """
@@ -147,41 +147,17 @@ d = mquery()
 rec.check("O4c", "CLEAR 后 testState=0", d is not None and d[9] == 0,
           f"testState={d[9]}" if d else "TO", "")
 
-# ---- O5 OneShot 双窗口帧布局 (#20) ----
-# 帧长/epcLen 域校验 (epcLen 已移到 data[7])
-d, to = tx(lk, FCL, [ONE, 0xE8, 0x03, 0xB8, 0x0B, 0x00], timeout_s=2)
-rec.check("O5a", "旧布局帧 (无 hold 域) -> PARAM", d is not None and d[1] == ONE_ERR_PARAM,
-          "err=2", f"d={d.hex() if d else 'TO'}")
-if REAL_EPC:
-    # 短 irWait + 短 hold: IR 门未触 -> NO_IR 应在 irWait 窗内返回 (非旧 30s maxHold)
-    t0 = time.time()
-    lk.send_frame(1, FCL, bytes([ONE, 0xE8, 0x03, 0xB0, 0x04, 0xC0, 0x07, 12] + list(REAL_EPC)))
-    fin = None
-    while time.time() - t0 < 12:
-        f = lk.recv_frame(0.4)
-        if f and f["func"] == (FCL ^ 0xFF) and f["data"][0] == ONE:
-            fin = f["data"]
-            break
-    dt = time.time() - t0
-    if fin is not None and fin[1] == ONE_ERR_NO_IR:
-        rec.check("O5b", "NO_IR 分支受 irWait 窗约束 (<4s 返回)",
-                  dt < 4.0, f"err=11 {dt:.1f}s (irWait=1.2s)", f"fin={fin.hex()} {dt:.1f}s")
-    elif fin is not None and fin[1] == 0:
-        rise = fin[5 + fin[3] + 1] | (fin[5 + fin[3] + 2] << 8) if len(fin) > 5 + fin[3] + 2 else -1
-        rec.check("O5b", "全流程分支: hold 独立生效 (总时长 <15s, rise 步数回传)",
-                  rise > 1000 and dt < 15.0,
-                  f"err=0 end={fin[2]} rise≈{rise} {dt:.1f}s", f"fin={fin.hex()}")
-        rec.obs("O5-ir", "IR 门当前读高 — 深路径按触发分支验证", f"fin={fin.hex()}")
-    else:
-        rec.fail("O5b", "OneShot 短窗响应缺失/异常", f"fin={fin.hex() if fin else 'TO'} {dt:.1f}s")
-    # demagCnt 可选字节: 带尾字节 demagCnt=0 应被受理 (不再 PARAM)
-    d, to = tx(lk, FCL, [ONE, 0xE8, 0x03, 0xB0, 0x04, 0xC0, 0x07, 12] + list(REAL_EPC) + [0],
-               timeout_s=10)
-    rec.check("O5c", "带 demagCnt 尾字节帧被受理 (err≠PARAM)",
-              d is not None and d[1] != ONE_ERR_PARAM,
-              f"err={d[1] if d else 'TO'}", f"d={d.hex() if d else 'TO'}")
-else:
-    rec.skip("O5b", "OneShot 双窗口", "无在场标签")
+# ---- O5 0x08 单标签流程废除 (Round_011 用户裁决: 单标统一 0x0A epcCnt=1) ----
+# 码位保留但不再解析帧形状, 一律显式回 PARAM (区别于未知子命令)。
+_epc = list(REAL_EPC) if REAL_EPC else [0xAA] * 12
+for name, desc, payload in (
+    ("O5a", "旧单窗布局帧", [ONE, 0xE8, 0x03, 0xB8, 0x0B, 0x00]),
+    ("O5b", "双窗布局帧 (原 irWait/hold 拆分)", [ONE, 0xE8, 0x03, 0xB0, 0x04, 0xC0, 0x07, 12] + _epc),
+    ("O5c", "含 demagCnt 尾字节帧", [ONE, 0xE8, 0x03, 0xB0, 0x04, 0xC0, 0x07, 12] + _epc + [0]),
+):
+    d, to = tx(lk, FCL, payload, timeout_s=4)
+    rec.check(name, f"0x08 废弃: {desc} -> PARAM", d is not None and d[1] == ONE_ERR_PARAM,
+              "err=2", f"d={d.hex() if d else 'TO'}")
 
 # ---- O6 S2 会话下 Locker 全周期 x2 (#21) ----
 if REAL_EPC:

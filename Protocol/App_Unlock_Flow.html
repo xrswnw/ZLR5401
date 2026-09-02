@@ -68,8 +68,8 @@
   <li><a href="#s0">本文范围与阅读方式（协议层视角声明）</a></li>
   <li><a href="#s1">灯语设计总则（方案 A "五色叙事"）</a></li>
   <li><a href="#s2">通用前置：复位后设备就绪时序</a></li>
-  <li><a href="#s3">流程一：ONE_SHOT (0x08) 单标签同步开锁 — 全阶段详解</a></li>
-  <li><a href="#s4">流程二：UNLOCK_MULTI (0x0A) 多标签同步解锁 — 全阶段详解</a></li>
+  <li><a href="#s3">流程一：UNLOCK_MULTI (0x0A) 同步解锁（唯一开锁通道，单标/多标）— 全阶段详解</a></li>
+  <li><a href="#s4">0x08 单标签流程已废除（迁移指引）</a></li>
   <li><a href="#s5">流程三：LOCKER 编排模式 (0x01~0x07) 后台结账</a></li>
   <li><a href="#s6">失败路径与错误码 → 灯语映射总表</a></li>
   <li><a href="#s7">进度观测与打断：QUERY / GET_PROGRESS / CANCEL / IO_DIAG</a></li>
@@ -79,7 +79,7 @@
 
 <!-- ============ 0 ============ -->
 <h2 id="s0">0. 本文范围与阅读方式</h2>
-<p>本文把<b>一次完整解锁</b>从设备就绪到终帧的每一个阶段展开：每一步主机发什么（协议层命令/参数）、设备做什么（判定/窗口/超时）、灯带显示什么（颜色+图样）、蜂鸣什么、异常时怎么收场。三条解锁主线（ONE_SHOT 单标签 / UNLOCK_MULTI 多标签 / LOCKER 后台编排）共用同一套判定内核与灯语语义，差异只在编排粒度。</p>
+<p>本文把<b>一次完整解锁</b>从设备就绪到终帧的每一个阶段展开：每一步主机发什么（协议层命令/参数）、设备做什么（判定/窗口/超时）、灯带显示什么（颜色+图样）、蜂鸣什么、异常时怎么收场。两条解锁主线（UNLOCK_MULTI 同步解锁 / LOCKER 后台编排）共用同一套判定内核与灯语语义，差异只在编排粒度。<b>Round_011 起 0x08 ONE_SHOT 单标签流程已废除</b>——单标场景即 UNLOCK_MULTI <code>epcCnt=1</code>（解锁窗 W=2min），同一流程同一布局，无独立单标通道（详见 §4 迁移指引）。</p>
 <div class="card gold"><b>协议层视角声明</b>：本文只描述<b>主机可观测行为</b>（命令、参数、响应、推送帧、灯语、蜂鸣、时序窗口）。设备内部实现（芯片型号、引脚、总线、寄存器）不属于协议层内容，一律不出现——需要时参见源码与硬件文档。</div>
 <div class="card"><b>读者建议</b>：上位机开发者按 §2→§7 顺序读；现场/店员培训只需 §1（灯语表）+ §6（失败对照表）+ §8（时序图）。</div>
 
@@ -112,71 +112,54 @@ T~12s    回零完成; IO_DIAG homing=2 (READY); 全部命令正常受理
 <div class="card">主机侧建议：枚举成功后<b>轮询 IO_DIAG (0x10)</b> 直到 <code>homing=2</code>（0/1=进行中，3=失败），再开始解锁业务；homing=3 时任何运动类命令都会被拒绝（<code>err=7 HOMING</code>）。</div>
 
 <!-- ============ 3 ============ -->
-<h2 id="s3">3. 流程一：ONE_SHOT (0x08) 单标签同步开锁</h2>
-<p><b>场景</b>：客户拿一张硬标签（RFID）来结账。主机一条命令进、一条终帧出，中间全程可 QUERY/CANCEL。<b>单命令同步阻塞</b>——主机不用处理推送帧。</p>
+<h2 id="s3">3. 流程一：UNLOCK_MULTI (0x0A) 同步解锁 — 唯一开锁通道（单标/多标）</h2>
+<p><b>场景</b>：客户付款后来结账。上位机把结账清单（m 张硬标签 EPC + 软标数）单帧下发，客户把标签放到开锁器上（光电触发），设备持续比对：<b>清单内 EPC 稳定确认 → 绿灯升起开锁（逐张推 0x0B 回传）；清单外 EPC 独占 → 红闪不升起（推 0x0C 回传，不终止）</b>。硬标段预算 W=2min+30s/额外标签（m=1 即单标 2min），全部确认（n==m）立即进入软标段；每个软标对应一次解码，次数用完即结账完成。<b>单命令同步阻塞</b>，过程推送事件帧，主机也可 QUERY/GET_PROGRESS/CANCEL。</p>
 
-<h3>3.1 请求与参数（协议层）</h3>
-<pre>LOCKER_CTRL (0x0D) · sub=0x08 ONE_SHOT
-[08, tmoL,tmoH, irWaitL,irWaitH, holdL,holdH, epcLen, epc.., (demagCnt)]
+<h3>3.1 请求与解锁窗（协议层）</h3>
+<pre>LOCKER_CTRL (0x0D) · sub=0x0A UNLOCK_MULTI
+[0A, tmoL,tmoH, holdL,holdH, softCnt, epcCnt, epcLen, epcCnt*epcLen 字节]
 
-tmoMs      单轮盘点超时     0→1000  上限 10000
-irWaitMs   放标等待+标签出现窗 0→10000 上限 60000
-holdMs     升起后保持窗     0→30000 上限 60000
-epcLen     期望 EPC 长度    1~12
-demagCnt   软标消磁数       可省略, 缺省 0=跳过消磁段</pre>
+tmoMs     单轮盘点时限      0→1000  上限 10000
+holdMs    解锁窗 W 覆盖     0=按公式; 非0 → min(host, 240000)
+softCnt   软标消磁数        0=跳过软标段
+epcCnt    期望标签数 m      1~4 (1 即单标流程)
+epcLen    单条 EPC 长度     1~12
 
-<h3>3.2 全阶段详解（含灯语/蜂鸣）</h3>
-<table>
-<tr><th>阶段</th><th>设备行为（协议层）</th><th>灯语</th><th>蜂鸣</th><th>异常出口</th></tr>
-<tr><td>⑴ 前置检查</td><td>Locker/UHF/电机均空闲 + 已回零；任一不满足回 <code>err=1 BUSY</code>（附三模块状态快照）或 <code>err=7 HOMING</code>（附 switchErr 位图）。<b>不动磁块、不碰 UHF/AM</b></td><td>—</td><td>—</td><td>BUSY / HOMING</td></tr>
-<tr><td>⑴.5 光电门控：等放标</td><td>红外光电检测到放标（200ms 去抖）才继续；等待窗=<code>irWaitMs</code>，窗满未检测到 → <code>err=11 NO_IR</code>（不升起、不碰 UHF/AM，磁块原位）</td><td><span class="led lw"></span><b>白慢闪</b>（该你了）</td><td>—</td><td>NO_IR + <span class="led ly"></span>黄慢闪 2s</td></tr>
-<tr><td>⑴.6 消磁准备<br><small>(demagCnt&gt;0)</small></td><td>AM 探链 + 强制"检测模式"——<b>校验通过前只检测不消磁</b>，防止残留消磁模式在校对期误消软标</td><td>继承白慢闪</td><td>—</td><td>AM_LINK + <span class="led lr"></span>红双闪</td></tr>
-<tr><td>⑵ UHF 就绪</td><td>UHF 若未上电则上电+配置；扫描窗内强制 Gen2 session=S0（结束还原），保证连续盘点可重读</td><td><span class="led lb"></span><b>蓝慢闪</b>（该我了）</td><td>—</td><td>UHF_OPEN + 红双闪</td></tr>
-<tr><td>⑶ 持续校对</td><td>反复盘点比对期望 EPC。单轮 ~1/4 漏读属正常，读到但非期望继续下一轮；<b>每解码到一张标签（无论对错）蓝单闪</b>一次给客户即时反馈。命中 → 进 ⑷；连续 3 轮"有标签但无期望"→ <code>err=6 MISMATCH</code>（不升起）；预算（irWaitMs，自光电触发起）内无任何标签 → <code>err=5 NO_TAG</code></td><td><span class="led lb"></span>蓝慢闪 + <b>蓝单闪</b>（读到时）</td><td>—</td><td>MISMATCH + <span class="led lr"></span>红快闪 3s；NO_TAG + <span class="led ly"></span>黄慢闪 2s；UHF_LINK + 红双闪</td></tr>
-<tr><td>⑷ 升起</td><td>期望 EPC 命中后才切 AM <b>消磁模式</b>（校验通过才允许消磁）+ 磁块上行至<b>上行程触点</b>停住；回复实际升步数</td><td><span class="led lg"></span><b>绿常亮</b>（升起来了）</td><td>—</td><td>MOTOR_FAULT/TIMEOUT（附寄存器快照+phase+retreat），失败自动安全回降（黄快闪）</td></tr>
-<tr><td>⑸ 保持期监控<br><small>(窗=holdMs)</small></td><td>持续盘点在线监控，六种结束先到先判：消磁数达标 / <b>EPC 稳定在场 3s（demagCnt=0 的推荐结账判据 end=7）</b> / 保持窗超时 / 期望标签稳定移除（客户取走）/ 移除后读到其他 EPC（换标）/ UHF 失联确认窗仍坏</td><td>demagCnt&gt;0：<span class="led lw"></span><b>白常亮</b>（软标消磁中，每消掉一个<b>白单闪</b>）；demagCnt=0：绿常亮延续</td><td>消磁成功—（白单闪）；结账成功长鸣</td><td>UHF_LOST + <span class="led lr"></span>红双闪；消磁失败红双闪</td></tr>
-<tr><td>⑹ 回降</td><td>磁块下行至<b>下行程触点</b>（回降本身即安全方向，免疫打断）；无论成功/失败/取消都走</td><td><span class="led loff"></span>灭</td><td>—</td><td>回降失败=MOTOR_FAULT(retreat=1)——设备侧灯红常亮</td></tr>
-<tr><td>⑺ 终帧</td><td>回 13.2 终帧：err=0 时带 endReason + 命中 EPC + 升/降步数 + 消磁数。流程结束 AM 自动切回检测模式、扫描会话还原原配置</td><td>结束：结账成功 <span class="led lg"></span>绿三连闪；其余回灭</td><td>结账成功长鸣 300ms</td><td>—</td></tr>
-</table>
+解锁窗 W = 120000 + (m-1)*30000 ms  (首标签 2min, 每多一标签 +30s)
+W 自光电触发时刻起算, 兼任光电等待窗与校对预算;
+全部确认 (n==m) 硬标段立即结束 — W 是预留上限, 不是最短等待</pre>
 
-<h3>3.3 endReason 判据表（err=0 时）</h3>
-<table>
-<tr><th>end</th><th>含义</th><th>正常用途</th></tr>
-<tr><td>1 TAG_REMOVED</td><td>期望标签稳定移除（防抖确认窗内再未读到）</td><td>客户拿走标签即结账（demag 模式）</td></tr>
-<tr><td>2 HOLD_TIMEOUT</td><td>保持窗满</td><td>超时兜底</td></tr>
-<tr><td>3 TAG_CHANGED</td><td>移除后读到其他 EPC（换了一张）</td><td>防"取A放B"套利</td></tr>
-<tr><td>4 UHF_LOST</td><td>保持期链路失联（确认窗仍坏）</td><td>设备异常</td></tr>
-<tr><td>5 DEMAG_DONE</td><td>消磁数达标</td><td>软标消磁正常完成</td></tr>
-<tr><td>6 ABORTED</td><td>主机 CANCEL（安全回降后正常回帧）</td><td>人工取消</td></tr>
-<tr><td>7 STABLE_OK</td><td>EPC 连续在场 3s 确认结账</td><td><b>demagCnt=0 正常完成的推荐判据</b></td></tr>
-</table>
-
-<!-- ============ 4 ============ -->
-<h2 id="s4">4. 流程二：UNLOCK_MULTI (0x0A) 多标签同步解锁</h2>
-<p><b>场景</b>：一单多件商品（最多 4 张硬标签 + N 个软标）。与 0x08 互斥（双向前置检查）。与 0x08 的本质差异：<b>多标签独立确认状态机 + 推送事件帧</b>（受理/逐张确认/失配/硬标完成/软标解码）+ 终帧汇总。</p>
-
-<h3>4.1 请求与解锁窗</h3>
-<pre>[0A, tmoL,tmoH, holdL,holdH, softCnt, epcCnt, epcLen, epcCnt*epcLen 字节]
-epcCnt=期望标签数 m (1~4); softCnt=软标消磁数 (0=跳过)
-
-解锁窗 W (holdMs=0 → 公式; 非0 → min(host, 240000)):
-  W = 120000 + (m-1)*30000 ms   (首标签 2min, 每多一标签 +30s)
-W 自光电触发时刻起算, 兼任光电等待窗与校对预算</pre>
-
-<h3>4.2 全阶段详解（含灯语/蜂鸣/推送帧）</h3>
+<h3>3.2 全阶段详解（含灯语/蜂鸣/推送帧）</h3>
 <table>
 <tr><th>阶段</th><th>设备行为（协议层）</th><th>灯语</th><th>蜂鸣</th><th>推送帧</th></tr>
-<tr><td>⑴ 前置 + 受理</td><td>同 0x08 前置；受理即推 <b>0x0F 受理帧</b>（含实际生效 W——公式算出的窗要告诉主机）</td><td>—</td><td>—</td><td>0x0F EVT_START</td></tr>
-<tr><td>⑵ 光电门控</td><td>等放标（去抖同 0x08），窗=W；窗满 → <code>err=11 NO_IR</code></td><td><span class="led lw"></span>白慢闪</td><td>—</td><td>NO_IR 时无推送，直接终帧 + <span class="led ly"></span>黄慢闪 2s</td></tr>
-<tr><td>⑶ 消磁准备</td><td>softCnt&gt;0：AM 探链 + 强制检测模式（校验期不消磁，同 0x08）</td><td>继承</td><td>—</td><td>失败红双闪 + 终帧 err=10</td></tr>
-<tr><td>⑷⑸ 持续校对（每标签独立状态机）</td><td>PENDING → TRACKING → CONFIRMED：<b>双门限确认</b>（连续在场 3s <b>且</b>累计读到 ≥2 次；单轮漏读不打断累计）；离场超 3s 回 PENDING 重算。<b>CONFIRMED 单向掩码</b>：后续读到静默忽略不重报。首张确认即升起（保持至硬标段结束）；每确认一张推 0x0B 确认帧（含真 EPC、判据耗时、流程耗时）。外来 EPC 不升不计数；连续 3 轮外来独占且无清单标签 → 推 0x0C 失配帧（不终止，窗 W 兜底；再见清单标签重新武装）</td><td><span class="led lb"></span>蓝慢闪；<b>读到任何标签蓝单闪</b>；<b>每确认一张绿单闪</b>；首确认起<b>绿常亮</b>（升起后回蓝慢闪继续等余下）</td><td>每确认一张短鸣 200ms</td><td>0x0B EVT_TAG（逐张）/ 0x0C EVT_MISMATCH</td></tr>
-<tr><td>⑹ 硬标段收尾</td><td>结束原因四种：全部 m 张确认（ALL_OK）/ 窗 W 满（PARTIAL_TIMEOUT，bitmap 明示哪些已确认）/ CANCEL / UHF 失联 5s。推 0x0D 硬标完成帧 → 回降（免疫打断）</td><td>回降灭；窗满未收齐 <span class="led ly"></span>黄慢闪 2s；UHF 失联 <span class="led lr"></span>红双闪</td><td>—</td><td>0x0D EVT_HARD_DONE</td></tr>
-<tr><td>⑺ 软标解码<br><small>(softCnt&gt;0)</small></td><td>硬标校验已通过，此刻才切 AM <b>消磁模式</b>；消磁计数每 +1 推 0x0E；达标或软标窗满（以实况结账）出口切回检测模式</td><td><span class="led lw"></span>白常亮；每消掉一个<b>白单闪</b>；消磁失败<b>红双闪</b></td><td>—</td><td>0x0E EVT_SOFT（逐个）</td></tr>
-<tr><td>⑻ 终帧</td><td>0x0A 终帧汇总：endReason + bitmap + confirmed/total + 升降步数 + softDone/softCnt + elapsed（自光电触发）。全部结账完成长鸣+绿三连闪</td><td>结账完成 <span class="led lg"></span>绿三连闪 → 灭</td><td>长鸣 300ms</td><td>终帧（响应通道）</td></tr>
+<tr><td>⑴ 前置 + 受理</td><td>Locker/UHF/电机均空闲 + 已回零（否则 BUSY 附三模块状态 / HOMING 附 switchErr）；受理即推 <b>0x0F 受理帧</b>（含实际生效 W）</td><td>—</td><td>—</td><td>0x0F EVT_START</td></tr>
+<tr><td>⑵ 光电门控：等放标</td><td>红外光电检测到放标（200ms 去抖）才继续；窗=W，窗满 → <code>err=11 NO_IR</code>（不升起、不碰 UHF/AM，磁块原位）</td><td><span class="led lw"></span><b>白慢闪</b>（该你了）</td><td>—</td><td>NO_IR 无推送，直接终帧 + <span class="led ly"></span>黄慢闪 2s</td></tr>
+<tr><td>⑶ 消磁准备<br><small>(softCnt&gt;0)</small></td><td>AM 探链 + 强制"检测模式"——<b>校验通过前只检测不消磁</b>，防止残留消磁模式在校对期误消软标</td><td>继承白慢闪</td><td>—</td><td>失败红双闪 + 终帧 err=10</td></tr>
+<tr><td>⑷⑸ 持续校对<br><small>(每标签独立状态机)</small></td><td>UHF 上电+连续盘点（扫描窗内强制 session=S0，结束还原）。PENDING → TRACKING → CONFIRMED：<b>双门限确认</b>（连续在场 3s <b>且</b>累计读到 ≥2 次；单轮漏读不打断累计）；离场超 3s 回 PENDING 重算。<b>CONFIRMED 单向掩码</b>：后续读到静默忽略。首张确认即<b>升起</b>（绿常亮，保持至硬标段结束，之后回蓝慢闪等余下）；每确认一张推 <b>0x0B 确认帧</b>（含真 EPC/判据耗时/流程耗时 = <b>比对结果回传上位机</b>）。外来 EPC 不升不计数；连续 3 轮外来独占且无清单标签 → 推 <b>0x0C 失配帧</b>（不终止，窗 W 兜底；再见清单标签重新武装）</td><td><span class="led lb"></span><b>蓝慢闪</b>（该我了）；<b>读到任何标签蓝单闪</b>；<b>每确认一张绿单闪</b>；首确认起绿常亮</td><td>每确认一张短鸣 200ms</td><td>0x0B EVT_TAG（逐张）/ 0x0C EVT_MISMATCH</td></tr>
+<tr><td>⑹ 硬标段收尾</td><td>结束原因四种：全部 m 张确认 ALL_OK（n==m）/ 窗 W 满 PARTIAL_TIMEOUT（bitmap 明示）/ CANCEL / UHF 失联 5s。推 0x0D 硬标完成帧 → 回降（免疫打断）</td><td>回降灭；窗满未收齐 <span class="led ly"></span>黄慢闪 2s；UHF 失联 <span class="led lr"></span>红双闪</td><td>—</td><td>0x0D EVT_HARD_DONE</td></tr>
+<tr><td>⑺ 软标解码<br><small>(softCnt&gt;0)</small></td><td>硬标校验已通过，此刻才切 AM <b>消磁模式</b>；每个软标对应一次解码，计数每 +1 推 0x0E；达标或 5min 软标窗满（以实况结账）出口切回检测模式</td><td><span class="led lw"></span><b>白常亮</b>；每消掉一个<b>白单闪</b>；消磁失败<b>红双闪</b></td><td>—</td><td>0x0E EVT_SOFT（逐个）</td></tr>
+<tr><td>⑻ 回降 + 终帧</td><td>磁块下行至下行程触点（安全方向，免疫打断）；0x0A 终帧汇总：endReason + bitmap + confirmed/total + 升降步数 + softDone/softCnt + elapsed（自光电触发）。流程结束 AM 自动切回检测模式、扫描会话还原原配置</td><td>结账完成 <span class="led lg"></span>绿三连闪 → 灭</td><td>全部结账完成长鸣 300ms</td><td>终帧（响应通道）</td></tr>
 </table>
 <div class="card"><b>解锁态响应矩阵</b>：受理帧起至终帧发完，仅 <code>CANCEL / QUERY / GET_PROGRESS</code>（及各 FC 只读命令）放行；其余 LOCKER/MOTOR/UHF/AM 控制类一律 BUSY。</div>
 
-<!-- ============ 5 ============ -->
+<h3>3.3 endReason 判据表（err=0 时，硬标段结束原因）</h3>
+<table>
+<tr><th>end</th><th>含义</th><th>正常用途</th></tr>
+<tr><td>1 ALL_OK</td><td>全部 m 张确认（n==m）</td><td>硬标段正常完成的唯一推荐判据</td></tr>
+<tr><td>2 PARTIAL_TIMEOUT</td><td>窗 W 满，部分确认（bitmap 明示哪些已确认）</td><td>超时兜底，按实况处理</td></tr>
+<tr><td>4 UHF_LOST</td><td>链路失联确认窗（5s）仍坏</td><td>设备异常</td></tr>
+<tr><td>6 ABORTED</td><td>主机 CANCEL（安全回降后以实况结账，跳过软标段）</td><td>人工取消</td></tr>
+</table>
+
+<!-- ============ 4 ============ -->
+<h2 id="s4">4. 0x08 ONE_SHOT 单标签流程 — Round_011 已废除（迁移指引）</h2>
+<p><b>0x08 不再解析任何帧形状，收到一律回 <code>[08, 2]</code> (PARAM)</b>。废除动机：单标/多标本就是同一业务（比对→确认→升起→软标→结账），0x08 独有的"保持期 3s 稳定即结账"判据与 0x0A 的"逐张确认 + n==m"语义不一致，双通道徒增状态机分支面与互斥检查。</p>
+<div class="card gold"><b>迁移指引（主机侧三步）</b>：
+① 请求帧从 <code>[08, tmo(2), irWait(2), hold(2), epcLen, epc.., (demagCnt)]</code> 改为 <code>[0A, tmo(2), hold(2), softCnt, 1, epcLen, epc..]</code>（<code>epcCnt=1</code>，原 demagCnt→softCnt）；
+② 原"等终帧一问一答"模式不变，新增低频推送帧 0x0F/0x0B/0x0D（softCnt&gt;0 时 0x0E）可忽略或用于进度显示；GET_PROGRESS 布局统一为 <code>[phase, holdMs(3), total, confirmed, bitmap, softCnt, softDone]</code>；
+③ 判定语义变化：原 end=7 STABLE_OK（3s 稳定即结账）→ 0x0A end=1 ALL_OK（单标在场连续 3s 且读到 ≥2 次即确认）；解锁窗从 irWait/hold 双窗 → 统一 W=120000ms（holdMs=0 即公式缺省，恰 2min）。</div>
+<div class="card warn">原 0x08 语义速查（仅存档）：<code>ONE_END_*</code> 1=TAG_REMOVED / 2=HOLD_TIMEOUT / 3=TAG_CHANGED / 4=UHF_LOST / 5=DEMAG_DONE / 6=ABORTED / 7=STABLE_OK；对应 0x0A 语义：移除/超时/换标 → PARTIAL_TIMEOUT(2) 按实况，消磁达标 → ALL_OK+软标段，取消 → ABORTED(6)。完整定义见 App_Protocol §13.1。</div>
+
 <h2 id="s5">5. 流程三：LOCKER 编排模式（后台结账）</h2>
 <p><b>场景</b>：设备自主跑完整结账会话——主机先配清单（ADD 挂单），START 后<b>设备后台持续扫描</b>，主机异步用 QUERY/GET_EVENT 收事件。适合固定工位无人值守逐张放标。</p>
 <pre>IDLE --ADD(0x02 清单挂单)--> CONFIGURED        灯: <span class="led lb"></span>蓝慢闪 (持续盘点等硬标签)
@@ -198,15 +181,15 @@ CONFIGURED --START(0x04)--> 扫描段            逐张放标: 读到=蓝单闪,
 <tr><td>5 FAULT</td><td>故障锁定（归因 1~8）</td><td><span class="led lr"></span>红常亮</td></tr>
 <tr><td>6 LOWERING</td><td>回降中</td><td>灭</td></tr>
 </table>
-<div class="card">与 0x08/0x0A 的取舍：要<b>一问一答最简集成</b>用 0x08；要<b>一单多标 + 推送事件</b>用 0x0A；要<b>设备自主后台会话 + 逐张放标</b>用 LOCKER 编排。三者互斥（前置检查保证同一时刻只有一条主线）。</div>
+<div class="card">与 0x0A 的取舍：要<b>一问一答同步阻塞</b>（结账清单一次下发）用 0x0A；要<b>设备自主后台会话 + 逐张放标</b>用 LOCKER 编排。两者互斥（前置检查保证同一时刻只有一条主线）。</div>
 
 <!-- ============ 6 ============ -->
 <h2 id="s6">6. 失败路径 → 错误码/灯语映射总表</h2>
 <table>
 <tr><th>场景</th><th>协议层结果</th><th>灯语（闪后回落）</th><th>现场含义 / 店员动作</th></tr>
-<tr><td>客户一直没放标</td><td>err=11 NO_IR（0x08/0x0A）</td><td><span class="led ly"></span>黄慢闪 2s</td><td>"没看到东西"—引导客户放标后重发</td></tr>
-<tr><td>放了标但拿走/读不到</td><td>err=5 NO_TAG</td><td><span class="led ly"></span>黄慢闪 2s</td><td>标被拿走或位置不对—重新放</td></tr>
-<tr><td>标签不属于本单</td><td>err=6 MISMATCH（0x08）；0x0C 失配帧（0x0A，不终止）</td><td><span class="led lr"></span>红快闪 3s</td><td>"这张不对"—核对商品；0x0A 中放对标签即继续</td></tr>
+<tr><td>客户一直没放标</td><td>err=11 NO_IR（0x0A）</td><td><span class="led ly"></span>黄慢闪 2s</td><td>"没看到东西"—引导客户放标后重发</td></tr>
+<tr><td>放了标但拿走/读不到</td><td>窗 W 满部分确认 end=2 PARTIAL_TIMEOUT（bitmap 明示已确认张）</td><td><span class="led ly"></span>黄慢闪 2s</td><td>标被拿走或位置不对—重新放</td></tr>
+<tr><td>标签不属于本单</td><td>0x0C 失配帧（连续 3 轮外来独占，推帧不终止）</td><td><span class="led lr"></span>红快闪 3s</td><td>"这张不对"—核对商品；放对标签即继续，窗 W 兜底</td></tr>
 <tr><td>UHF/AM 链路断</td><td>err=3/4/10（UHF_OPEN/LINK、AM_LINK）；end=4 UHF_LOST</td><td><span class="led lr"></span>红双闪 1s</td><td>设备级问题—找维保</td></tr>
 <tr><td>消磁失败（软标消不掉）</td><td>0x0E 计数不增 / 事件 SOFT 不到标（软标窗满以实况结账）</td><td><span class="led lr"></span>红双闪 1s</td><td>软标可能已失效或位置不对—重试或人工处理</td></tr>
 <tr><td>升降电机故障/超时</td><td>err=8 MOTOR_FAULT / err=9 MOTOR_TIMEOUT（附快照+phase+retreat；retreat=0 已安全回降）</td><td>安全回退中<span class="led ly"></span>黄快闪；锁定<span class="led lr"></span>红常亮</td><td>设备级问题—找维保</td></tr>
@@ -221,29 +204,29 @@ CONFIGURED --START(0x04)--> 扫描段            逐张放标: 读到=蓝单闪,
 <table>
 <tr><th>命令</th><th>内容</th><th>典型用法</th></tr>
 <tr><td>QUERY (0x06)</td><td>Locker 状态机 state / 已解锁数 / 软标消耗数 / faultReason</td><td>轮询界面进度条（编排模式）</td></tr>
-<tr><td>GET_PROGRESS (0x09)</td><td>phase（0x08: 1~7 含 IR_WAIT；0x0A: 1~6 含 WAIT_TAG）+ holdMs 已耗时 + tagPresent + 确认位图</td><td>阻塞流程中细粒度进度（0x08/0x0A 运行中放行）</td></tr>
+<tr><td>GET_PROGRESS (0x09)</td><td>phase（1~6：WAIT_TAG/VERIFY/RISE/LOWER/SOFT/DONE）+ holdMs 已耗时(3 字节) + total/confirmed/bitmap + softCnt/softDone —— <b>唯一布局</b>（非流程时 phase=0 全零）</td><td>解锁流程中细粒度进度（运行中放行）</td></tr>
 <tr><td>CANCEL (0x07)</td><td>打断 → 安全回降 → ABORTED 正常回帧（不是错误）</td><td>店员取消订单/客户反悔</td></tr>
 <tr><td>IO_DIAG (0x10)</td><td>一帧 10B 总览：ir（红外实时）/ 行程开关电平 / uhfPowered+antennaOk / amLink / homing(0-3) / locker / testState</td><td>复位后等 homing=2；现场排障第一入口</td></tr>
 </table>
 
 <!-- ============ 8 ============ -->
 <h2 id="s8">8. 灯语完整时序图</h2>
-<h3>8.1 正常结账时间线（ONE_SHOT，demagCnt=1）</h3>
+<h3>8.1 正常结账时间线（UNLOCK_MULTI 单标 epcCnt=1，softCnt=1）</h3>
 <div class="seq">
 <div class="step"><b>⑴.5 等放标</b><span class="led lw" style="width:14px;height:14px;"></span><span class="lm">白慢闪 · 客户放硬标签</span></div>
-<div class="step"><b>⑵⑶ 在读</b><span class="led lb" style="width:14px;height:14px;"></span><span class="lm">蓝慢闪 · 蓝单闪(读到)</span></div>
-<div class="step"><b>⑶ 命中</b><span class="led lg" style="width:14px;height:14px;"></span><span class="lm">绿单闪 200ms</span></div>
-<div class="step"><b>⑷ 升起</b><span class="led lg" style="width:14px;height:14px;"></span><span class="lm">绿常亮 + AM 切消磁</span></div>
-<div class="step"><b>⑸ 软标消磁</b><span class="led lw" style="width:14px;height:14px;"></span><span class="lm">白常亮 · 白单闪(消掉一个)</span></div>
-<div class="step"><b>⑹ 回降</b><span class="led loff" style="width:14px;height:14px;"></span><span class="lm">灭</span></div>
-<div class="step"><b>⑺ 完成</b><span class="led lg" style="width:14px;height:14px;"></span><span class="lm">绿三连闪+长鸣 → 灭</span></div>
+<div class="step"><b>⑵⑶⑷ 在读+校对</b><span class="led lb" style="width:14px;height:14px;"></span><span class="lm">蓝慢闪 · 蓝单闪(读到)</span></div>
+<div class="step"><b>确认</b><span class="led lg" style="width:14px;height:14px;"></span><span class="lm">绿单闪 200ms + 0x0B 推送</span></div>
+<div class="step"><b>升起</b><span class="led lg" style="width:14px;height:14px;"></span><span class="lm">绿常亮 (AM 待软标段才切消磁)</span></div>
+<div class="step"><b>⑺ 软标消磁</b><span class="led lw" style="width:14px;height:14px;"></span><span class="lm">白常亮 · 白单闪(消掉一个)</span></div>
+<div class="step"><b>⑻ 回降</b><span class="led loff" style="width:14px;height:14px;"></span><span class="lm">灭</span></div>
+<div class="step"><b>完成</b><span class="led lg" style="width:14px;height:14px;"></span><span class="lm">绿三连闪+长鸣 → 灭</span></div>
 </div>
 <h3>8.2 失败时间线（放错标签）</h3>
 <div class="seq">
 <div class="step"><b>等放标</b><span class="led lw" style="width:14px;height:14px;"></span><span class="lm">白慢闪</span></div>
 <div class="step"><b>在读</b><span class="led lb" style="width:14px;height:14px;"></span><span class="lm">蓝慢闪 · 蓝单闪×N(读到错的)</span></div>
 <div class="step"><b>失配确认</b><span class="led lr" style="width:14px;height:14px;"></span><span class="lm">红快闪 3s · 磁块不动</span></div>
-<div class="step"><b>终帧 err=6</b><span class="led loff" style="width:14px;height:14px;"></span><span class="lm">回落灭 · MISMATCH</span></div>
+<div class="step"><b>0x0C 失配帧</b><span class="led loff" style="width:14px;height:14px;"></span><span class="lm">回落蓝慢闪 · 磁块不动 · 不终止等窗 W</span></div>
 </div>
 <pre>时序要点:
 · 蓝单闪出现在每轮盘点读到标签的瞬间 (闪显槽深1, 连读合并成一次, 不会爆闪)
@@ -251,7 +234,7 @@ CONFIGURED --START(0x04)--> 扫描段            逐张放标: 读到=蓝单闪,
 · 红快闪 3s 期间稳态灯被压制 (闪显优先), 窗口结束回落
 · 行程开关错误灯语优先级最高, 会盖过上述一切 (工程态明确优先)</pre>
 
-<div class="foot">App_Unlock_Flow.html · ZLR5401 解锁全流程 (协议层) · 依据: App_Protocol.html §10-§16 + 固件 App_LockerOneShot.c / App_LockerUnlock.c / App_Locker.c / App_RgbLed_Pattern.c (Round_011 方案 A) · 2026-09-02</div>
+<div class="foot">App_Unlock_Flow.html · ZLR5401 解锁全流程 (协议层) · 依据: App_Protocol.html §10-§16 + 固件 App_LockerUnlock.c / App_Locker.c / App_RgbLed_Pattern.c (Round_011 方案 A) · 2026-09-02 · Round_011 续：0x08 单标签流程废除，单标统一 0x0A epcCnt=1（W=2min+30s/额外标签，n==m 即硬标段结束），GET_PROGRESS 唯一布局 holdMs 3 字节</div>
 </div>
 </body>
 </html>

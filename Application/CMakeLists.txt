@@ -55,7 +55,6 @@ set(SOURCES
   src/App_AM.c
   src/App_AM_HL.c
   src/App_Locker.c
-  src/App_LockerOneShot.c
   src/App_LockerSeek.c
   src/App_LockerUnlock.c
   src/App_NewPeriph_HL.c

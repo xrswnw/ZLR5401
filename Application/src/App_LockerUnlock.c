@@ -3,7 +3,6 @@
 #include "App_Stepper.h"
 #include "App_MotorHoming.h"
 #include "App_Locker.h"
-#include "App_LockerOneShot.h"
 #include "App_LockerSeek.h"
 #include "App_NewPeriph_HL.h"
 #include "App_SysTick_HL.h"
@@ -15,9 +14,9 @@
 #include <stddef.h>
 
 /* =====================================================================
- * 多标签解锁 (LOCKER_SUB_UNLOCK_MULTI 0x0A) 实现 — Agent/Round_012/Plan.html
- * 与 0x08 单标签通道互斥 (双方前置检查 + 分发层白名单双保险)。
- * 灯语复用 RGBSRC_ONESHOT 槽位 (两流程互斥, 不新增仲裁源)。
+ * 解锁流程 (LOCKER_SUB_UNLOCK_MULTI 0x0A) 实现 — Agent/Round_012/Plan.html
+ * Round_011 用户裁决: 0x08 单标签流程已废除, 本流程为唯一开锁通道
+ * (epcCnt=1 即单标)。灯语独占 RGBSRC_UNLOCK 槽位。
  * ===================================================================== */
 
 typedef struct {
@@ -57,7 +56,7 @@ void App_LockerUnlock_Finish(void)
     s_phase = UNLK_PH_NONE;
     s_immune = 0u;
     LockerSeek_BindAbort(NULL, NULL);     /* 解绑共享寻触的打断标志 */
-    App_RgbLedPat_Clear(RGBSRC_ONESHOT);  /* 流程结束撤销灯语声明 */
+    App_RgbLedPat_Clear(RGBSRC_UNLOCK);  /* 流程结束撤销灯语声明 */
 }
 
 void App_LockerUnlock_GetProgress(LockerUnlockProgress_t *p)
@@ -73,7 +72,7 @@ void App_LockerUnlock_GetProgress(LockerUnlockProgress_t *p)
     p->softDone = s_softDone;
     if (s_irMs != 0u) {
         uint32_t h = SysTickHl_GetMs() - s_irMs;
-        p->holdMs = (h > 0xFFFFu) ? 0xFFFFu : (uint16_t)h;
+        p->holdMs = h;
     }
     uint32_t now = SysTickHl_GetMs();
     for (uint8_t i = 0; i < s_total; i++) {
@@ -167,10 +166,10 @@ static void fill_busy(LockerUnlockResult_t *out)
     out->stepperState = (uint8_t)App_Stepper_GetState();
 }
 
-/* 电机段失败统一出口 (同 OneShot one_motor_fail 语义) */
+/* 电机段失败统一出口: 记录诊断 + 安全回退下端 */
 static void motor_fail(uint8_t err, uint8_t mphase, LockerUnlockResult_t *out)
 {
-    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_TEST_FAST);   /* 安全回退: 黄快闪 */
+    App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_TEST_FAST);   /* 安全回退: 黄快闪 */
     out->err        = err;
     out->motorPhase = mphase;
     out->fault      = App_Stepper_GetFault();
@@ -240,7 +239,6 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
     if (tmoMs > 10000u) tmoMs = 10000u;
 
     /* ---- ⑴ 前置检查 ---- */
-    if (App_LockerOneShot_IsBusy() != 0u)            { fill_busy(out); return; }
     if (App_Locker_IsIdle() == 0)                    { fill_busy(out); return; }
     if (App_UHF_GetState() == APP_UHF_SCAN)          { fill_busy(out); return; }
     if (App_UHF_IsBusy())                           { fill_busy(out); return; }
@@ -264,7 +262,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
     if (winMs > UNLK_HOLD_MAX_MS) winMs = UNLK_HOLD_MAX_MS;
 
     push_start(winMs);                       /* 受理帧 (含实际 W) */
-    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_IR_WAIT);   /* 待放标: 白慢闪 (Round_011 A) */
+    App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_IR_WAIT);   /* 待放标: 白慢闪 (Round_011 A) */
 
     /* ---- ⑵ 光电门控: 等待放标 (PC4, 去抖) ---- */
     {
@@ -311,7 +309,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
 
     /* ---- ⑷ UHF 就绪 ---- */
     s_phase = UNLK_PH_VERIFY;
-    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_SCAN_ACTIVE);   /* 盘点校对中: 蓝慢闪 (Round_011 A) */
+    App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_SCAN_ACTIVE);   /* 盘点校对中: 蓝慢闪 (Round_011 A) */
     if (App_UHF_GetState() == APP_UHF_ERROR) {
         (void)App_UHF_Close();   /* ERROR 态: 彻底下电重上 */
         out->uhfRawErr = App_UHF_Open();
@@ -393,7 +391,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
                     /* 首确认: 升起 KEY_UP (模型甲: 保持至硬标段结束) */
                     s_risen = 1u;
                     s_phase = UNLK_PH_RISE;
-                    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_RISE_HOLD_GREEN);
+                    App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_RISE_HOLD_GREEN);
                     int r = LockerSeek_RunRetry(LSEEK_DIR_UP, LSEEK_RISE_MAX, &rise);
                     if (r == 2u) {
                         hardEnd = UNLK_END_ABORTED;   /* 免疫回降交统一出口 */
@@ -457,7 +455,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
 
     if (s_risen) {
         s_phase = UNLK_PH_LOWER;
-        App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_OFF);   /* 回降: 灭 */
+        App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_OFF);   /* 回降: 灭 */
         s_immune = 1u;   /* 回降本身即安全回退, 免疫打断 */
         int r = LockerSeek_RunRetry(LSEEK_DIR_DOWN, LSEEK_LOWER_MAX, &lower);
         s_immune = 0u;
@@ -480,7 +478,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
     /* ---- ⑺ 软标解码: 每次消磁成功计数推帧, 达标/窗满 (以实况结账) ---- */
     if (softCnt > 0u) {
         s_phase = UNLK_PH_SOFT;
-        App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_SOFT_WAIT_WHITE);   /* 软标: 白常亮 */
+        App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_SOFT_WAIT_WHITE);   /* 软标: 白常亮 */
         /* EPC 校验已通过 (硬标段结束): 此刻才切消磁模式 + 记计数基线 */
         if (App_AM_SetParam(AM_CMD_MODE, AM_MODE_DEACTIVATE) != APP_AM_ERR_OK) {
             out->err = UNLK_ERR_AM_LINK;
@@ -536,5 +534,5 @@ void App_LockerUnlock_Run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
         (void)App_AM_SetParam(AM_CMD_MODE, AM_MODE_DETECT_ONLY);
     }
     /* 流程返回即撤销灯语声明 (含全部提前失败出口), Finish 再做终清 */
-    App_RgbLedPat_Clear(RGBSRC_ONESHOT);
+    App_RgbLedPat_Clear(RGBSRC_UNLOCK);
 }

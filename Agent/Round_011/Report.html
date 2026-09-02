@@ -115,6 +115,20 @@
 <h2>6. 结论</h2>
 <p><b>方案 A 全部落地并回归通过</b>: 三条解锁主线的灯语升级为"五色叙事" (白=等你 / 蓝=在读 / 绿=对了 / 红=出事 / 黄=自检类), 失败盲区 (未放标/无标签/链路断) 全部有灯, 读到标签有即时反馈。协议文档完成硬件层净化 (仅协议层语义), 解锁全流程独立成册 (App_Unlock_Flow.html)。固件 ZLR5401_202609022328.hex, 设备终态: App 在线, IO_DIAG 全字段正常, 回零 READY, 自检位图 0。遗留: 灯语肉眼辨识度人工项 (§5), 交现场验收。</p>
 
+<h2>7. 续章 — 解锁通道统一: 废除 0x08 ONE_SHOT, 单标=0x0A epcCnt=1 (2026-09-02)</h2>
+<p><b>触发</b>: 用户裁决业务六步流程 (付款→上位机下发清单(硬标 EPC+软标数)→放标光电触发→比对(命中绿升/失配红闪不升, 结果逐张回传)→硬标段窗 W=2min+30s/额外标签, n==m 即进软标→每软标一次解码, 用完结账) — 逐条核对后发现与 UNLOCK_MULTI (0x0A) 既有语义一一对应, 单标签 0x08 通道与之重复且判据 ("保持期 3s 稳定即结账 STABLE_OK" vs "逐张确认+n==m ALL_OK") 不一致, 易致结账误判。<b>决策: 0x08 整体废除, 单标即 0x0A epcCnt=1 (W=120000 恰 2min)</b>。</p>
+<table>
+<tr><th>位置</th><th>变更</th></tr>
+<tr><td><code>App_LockerOneShot.c/.h</code> <b>(删除)</b></td><td>单标签流程模块整体移除 (含 CMake 条目); 灯语仲裁槽位 RGBSRC_ONESHOT 更名 RGBSRC_UNLOCK 由 0x0A 独占</td></tr>
+<tr><td><code>App_Dispatch.c</code></td><td>0x08 分支改废弃应答 (任意帧形状一律 [08,2] PARAM, 保留码位区别未知子命令, 便于主机探测协议升级); MOTOR/UHF/AM/LOCKER/RGB/SELFTEST 六处双流程互斥检查简化为单流程; CANCEL 去 0x08 打断路径</td></tr>
+<tr><td><code>App_LockerUnlock.c/.h</code> + <code>App_Dispatch.c</code></td><td>GET_PROGRESS (0x09) 统一为多标签布局 <code>[sub,err,phase,holdMs(3),total,confirmed,bitmap,softCnt,softDone]</code>, 空闲时 phase=0 同布局; <b>holdMs 扩为 3 字节, 顺带修复 W&gt;65.5s 时 16bit 回填截断的潜在溢出 bug</b></td></tr>
+<tr><td>测试 p6/p9/p0</td><td>p6 Part C 重写 (0x08 废弃×2 + 单标 0x0A epcCnt=1 全流程 + CANCEL 打断); p9 O5 改三形态帧均 PARAM; p0 光电探针改走 0x0A 并修帧长度 (12B EPC) + 加 drain 清推送帧</td></tr>
+<tr><td><code>App_Protocol.html</code> / <code>App_Unlock_Flow.html</code></td><td>§13 重写: 13.1 废除声明+迁移指引 / 13.2 0x0A 唯一流程 (业务六步闭环入文) / 13.3 终帧; 错误码表·附录常量·脚注同步; Unlock_Flow 全文统一 (原 0x08 章节改迁移指引+语义存档)</td></tr>
+</table>
+<p><b>回归终态</b>: P1 15/0 · P2 16/0 (B5c 自检读取竞态 flaky, 复跑通过) · P3 26/0 · P4 22/0 · P5 16/0 · P9 28/2 · P6 40/9。<br>
+P9/P6 全部失败项归因: <b>真标签不在场</b> (B2~B7 匹配链 / D4·D5 长窗确认 / O6c S2 周期) — UHF 独立探针 INVENTORY 回 err=5 NO_TAG 证实, 与 0x08 移除无因果。新增路径实测全绿: 0x08 任意帧→PARAM (p6 C2a/C2b, p9 O5a/b/c), 单标 0x0A epcCnt=1 短窗→PARTIAL_TIMEOUT(2) 终帧+0x0F/0x0D 推送、长窗 CANCEL→ABORTED(6) 电机安全回 IDLE、GET_PROGRESS 空闲/流程中唯一布局 (phase=0 / phase=2, holdMs 3 字节, D3b total=1)。固件 ZLR5401_202609030003.hex。<br>
+<b>标签在场后建议复跑</b>: p6 B2~B7/D4/D5 + p9 O6c, 验证真实匹配闭环在统一通道下行为不变 (语义层面 0x0A 代码零改动, 预期原样通过)。</p>
+
 <div class="foot">Round_011 Report · 测试执行: Agent/Round_098/test (P2~P6, P9 复用) · 固件 diff 见 git 提交 · 2026-09-02</div>
 </div>
 </body>

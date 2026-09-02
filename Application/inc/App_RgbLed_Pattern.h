@@ -9,11 +9,11 @@
  *   输出优先级 (每拍唯一图样, 单色同屏):
  *     L1 行程开关错误 (黄/粉红 500ms 闪, 沿用旧 AppLed_SwitchErrProcess)
  *     L2 一次性闪显 (事件确认: 匹配/失配/软标/完成, 叠加在稳态之上)
- *     L3 稳态声明 (Locker/OneShot/MotorTest 按状态申请, 最高优先级者胜)
+ *     L3 稳态声明 (Locker/Unlock/MotorTest 按状态申请, 最高优先级者胜)
  *     L4 上位机手动设色 (仅 IDLE 可设, 超时自动回收)
  *     L5 灭
  *   调用约定: App_RgbLedPat_Tick() 由主循环每拍调用; 阻塞流程
- *   (OneShot one_pump) 亦须调用, 否则阻塞期间灯语冻结.
+ *   (Unlock 泵循环) 亦须调用, 否则阻塞期间灯语冻结.
  * ===================================================================== */
 
 /* 稳态图样 (值越大优先级越高; 见 App_Config.h RGB_HAS_BLUE 降级) */
@@ -44,7 +44,7 @@ typedef enum {
 /* 稳态声明来源槽位 (各流程互斥, 占槽声明, 仲裁取最高优先级) */
 typedef enum {
     RGBSRC_LOCKER = 0,          /* App_Locker 结账编排 */
-    RGBSRC_ONESHOT,              /* App_LockerOneShot 单标签同步 */
+    RGBSRC_UNLOCK,               /* App_LockerUnlock 0x0A 解锁流程 */
     RGBSRC_MOTORTEST,            /* App_MotorTest 行程测试 */
     RGBSRC_HOMING,               /* App_MotorHoming 后台回零 (Round_098 #11) */
     RGBSRC_COUNT

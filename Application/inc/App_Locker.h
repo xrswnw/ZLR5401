@@ -14,7 +14,7 @@
  *  - 编排已实现的模块: App_UHF(硬标签EPC读) + App_Stepper(升降开锁)
  *                      + App_MotorHoming(行程基准) + App_AM(软标解码器)
  *  - 磁块升降为 KEY_UP/KEY_DOWN 行程开关寻触 (非定步数), 判据与
- *    App_MotorHoming / App_LockerOneShot 一致 (2000Hz / 40%)。
+ *    App_MotorHoming 一致 (2000Hz / 40%)。
  *  - 状态机由 App_Locker_Process 主循环非阻塞节拍驱动, 事件经
  *    LOCKER_SUB_GET_EVENT 拉取回上位机。
  * ===================================================================== */
@@ -73,7 +73,7 @@ typedef struct {
 #define APP_LOCKER_DONE_IDLE_MS      5000u               /* 结账完成后停留再回降 */
 #define APP_LOCKER_SOFT_WINDOW_MS    (5u * 60u * 1000u)  /* 软标阶段兜底窗口 */
 
-/* ---- 寻触升降工况 (与 App_MotorHoming/App_LockerOneShot 实测一致) ----
+/* ---- 寻触升降工况 (与 App_MotorHoming 实测一致) ----
  * 定步数 4800 旧方案已废弃: 实测行程 4287/4280, 超程会硬顶挡块。 */
 #define APP_LOCKER_SEEK_SPEED_HZ     2000u
 #define APP_LOCKER_SEEK_TORQUE_PCT   40u

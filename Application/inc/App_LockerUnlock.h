@@ -8,7 +8,7 @@
  * Agent/Round_012/Plan.html (v1)。
  *
  * 单帧下发 m(≤UNLK_MAX_TAGS) 张期望 EPC + 软标数量, 阻塞自治执行:
- *   ⑴ 前置检查 (OneShot/Locker IDLE / 电机 IDLE / 已回零) -> 受理推 0x0F
+ *   ⑴ 前置检查 (Locker IDLE / 电机 IDLE / 已回零) -> 受理推 0x0F
  *   ⑵ 光电门控 (PC4, UNLK_IR_CONFIRM_MS 去抖; 窗=W, 窗满 -> err=NO_IR)
  *   ⑶ 消磁准备 (softCnt>0: AM 探链+强制检测模式 — 校验期不消磁; =0 跳过)
  *   ⑷ UHF 就绪 + 持续盘点校对:
@@ -54,7 +54,7 @@
 
 /* ---- 失败码 (编号对齐 ONE_ERR_*) ---- */
 #define UNLK_ERR_OK                 0u
-#define UNLK_ERR_BUSY               1u   /* OneShot/Locker/UHF/电机 占用中 */
+#define UNLK_ERR_BUSY               1u   /* Locker/UHF/电机 占用中 */
 #define UNLK_ERR_PARAM              2u   /* 帧长/epcCnt/epcLen 非法 */
 #define UNLK_ERR_UHF_OPEN            3u
 #define UNLK_ERR_UHF_LINK            4u
@@ -119,7 +119,7 @@ typedef struct {
     uint8_t  phase;           /* UNLK_PH_* */
     uint8_t  total, confirmed, confirmedBitmap;
     uint8_t  softCnt, softDone;
-    uint16_t holdMs;          /* 自 IR 触发已过 ms (未触发=0) */
+    uint32_t holdMs;          /* 自 IR 触发已过 ms (未触发=0); Round_011: W 超 16bit, 3 字节回填 */
     uint8_t  tagPresent;      /* 有待确认期望标签在场 */
 } LockerUnlockProgress_t;
 

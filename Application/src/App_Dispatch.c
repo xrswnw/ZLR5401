@@ -10,7 +10,6 @@
 #include "App_AM.h"
 #include "App_AM_HL.h"
 #include "App_Locker.h"
-#include "App_LockerOneShot.h"
 #include "App_LockerUnlock.h"
 #include "App_RgbLed_Pattern.h"
 #include "App_BootSelfTest.h"
@@ -115,15 +114,15 @@ void AppDispatch(ProtoFrame_t *f) {
 
     case FC_MOTOR_CTRL: {
         /* 步进电机控制. data[0]=cmd. 响应 payload: [cmd, err, ...].
-         * 0x08 流程进行中: 仅放行只读 (QUERY/HEALTH/STATS), 控制类回 BUSY.
-         * 0x0A 多标签解锁进行中: 同口径 (回退/回降段免疫但仍在流程中)。 */
+         * 0x0A 解锁流程进行中: 仅放行只读 (QUERY/HEALTH/STATS), 控制类回
+         * BUSY (回退/回降段免疫但仍在流程中)。 */
         uint8_t rsp[8];
         uint8_t err = MOTOR_ERR_PARAM;
         uint16_t pos = 0; uint8_t cmd = 0;
 
         if (f->dataLen >= 1) cmd = f->data[0];
 
-        if ((App_LockerOneShot_IsBusy() || App_LockerUnlock_IsBusy()) &&
+        if (App_LockerUnlock_IsBusy() &&
             cmd != MOTOR_CMD_QUERY && cmd != MOTOR_CMD_HEALTH && cmd != MOTOR_CMD_STATS) {
             uint8_t r[2] = { cmd, MOTOR_ERR_BUSY };
             Proto_TxResponse(ch, FC_MOTOR_CTRL, r, 2);
@@ -272,10 +271,10 @@ void AppDispatch(ProtoFrame_t *f) {
     case FC_UHF_CTRL: {
         /* UHF 模块. data[0]=子命令. 响应 data[0]=cmd, data[1]=err, 其余随 cmd.
          * 盘点为同步阻塞: UHF_SUB_INVENTORY 返回时标签结果已随响应一并带回.
-         * 0x08 / 0x0A 流程进行中: 仅放行只读 (QUERY/GET_STATUS), 其余回 BUSY. */
+         * 0x0A 解锁流程进行中: 仅放行只读 (QUERY/GET_STATUS), 其余回 BUSY. */
         uint8_t sub = (f->dataLen >= 1u) ? f->data[0] : 0u;
 
-        if ((App_LockerOneShot_IsBusy() || App_LockerUnlock_IsBusy()) &&
+        if (App_LockerUnlock_IsBusy() &&
             sub != UHF_SUB_QUERY && sub != UHF_SUB_GET_STATUS) {
             uint8_t r[2] = { sub, UHF_ERR_BUSY };
             Proto_TxResponse(ch, FC_UHF_CTRL, r, 2);
@@ -567,11 +566,11 @@ void AppDispatch(ProtoFrame_t *f) {
 
     case FC_AM_CTRL: {
         /* AM 解码器. data[0]=子命令. 响应 data[0]=cmd, data[1]=err, 其余随 cmd.
-         * 0x08 / 0x0A 流程进行中: 仅放行 AM_SUB_GET_STATUS (本地读, 无总线动作;
+         * 0x0A 解锁流程进行中: 仅放行 AM_SUB_GET_STATUS (本地读, 无总线动作;
          * QUERY 等会 RxFlush 冲掉流程正在等的 cmd17), 其余回 BUSY. */
         uint8_t sub = (f->dataLen >= 1u) ? f->data[0] : 0u;
 
-        if ((App_LockerOneShot_IsBusy() || App_LockerUnlock_IsBusy()) &&
+        if (App_LockerUnlock_IsBusy() &&
             sub != AM_SUB_GET_STATUS) {
             uint8_t r[2] = { sub, AM_ERR_BUSY };
             Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
@@ -780,14 +779,6 @@ void AppDispatch(ProtoFrame_t *f) {
             break;
         }
 
-        if (App_LockerOneShot_IsBusy() &&
-            sub != LOCKER_SUB_QUERY && sub != LOCKER_SUB_GET_PROGRESS &&
-            sub != LOCKER_SUB_CANCEL) {
-            uint8_t r[2] = { sub, LOCKER_ERR_BUSY };
-            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
-            break;
-        }
-
         switch (sub) {
         case LOCKER_SUB_CONFIGURE: {
             /* [cmd, hardCountL, hardCountH, softCountL, softCountH]
@@ -823,7 +814,7 @@ void AppDispatch(ProtoFrame_t *f) {
             /* Round_098 BUG#3: 原为 && — 短帧(2+epcLen>dataLen)但 epcLen<=12 时
              * 不被拒绝, 越过 dataLen 读残留字节当 EPC 收进清单; epcLen>12 但
              * 帧足够长时被静默截断为 12. 协议文档定义 ADD 为 "≤12B", 两类
-             * 非法参数都应回 PARAM. 与 ONE_SHOT/UNLOCK_MULTI 的 || 校验对齐. */
+             * 非法参数都应回 PARAM. 与 UNLOCK_MULTI 的 || 校验对齐. */
             if ((uint16_t)2u + epcLen > f->dataLen || epcLen > APP_LOCKER_MAX_EPC) {
                 uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
                 Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
@@ -850,11 +841,8 @@ void AppDispatch(ProtoFrame_t *f) {
         }
         case LOCKER_SUB_CANCEL:
             if (App_LockerUnlock_IsBusy()) {
-                /* 0x0A 多标签解锁进行中: 打断请求 (立即回 OK, 安全回降后回终帧) */
+                /* 0x0A 解锁流程进行中: 打断请求 (立即回 OK, 安全回降后回终帧) */
                 App_LockerUnlock_Abort();
-            } else if (App_LockerOneShot_IsBusy()) {
-                /* 0x08 流程进行中: 打断请求 (立即回 OK, 流程安全回降后回最终帧) */
-                App_LockerOneShot_Abort();
             } else {
                 App_Locker_Cancel();
             }
@@ -864,38 +852,25 @@ void AppDispatch(ProtoFrame_t *f) {
             }
             break;
         case LOCKER_SUB_GET_PROGRESS: {
-            /* [cmd]  流程中进度快照 (非流程时 phase=0)。
-             * 0x0A 多标签流程时回多标签布局, 否则 0x08 单标签布局。 */
-            if (App_LockerUnlock_IsBusy()) {
-                LockerUnlockProgress_t up;
-                App_LockerUnlock_GetProgress(&up);
-                uint8_t r[10];
-                uint16_t pos = 0;
-                r[pos++] = sub;
-                r[pos++] = LOCKER_ERR_OK;
-                r[pos++] = up.phase;
-                r[pos++] = (uint8_t)(up.holdMs & 0xFF);  r[pos++] = (uint8_t)((up.holdMs >> 8) & 0xFF);
-                r[pos++] = up.total;
-                r[pos++] = up.confirmed;
-                r[pos++] = up.confirmedBitmap;
-                r[pos++] = up.softCnt;
-                r[pos++] = up.softDone;
-                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
-                break;
-            }
-            LockerOneShotProgress_t p;
-            App_LockerOneShot_GetProgress(&p);
-            uint8_t r[3 + 2 + 2 + 1 + 1 + 1 + 12];
+            /* [cmd] 进度快照, 统一多标签布局 (非流程时 phase=0)。
+             * Round_011: 0x08 单标签流程已废除, 单标即 0x0A epcCnt=1,
+             * 本布局成为唯一进度布局。 */
+            LockerUnlockProgress_t up;
+            App_LockerUnlock_GetProgress(&up);
+            uint8_t r[11];
             uint16_t pos = 0;
             r[pos++] = sub;
             r[pos++] = LOCKER_ERR_OK;
-            r[pos++] = p.phase;
-            r[pos++] = (uint8_t)(p.holdMs & 0xFF);  r[pos++] = (uint8_t)((p.holdMs >> 8) & 0xFF);
-            r[pos++] = (uint8_t)(p.steps & 0xFF);    r[pos++] = (uint8_t)((p.steps >> 8) & 0xFF);
-            r[pos++] = p.tagPresent;
-            r[pos++] = p.demagDone;
-            r[pos++] = p.epcLen;
-            for (uint8_t i = 0; i < p.epcLen; i++) r[pos++] = p.epc[i];
+            r[pos++] = up.phase;
+            /* holdMs 3 字节 (Round_011): W=2min+30s/EPC 超 16bit, 2 字节回填会截断 */
+            r[pos++] = (uint8_t)(up.holdMs & 0xFF);
+            r[pos++] = (uint8_t)((up.holdMs >> 8) & 0xFF);
+            r[pos++] = (uint8_t)((up.holdMs >> 16) & 0xFF);
+            r[pos++] = up.total;
+            r[pos++] = up.confirmed;
+            r[pos++] = up.confirmedBitmap;
+            r[pos++] = up.softCnt;
+            r[pos++] = up.softDone;
             Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
             break;
         }
@@ -942,84 +917,15 @@ void AppDispatch(ProtoFrame_t *f) {
             Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
             break;
         }
-        case LOCKER_SUB_ONE_SHOT: {
-            /* [cmd, tmoL,tmoH, irWaitL,irWaitH, holdL,holdH, epcLen, epc.., (demagCnt)]
-             * 单标签同步开锁: 阻塞全流程后回一帧 (App_LockerOneShot.c)。
-             * Round_098 #20: 原 maxHoldL/H 拆为 irWait (等待放标+标签出现窗)
-             * 与 hold (升起后保持窗) 两个独立参数。
-             * demagCnt: 消磁标签数, 缺省 0=跳过消磁流程。 */
-            if (f->dataLen < 8u || f->data[7] == 0u || f->data[7] > 12u ||
-                (uint16_t)(8u + f->data[7]) > f->dataLen) {
-                uint8_t r[2] = { sub, ONE_ERR_PARAM };
+        case LOCKER_SUB_ONE_SHOT:
+            /* Round_011 用户裁决: 单标签同步流程废除, 统一走 0x0A
+             * (epcCnt=1 即单标, W=120000+0)。保留 0x08 码位显式回
+             * PARAM, 区别于未知子命令; 主机应改用 UNLOCK_MULTI。 */
+            {
+                uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
                 Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
-                break;
             }
-            uint16_t tmoMs = (uint16_t)(f->data[1] | ((uint16_t)f->data[2] << 8));
-            uint16_t irWaitMs = (uint16_t)(f->data[3] | ((uint16_t)f->data[4] << 8));
-            uint16_t holdMs  = (uint16_t)(f->data[5] | ((uint16_t)f->data[6] << 8));
-            uint8_t demagCnt = 0u;
-            if ((uint16_t)(8u + f->data[7]) < f->dataLen)
-                demagCnt = f->data[8u + f->data[7]];
-
-            LockerOneShotResult_t res;
-            App_LockerOneShot_Run(&f->data[8], f->data[7], tmoMs, irWaitMs,
-                                  holdMs, demagCnt, &res);
-            App_LockerOneShot_Finish();   /* 清 busy/abort/phase (含 CANCEL 打断路径) */
-
-            uint8_t r[32];
-            uint16_t pos = 0;
-            r[pos++] = sub;
-            r[pos++] = res.err;
-            switch (res.err) {
-            case ONE_ERR_OK:
-                r[pos++] = res.endReason;
-                r[pos++] = res.epcLen;
-                for (uint8_t i = 0; i < res.epcLen; i++) r[pos++] = res.epc[i];
-                r[pos++] = (uint8_t)(res.riseSteps  & 0xFF); r[pos++] = (uint8_t)((res.riseSteps  >> 8) & 0xFF);
-                r[pos++] = (uint8_t)(res.lowerSteps & 0xFF); r[pos++] = (uint8_t)((res.lowerSteps >> 8) & 0xFF);
-                r[pos++] = res.demagDone;
-                break;
-            case ONE_ERR_BUSY:
-                r[pos++] = res.lockerState;
-                r[pos++] = res.uhfState;
-                r[pos++] = res.stepperState;
-                break;
-            case ONE_ERR_UHF_OPEN:
-            case ONE_ERR_UHF_LINK:
-            case ONE_ERR_NO_TAG:
-                r[pos++] = (uint8_t)(int8_t)res.uhfRawErr;
-                break;
-            case ONE_ERR_MISMATCH:
-                r[pos++] = (uint8_t)(res.tagsFound & 0xFF);
-                r[pos++] = res.epcLen;
-                for (uint8_t i = 0; i < res.epcLen; i++) r[pos++] = res.epc[i];
-                break;
-            case ONE_ERR_HOMING:
-                r[pos++] = res.switchErr;
-                break;
-            case ONE_ERR_MOTOR_FAULT:
-                r[pos++] = res.fault;
-                r[pos++] = res.diag1;
-                r[pos++] = res.diag2;
-                r[pos++] = (uint8_t)(res.steps & 0xFF);
-                r[pos++] = (uint8_t)((res.steps >> 8) & 0xFF);
-                r[pos++] = (uint8_t)((res.steps >> 16) & 0xFF);
-                r[pos++] = res.phase;
-                r[pos++] = res.retreat;
-                break;
-            case ONE_ERR_MOTOR_TIMEOUT:
-                r[pos++] = (uint8_t)(res.steps & 0xFF);
-                r[pos++] = (uint8_t)((res.steps >> 8) & 0xFF);
-                r[pos++] = (uint8_t)((res.steps >> 16) & 0xFF);
-                r[pos++] = res.phase;
-                r[pos++] = res.retreat;
-                break;
-            default:   /* ONE_ERR_PARAM: 无诊断字段 */
-                break;
-            }
-            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
             break;
-        }
         case LOCKER_SUB_UNLOCK_MULTI: {
             /* [cmd, tmoL,tmoH, holdL,holdH, softCnt, epcCnt, epcLen, epcCnt*epcLen]
              * 多标签解锁: 单帧 m(<=4) 张期望 EPC + 软标数, 阻塞至结账完成
@@ -1118,8 +1024,8 @@ void AppDispatch(ProtoFrame_t *f) {
                 Proto_TxResponse(ch, FC_RGB_CTRL, r, 2);
                 break;
             }
-            if (App_Locker_IsIdle() && !App_LockerOneShot_IsBusy() &&
-                !App_LockerUnlock_IsBusy() && !App_MotorTest_IsBusy()) {
+            if (App_Locker_IsIdle() && !App_LockerUnlock_IsBusy() &&
+                !App_MotorTest_IsBusy()) {
                 App_RgbLedPat_Manual(f->data[1], RGB_MANUAL_HOLD_MS);
                 uint8_t r[3] = { sub, RGB_ERR_OK, f->data[1] };
                 Proto_TxResponse(ch, FC_RGB_CTRL, r, sizeof(r));
@@ -1171,8 +1077,7 @@ void AppDispatch(ProtoFrame_t *f) {
             break;
         }
         case SELFTEST_SUB_RERUN: {
-            if (App_Locker_IsIdle() && !App_LockerOneShot_IsBusy() &&
-                !App_LockerUnlock_IsBusy()) {
+            if (App_Locker_IsIdle() && !App_LockerUnlock_IsBusy()) {
                 /* 探测阻塞 ~3s (UHF Open+Query/AM Query 回帧超时), 内部逐段喂狗 */
                 uint16_t bits = App_SelfTest_ProbePeripherals();
                 uint8_t r[4] = { sub, SELFTEST_ERR_OK,
