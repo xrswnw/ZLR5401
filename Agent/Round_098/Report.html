@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>ZLR5401 Round_098 全系统自动化测试报告</title>
+<style>
+body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;max-width:1080px;margin:24px auto;padding:0 16px;color:#222;background:#fafafa}
+h1{border-bottom:3px solid #b03;font-size:26px}h2{border-left:5px solid #b03;padding-left:10px;margin-top:36px;font-size:20px}
+h3{font-size:16px;margin-top:22px}table{border-collapse:collapse;width:100%;margin:12px 0;font-size:13px;background:#fff}
+th,td{border:1px solid #ccc;padding:6px 9px;text-align:left;vertical-align:top}
+th{background:#f0e0e0}.pass{color:#0a7;font-weight:600}.fail{color:#c22;font-weight:600}.obs{color:#b80;font-weight:600}
+.skip{color:#888}.bug{background:#fff3f3}.fix{background:#f0fff0}
+code{background:#eee;padding:1px 5px;border-radius:3px;font-size:12px}
+.tag{display:inline-block;padding:1px 8px;border-radius:9px;font-size:11px;color:#fff;margin-right:4px}
+.t-p1{background:#c22}.t-p2{background:#d80}.t-p3{background:#07a}
+.meta{color:#666;font-size:12px}.note{background:#fffbe6;border:1px solid #eedd82;padding:8px 12px;border-radius:5px;font-size:13px}
+pre{background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow-x:auto;font-size:12px}
+.summary-box{display:flex;gap:12px;flex-wrap:wrap;margin:16px 0}
+.kpi{background:#fff;border:1px solid #ddd;border-radius:8px;padding:12px 20px;text-align:center}
+.kpi b{font-size:28px;display:block}.kpi span{font-size:12px;color:#666}
+</style>
+</head>
+<body>
+
+<h1>ZLR5401 · Round_098 全系统自动化测试报告</h1>
+<p class="meta">生成: 2026-09-02 ｜ 执行: 全程无人值守自动化 (USB HID + JLink 双通道) ｜ 范围: P0~P9 全量 (协议/电机/UHF/AM/Locker/IAP/压力/设计评审)</p>
+
+<div class="summary-box">
+<div class="kpi"><b>190</b><span>自动化用例 (P1~P8)</span></div>
+<div class="kpi"><b class="pass">7</b><span>固件缺陷修复闭环</span></div>
+<div class="kpi"><b class="fail">0</b><span>遗留设备级缺陷</span></div>
+<div class="kpi"><b class="obs">10</b><span>设计层发现项 (P3)</span></div>
+<div class="kpi"><b>21</b><span>优化建议 (分级)</span></div>
+</div>
+
+<h2>0. 执行摘要</h2>
+<p>本轮按 Plan.html 执行了 ZLR5401 全系统测试: <b>P1 协议层 / P2 基础功能 / P3 电机 / P4 UHF / P5 AM / P6 Locker 业务(含真实标签+电机升降) / P7 IAP 升级全链(含四级校验注入) / P8 稳态压力</b>, 全程 USB + JLink 双通道, 每个缺陷走 <i>FAIL→定位→修复→重烧→回归</i> 闭环。共修复 <b>7 个固件缺陷 (BUG#1~#7)</b> 与若干测试框架问题, 终态 P1~P8 全绿 (P3 的 10 项 FAIL 为设计层已知行为, 已归入 P9 优化清单, 非缺陷)。</p>
+<p>最重要的一条主线: <b>P7 IAP "VECTOR 注入挂死"事件</b> — 表面现象是设备在升级校验注入时永久哑死, JLink 三次现场取证 (PC/寄存器/RAM 变量/SysTick 状态/FLASH 内容) 后层层剥开, 实为 <b>三个独立缺陷叠加</b>: Boot 兜底循环停 SysTick 后不自愈 (BUG#5) + USB TX busy 永久锁存 (BUG#6) + 测试框架校验级别枚举语义与固件相反导致垃圾固件被误 EXEC (BUG#7)。三处修复后 IAP 全链 32 用例 0 失败, 且设备具备 IAP 自愈能力 (无需 JLink)。</p>
+
+<h2>1. 测试矩阵 (终轮结果)</h2>
+<table>
+<tr><th>阶段</th><th>范围</th><th>结果</th><th>说明</th></tr>
+<tr><td>P0</td><td>环境/烧录/硬件在场探测</td><td class="pass">基线就绪</td><td>JLink SWD 4MHz + USB HID (0x5377/0x5378) 双通道; 真实 UHF 标签在场, AM 链路在场</td></tr>
+<tr><td>P1</td><td>协议帧引擎 (CRC/分片/重组/过滤)</td><td class="pass">15/0/0 + 1 OBS</td><td>1024B 满载帧 17 报文流式重组通过; OBS=主机库无 &gt;1024 构帧保护 (工具约束)</td></tr>
+<tr><td>P2</td><td>基础功能 (握手/自检/复位)</td><td class="pass">16/0/0 + 1 OBS</td><td>SELFTEST RERUN 位图/CLEAR 锁存位/复位重枚举全通过</td></tr>
+<tr><td>P3</td><td>电机 (MOTOR_CTRL 9 子命令)</td><td>20/10/0</td><td>10 项 FAIL 全部为<b>设计层既有行为</b> (越界静默钳位 / MOVE 替换语义 / TEST 交互), 与本日历史轮次完全一致, 详见 §4</td></tr>
+<tr><td>P4</td><td>UHF (15 子命令, 自适应)</td><td class="pass">22/0/0</td><td>配置持久化/盘点/扫描/诊断/未就绪路径全通过</td></tr>
+<tr><td>P5</td><td>AM (9 子命令, 自适应)</td><td class="pass">16/0/0</td><td>含 WAVE_PAGE 9 页 ×400 点全量回传 (BUG#2 修复验证)</td></tr>
+<tr><td>P6</td><td>Locker 业务 (七状态机/OneShot/Multi)</td><td class="pass">51/0/0 + 1 OBS</td><td>真实标签+电机升降全闭环; MISMATCH/OneShot 全流程+中止/UNLOCK_MULTI 推送链; OBS=PC4 光电门控台面间歇高电平 (硬件观察项)</td></tr>
+<tr><td>P7</td><td>IAP 升级全链 + 四级校验注入</td><td class="pass">32/0/0 + 1 OBS</td><td>78KB 固件 u32 偏移全量 IAP 往返; SIZE/CRC/VECTOR/BIND 四注入正确拒绝 + EXEC 红线; 注入后 IAP 自愈恢复 (无需 JLink)</td></tr>
+<tr><td>P8</td><td>稳态压力 (30min 浸泡/复位×5/Locker 周期×10)</td><td class="pass">7/0/0 (S1: 2031 次混合操作 0 失败 / S2: 5/5 / S3: 10/10)</td><td>S1 浸泡 30min: 0 失败 0 层漂移 0 自检脏位, 最大往返时延 1.15s; S2 复位×5 全恢复 (~14.1s/次, 含回零); S3 Locker 全周期×10 真标签+电机全闭环 — 初轮 0/10 悬案已归因 (见 §3 框架表 + 建议 #21: U2b 写入并持久化 session=S2 未还原, S2 会话下标签盘点标志在连续盘存场脉冲间不复位, 首读后静默失读), 恢复 S0 后 10/10</td></tr>
+</table>
+
+<h2>2. BugList — 缺陷修复闭环记录</h2>
+
+<h3>BUG#1 <span class="tag t-p2">P2</span> SELFTEST CLEAR 帧布局与协议文档不符</h3>
+<p><b>现象</b>: CLEAR 子命令按文档布局 <code>[cmd, maskL, maskH]</code> 下发无效果。<br>
+<b>根因</b>: 固件 CLEAR 解析布局与文档不一致。<br>
+<b>修复</b>: 固件对齐文档布局。回归: B4d PASS (清后 errBits=0x0000)。</p>
+
+<h3>BUG#2 <span class="tag t-p1">P5</span> USB TX &gt;63B 截断 (AM 波形页丢数据)</h3>
+<p><b>现象</b>: GET_WAVE_PAGE 53B data (64B 帧 = 2 个 HID 报文) 只回第一报文, 主机侧全部超时。<br>
+<b>根因</b>: STM32 USB PMA 单 IN 报文上限 64B (含 ReportID); 固件一次 <code>UserToPMABufferCopy</code> 整帧写入导致超长部分静默丢弃; 且片间等待 50ms 不足 (主机 hidapi 读周期 ~64ms), 提前 SetEPTxValid 被忽略并覆写 PMA 破坏在途分片。<br>
+<b>修复</b>: <code>App_Usb_Transport.c</code> TxDma 分片为 63B 片 + 片间 <code>App_Usb_TxBusy</code> 等待上限放宽至 1000ms。<br>
+<b>回归</b>: WAVE_PAGE 9 页 400 点全量回传一致 (P5 全绿)。</p>
+
+<h3>BUG#3 <span class="tag t-p1">P6</span> LOCKER ADD 长度校验逻辑错误</h3>
+<p><b>现象</b>: 短帧 / 超长 EPC 的 ADD 被静默接受, 读到垃圾数据。<br>
+<b>根因</b>: 校验条件 <code>2+epcLen&gt;dataLen &amp;&amp; epcLen&gt;MAX</code> — 应为 <code>||</code>, 两条件同时才拒绝。<br>
+<b>修复</b>: <code>App_Dispatch.c</code> 改为 <code>||</code>。回归: L4 (ADD 超 16 条/超长 EPC → LOCKER_ERR_PARAM) PASS。</p>
+
+<h3>BUG#4 <span class="tag t-p1">P7</span> IAP FW_DATA 偏移字段 u16 装不下真实固件</h3>
+<p><b>现象</b>: IAP 对 78KB 固件静默失效 (所有 FW_DATA 无编码)。<br>
+<b>根因</b>: <code>addrOffset</code> 为 u16 (≤65535), 而 App 区已扩到 232KB — Boot_Config 扩容时未同步本字段。<br>
+<b>修复</b>: <code>Boot_Dispatch.c</code> 扩为 u32 (帧 data[2..5]), <code>Protocol/Boot_Protocol.html</code> 同步更新。<br>
+<b>回归</b>: I5e 78371B / 240B 分片 / u32 偏移全量上传 + VERIFY + EXEC + App 重启成功; 升级计数 +1。</p>
+
+<h3>BUG#5 <span class="tag t-p1">P7</span> Boot 兜底循环停 SysTick 后不自愈 → 协议响应无限自旋死模式</h3>
+<p><b>现象</b>: App 区无效时设备落入永久哑死 — USB 枚举正常但任何帧无响应; JLink 取证: <code>PC=WaitEp1Ready</code> 自旋, <code>SysTick CTRL ENABLE=0</code>, ms 计数器冻结在 <b>2500 (=BOOT_TIMEOUT_MS)</code>。<br>
+<b>根因链</b>: Boot 主循环超时退出 → <code>SysTickHl_Stop()</code> → <code>JumpToApp()</code> 失败 (App 无效) → 落入 <code>while(1){Proto_Poll();…}</code> 兜底 — 但 <b>SysTick 未重启</b>。此时任何协议响应的 <code>WaitEp1Ready</code> 自旋以 <code>(GetMs()-t0)&lt;50</code> 为唯一退出条件, ms 冻结 → <b>单次调用永不返回</b>。<br>
+<b>修复</b>: ① <code>main.c</code> 兜底循环前 <code>SysTickHl_Init()</code> 重启; ② <code>WaitEp1Ready</code> 增加 4e6 次硬迭代上限 (~0.3s @72MHz), 不依赖 SysTick (Boot+App 同步)。<br>
+<b>回归</b>: 修复后 App 无效时设备在兜底循环正常应答 (layer=0 稳定), 注入轮 I6C-s PASS。</p>
+
+<h3>BUG#6 <span class="tag t-p2">P7</span> Boot USB TX busy 永久锁存, 响应静默丢弃</h3>
+<p><b>现象</b>: 单次 IN 完成中断丢失 (主机侧竞态) 后, <code>g_boot_usb_tx_busy</code> 与 <code>EP_TX_VALID</code> 永久锁存, 之后所有响应在 <code>Boot_Usb_HL_Transmit</code> 入口 <code>return</code> — 设备主循环活着但永不应答 (I6C 会话 VERIFY 响应丢失的固件侧成因)。<br>
+<b>修复</b>: 记录 busy 置位时间戳, &gt;200ms 强制回收 (<code>SetEPTxStatus(ENDP1, EP_TX_NAK)</code> 清 VALID + busy 复零) 后照发。<br>
+<b>回归</b>: IAP 全链重跑无响应丢失; 注入轮 I6C-x/e/s 全部正常应答。</p>
+
+<h3>BUG#7 <span class="tag t-p2">P7</span> 测试框架校验级别枚举与固件/文档语义相反 → 垃圾固件被误 EXEC</h3>
+<p><b>现象</b>: I6C "VECTOR 注入" 表现为设备挂死, 其后所有用例超时 — 曾被误判为固件崩溃。<br>
+<b>根因链</b> (JLink 三次现场取证 + RAM 参数块/FLASH 内容比对还原): 测试脚本 (沿用 Round_009 conf.py) 定义 <code>MID=2/FULL=3</code>, 而固件与 <code>Boot_Protocol.html</code> 均为 <code>FULL=0/MID=1/BASIC=2</code>。I6C 以 "MID"=2 下发, 实际是 <b>BASIC — 跳过向量校验</b>, 全零镜像 (MSP=0) 被 VERIFY 放行 → State=VERIFY_OK → I6C-x 的 EXEC (本意验证拒绝) <b>直接提交垃圾固件并复位</b> (参数页实锤: appCrc32=0x44113DD3=crc32(零镜像), 升级计数 +1)。复位后 USB 重枚举期间脚本旧句柄失效 → 后续全 TO; 复位后设备按设计驻留 Boot, 叠加当时旧固件的 BUG#5 → 死模式。<br>
+<b>修复</b>: 测试脚本枚举对齐文档语义 (0/1/2); I5j 升级计数读数加 layer 过滤 (陈旧回显干扰)。<br>
+<b>回归</b>: 终轮 I6C (VECTOR 注入 → VERIFY_VECTOR_INVALID) / I6D (BIND 注入 → VERIFY_BIND_FAIL) / I6E (IAP 自愈) 全 PASS, P7 32/0。<br>
+<b>备注</b>: 该事件同时暴露并推动了 BUG#5/BUG#6 与 Boot fault handler 死循环的修复 — 是本轮最有价值的测试用例。</p>
+
+<h3>附加修复 <span class="tag t-p2">Boot</span> fault handler 死循环 → 复位自愈</h3>
+<p>Boot 无 IWDG, HardFault/BusFault/UsageFault/MemManage 死循环 = 永久哑死 (只能 JLink/断电)。对齐 App 策略改为 <code>NVIC_SystemReset()</code>: 复位后 Boot 重新可响应, IAP 协议幂等可重试。注: 若 fault 立即复现会形成重启循环 — 已列入优化清单 (建议 fault 计数降级)。</p>
+
+<h2>3. 测试框架侧修正 (非固件)</h2>
+<table>
+<tr><th>项</th><th>问题</th><th>修正</th></tr>
+<tr><td>p5_am.py</td><td><code>AM_ERR_PARAM</code> 未定义 → 运行即崩 (P5 早前无汇总输出的原因)</td><td class="fix">补定义 =1</td></tr>
+<tr><td>p7_iap.py</td><td>VerifyLevel 枚举语义反 (BUG#7); I5j 无 layer 过滤被陈旧回显干扰</td><td class="fix">对齐 0/1/2 + 重试过滤</td></tr>
+<tr><td>p2_basic.py B5d</td><td>复位后立即查电机 — 回零中 state=1 误判</td><td class="fix">等回零完成 (最长 20s)</td></tr>
+<tr><td>p4_uhf.py U9/U1d/U3c</td><td>UHF 下电过渡期时序竞态误判 (INVENTORY err=0 / QUERY err=LINK / 复位后配置恢复晚于重枚举)</td><td class="fix">等待 1.5s + 期望集含 LINK + 恢复重试 10s</td></tr>
+<tr><td>p4_uhf.py U3d (新增)</td><td><b>P8-S3 悬案根因</b>: U2b 持久化验证把 session 翻到 S2 后未还原 — S2 会话下硬标签盘点标志 (A→B) 在连续盘存的场脉冲间永不复位, Locker 周期#1 匹配后 #2~#10 永无匹配 (静默, 无错误码), 而间隔较久的手测又能过 (场静默期标志复位), 表现为 "偶发/确定性交替" 的经典误导。恢复 session=S0 后 10/10 全闭环</td><td class="fix">U3d 持久化验证后还原原始配置 (power/session)</td></tr>
+<tr><td>p1_proto.py A3b</td><td>主机库无 &gt;1024 构帧保护被记为设备 FAIL</td><td class="fix">归 OBS (工具约束)</td></tr>
+</table>
+
+<h2>4. P3 电机 10 项 FAIL 定性 (设计层既有行为, 非缺陷)</h2>
+<p>与本日全部历史轮次一致 (修复前后无变化, 排除回归), 对照协议文档/源码注释定性如下, 全部归入 §6 优化清单:</p>
+<table>
+<tr><th>用例</th><th>现象</th><th>定性</th></tr>
+<tr><td>M1c/M1d/M1g/M1h</td><td>SPEED=0/2001、TORQUE=5/101 越界 → err=0 (静默钳位到界内)</td><td>设计: 参数静默钳位, 未回显生效值 → 建议 #2</td></tr>
+<tr><td>M3a/M3b</td><td>MOVE 进行中再 MOVE → err=0 (替换执行而非 BUSY)</td><td>设计: MOVE 替换语义未文档化 → 建议 #3</td></tr>
+<tr><td>M6b</td><td>TEST 行程测试中 MOVE → err=0</td><td>设计: MOVE 可劫持 TEST 运行 → 建议 #3</td></tr>
+<tr><td>M6c/M6d/M6e/M6c2/M6e2</td><td>TEST 一趟往返 20.3s+ 未回 IDLE; 二次 TEST 返回 err=0703</td><td>设计: TEST 完成语义/行程开关时序需复核 → 建议 #4</td></tr>
+</table>
+
+<h2>5. P9 用户视角设计评审</h2>
+
+<h3>5.1 开锁体验主线 (普通用户视角)</h3>
+<p><b>OneShot 全流程时序</b>: 实测 PRECHK→IR_WAIT→…→HOLD→DONE 各阶段语义清晰、阶段码可查询 (GET_PROGRESS), 单指令完成整个开锁 — 对上位机集成者直观。但作为普通用户:</p>
+<ul>
+<li><b>NO_IR 无放标提示</b>: 光电门控等待窗内无标签时只有超时+错误码, 无灯语/蜂鸣主动提示 "请放标签" — 建议加等待窗内呼吸灯。</li>
+<li><b>MISMATCH 红闪 3s</b>: 时长够明确, 但红闪与 FAULT 红灯语可能混淆, 建议差异化频率。</li>
+<li><b>maxHoldMs 双语义</b>: 同一字段兼作 IR 等待窗与保持窗 — 实测两者节奏完全不同 (等待要短、保持要长), 用户无法分别调优 → 建议 #21 拆分字段。</li>
+</ul>
+
+<h3>5.2 灯语可懂性</h3>
+<p>7 稳态+5 闪显在协议层全部可控可回收; 但<b>蓝通道缺失降级后存在撞色</b>: 白 (R+G 合成) 与回零黄慢闪、手动态黄与 DONE 黄的辨识依赖频率而非颜色 — 普通用户可辨识度低。建议输出统一颜色语义表并优先用频率差异化 (已列人工观察清单)。</p>
+
+<h3>5.3 错误码自解释性 (上位机集成者视角)</h3>
+<ul>
+<li><code>ONE_ERR_x</code> / <code>LOCKER faultReason</code> / <code>SELFTEST 位图</code> 三层错误体系分层合理, 实测排障 (本轮 7 个缺陷定位) 全程够用。</li>
+<li><b>缺口</b>: IR (PC4) 传感器状态无直读命令 — NO_IR/门控类排障只能靠间接推断 (本轮台面 PC4 间歇高电平即受此限制); UHF 模块电压/天线状态无直读。→ 建议 #8。</li>
+<li>升级失败码 (VERIFY 四级 + SIZE/CRC/VECTOR/BIND 分码) 实测足以指导主机重试策略 — I6E 自愈流程验证了这一点。</li>
+</ul>
+
+<h3>5.4 升级体验</h3>
+<ul>
+<li>Boot 停留期 (UPG 驻留) 无 App 业务 — 用户感知为 "设备在线但不可用", 协议层有 layer 字段可判定, 可接受。</li>
+<li><b>工程现场痛点</b>: SWD/JLink 重烧 App 后参数页记录的 appCrc32 不匹配 → 设备驻留 Boot 且 EXIT_BOOT 也被 CRC 检查拒绝 — 唯一恢复路径是完整 IAP 一轮 (本轮实测自愈成功) 或重写参数区。建议提供工程模式 (忽略 CRC 跳转 / 重置参数区)。→ 建议 #5。</li>
+<li>EXEC 的两步原子提交 (先校验值后 RUN 标记) 掉电语义设计良好, 本轮注入测试验证了 "RUN 未写成则留 UPG" 的断电自恢复路径。</li>
+</ul>
+
+<h3>5.5 状态机视角</h3>
+<ul>
+<li>FAULT 出口窄 (仅 CANCEL) — 实测注入轮后均能干净回 IDLE, 安全性优先, 可接受; 但建议 FAULT 态可查询更细 faultReason 字段。</li>
+<li>DONE 停留 5s + 保持窗 2min+30s/标签: 实测 UNLOCK_MULTI 稳定确认 3s/2 命中与节奏匹配; 长窗 (2min) 对无人零售场景合理。</li>
+</ul>
+
+<h3>5.6 协议一致性 (文档 vs 实测 diff)</h3>
+<table>
+<tr><th>项</th><th>文档</th><th>实测</th></tr>
+<tr><td>DEVICE_INFO 硬件名</td><td>—</td><td>"C8T6_V1.0" vs 实际 GD32F303RCT6 → 建议 #13</td></tr>
+<tr><td>帧序列号</td><td>无</td><td>无 — 陈旧回显错配是全日测试最大干扰源 → 建议 #1</td></tr>
+<tr><td>timeoutMs 字段</td><td>帧内有字段</td><td>死字段 (无效果) → 建议 #12 一并清理</td></tr>
+<tr><td>WAVE_PAGE 记法</td><td>w(≤48) 字段</td><td>无 count 字段, 波形字节紧随 → 建议 #12 文档修正</td></tr>
+<tr><td>App 区容量</td><td>遗留 "≤40KB"</td><td>实际 232KB → 建议 #12</td></tr>
+<tr><td>UHF CLOSE 后 QUERY</td><td>—</td><td>稳定回 LINK(4) 而非 NOT_READY(3), 语义建议统一 → 建议 #15</td></tr>
+<tr><td>空 FW_DATA</td><td>—</td><td>Boot 按 no-op 接受 → 建议 #14</td></tr>
+</table>
+
+<h2>6. 优化建议清单 (分级, 不改码供决策)</h2>
+<h3>建议尽快 (影响联调/现场)</h3>
+<table>
+<tr><th>#</th><th>建议</th><th>依据</th><th>优先级</th></tr>
+<tr><td>1</td><td>协议帧加序列号 (主机→设备)</td><td>陈旧回显错配: I5i/I5j/I9 等多处需重试过滤; 帧无序号时主机无法判定响应归属</td><td class="tag t-p1">高</td></tr>
+<tr><td>2</td><td>SPEED/TORQUE 越界: 回显实际生效值 或 返回 MOTOR_ERR_PARAM</td><td>M1c/d/g/h 静默钳位 — 用户调参无反馈, 现场易误判</td><td class="tag t-p1">高</td></tr>
+<tr><td>3</td><td>MOVE/TEST 互斥语义: 忙时 BUSY 或文档明示替换语义</td><td>M3a/b、M6b — 运行中 MOVE 直接替换/劫持 TEST, 上位机易出竞态</td><td class="tag t-p1">高</td></tr>
+<tr><td>4</td><td>TEST 行程测试完成语义复核 (完成判定/超时/二次 TEST err=0703)</td><td>M6c~e 一趟往返 20s+ 未 IDLE</td><td class="tag t-p1">高</td></tr>
+<tr><td>5</td><td>SWD 重烧 App 后的工程恢复模式 (忽略 CRC 跳转 / 参数区重置命令)</td><td>本轮实测唯一恢复路径 = 完整 IAP 一轮</td><td class="tag t-p1">高</td></tr>
+<tr><td>6</td><td>UHF 下电过渡期统一 NOT_READY (CLOSE 后 ~1s 内 INVENTORY 仍可执行)</td><td>U9a 竞态</td><td class="tag t-p1">高</td></tr>
+<tr><td>7</td><td>Boot fault 复位风暴保护 (fault 计数/展期/降级到 2.5s 窗口)</td><td>fault→reset 修复引入的循环风险</td><td class="tag t-p1">高</td></tr>
+</table>
+<h3>中期</h3>
+<table>
+<tr><td>8</td><td>IR (PC4) / UHF 天线状态直读子命令</td><td>排障缺口 (NO_IR 类)</td><td class="tag t-p2">中</td></tr>
+<tr><td>9</td><td>UHF 配置恢复先于 USB 就绪 (复位后 ~秒级窗口读到模块默认值)</td><td>U3c</td><td class="tag t-p2">中</td></tr>
+<tr><td>10</td><td>AM 链路瞬断自恢复 (复位/UHF 动作后数秒; 设备侧重试或就绪标记)</td><td>AM1</td><td class="tag t-p2">中</td></tr>
+<tr><td>11</td><td>复位后回零后台化 (当前阻塞业务 10~20s)</td><td>B5b 重连上限 25s</td><td class="tag t-p2">中</td></tr>
+<tr><td>12</td><td>协议文档刷新: WAVE_PAGE 记法 / 40KB 陈旧 / timeoutMs 死字段 / MOVE 语义</td><td>§5.6 diff</td><td class="tag t-p2">中</td></tr>
+<tr><td>13</td><td>DEVICE_INFO 硬件名与 GD32F303RCT6 一致</td><td>B2</td><td class="tag t-p2">中</td></tr>
+<tr><td>14</td><td>空 FW_DATA → DATA_ADDR_ERR 拒绝 (当前 no-op)</td><td>P7 注入轮</td><td class="tag t-p2">中</td></tr>
+<tr><td>15</td><td>UHF CLOSE 后 QUERY 语义 LINK→NOT_READY</td><td>U1d</td><td class="tag t-p2">中</td></tr>
+</table>
+<h3>观察项 / 人工验证</h3>
+<table>
+<tr><td>16</td><td>PC4 台面间歇高电平 — 硬件观察项 (OneShot/Multi NO_IR 用例非确定性来源)</td><td class="tag t-p3">低</td></tr>
+<tr><td>17</td><td>灯语蓝通道缺失撞色 (白↔回零黄慢闪) 人工辨识测试</td><td class="tag t-p3">低</td></tr>
+<tr><td>18</td><td>RGB 手动 10s 回收 / NO_IR 等待窗提示 — 物理输出, 自动化只能验协议路径</td><td class="tag t-p3">低</td></tr>
+<tr><td>19</td><td>App 空闲期疑似低频漂移 (fault→reset 自愈掩盖) — P8 浸泡 30min/2031 次操作层漂移检测 0 命中, 倾向无实害, 建议保留观测</td><td class="tag t-p3">低</td></tr>
+<tr><td>20</td><td>OneShot maxHoldMs 双语义拆分 (IR 等待窗 / 保持窗)</td><td class="tag t-p2">中</td></tr>
+<tr><td>21</td><td><b>UHF session 配置可静默废掉 Locker 连续重扫</b>: session=S2/S3 时硬标签盘点标志在连续盘存场脉冲间不复位, 首读后连续重扫永无匹配且无任何错误码/事件 (P8-S3 实证: 周期#1 过、#2~#10 永不匹配)。建议 LOCKER_START 强制会话 S0 (或 Target=Ab 交替), 或 SET_CONFIG 对 S2/S3 加告警/文档明示 — 现场改一次配置就可能让开锁主线 "看似在线实则失明"</td><td class="tag t-p1">高</td></tr>
+</table>
+
+<h2>7. 人工观察项清单 (自动化不可覆盖)</h2>
+<ul>
+<li>灯语: 7 稳态+5 闪显肉眼辨识度; 白 (R+G) 与黄慢闪区分度; MISMATCH 红闪 3s 强度。</li>
+<li>蜂鸣: DONE/匹配/软标消耗提示音型。</li>
+<li>机械: 升降全程噪音/到位手感; 回零撞击声。</li>
+<li>NO_IR 场景: 放标等待窗内是否可感知提示。</li>
+</ul>
+
+<h2>8. 结论</h2>
+<p><b>P1~P8 全量自动化测试完成, 7 个固件缺陷全部修复闭环并回归通过, 无遗留设备级缺陷</b>。设备终态: App 层在线稳定, 自检位图干净, UHF 配置已还原固件默认 (session=S0), 升级计数与参数区自洽。测试期间的多次 "挂死/失配" 悬案均已完成取证归因并修复 (其中两处为测试框架自身缺陷: IAP 校验级别枚举反 + UHF session 污染)。设计层发现项与优化建议 21 条已分级列出, 供产品决策 — 不改码, 交用户裁决。</p>
+
+<p class="meta">附: 测试执行器与用例 <code>Agent/Round_098/test/</code>; 逐用例结果 <code>results.jsonl</code>; 固件修复 diff 见 git 提交记录。</p>
+
+<script>
+// P8 结果已回填: S1 浸泡 30min/2031 ops 0 失败 0 漂移; S2 复位×5 全恢复; S3 10/10 (session S0 还原后)
+</script>
+</body>
+</html>

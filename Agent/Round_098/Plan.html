@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ZLR5401 全系统自动化测试计划 — Round_098</title>
+<style>
+  :root {
+    --bg:#0f1115; --panel:#161a22; --border:#262c38; --text:#e6e9ef;
+    --muted:#8b94a3; --pass:#3fb950; --fail:#f85149; --incon:#d29922;
+    --skip:#6e7681; --accent:#58a6ff; --violet:#bc8cff; --orange:#ffa657;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+         background:var(--bg); color:var(--text); line-height:1.65; }
+  .wrap { max-width:1180px; margin:0 auto; padding:24px; }
+  h1 { font-size:24px; border-bottom:2px solid var(--border); padding-bottom:12px; }
+  h2 { font-size:19px; margin-top:38px; color:var(--accent); border-left:4px solid var(--accent); padding-left:10px; }
+  h3 { font-size:15px; margin-top:24px; }
+  .meta { color:var(--muted); font-size:13px; }
+  table { width:100%; border-collapse:collapse; margin:12px 0; font-size:13px; }
+  th,td { border:1px solid var(--border); padding:6px 10px; text-align:left; vertical-align:top; }
+  th { background:var(--panel); color:var(--muted); font-weight:600; white-space:nowrap; }
+  .code { font-family:"SF Mono",Menlo,monospace; background:#0b0e13; border:1px solid var(--border);
+          padding:1px 6px; border-radius:4px; font-size:12px; color:#e6edf3; }
+  .box { background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px 18px; margin:14px 0; }
+  .box.key { border-color:var(--accent); }
+  .box.warnbox { border-color:var(--incon); }
+  .box.danger { border-color:var(--fail); }
+  ul { margin:8px 0; padding-left:20px; }
+  li { margin:5px 0; }
+  .tail { color:var(--muted); font-size:12px; margin-top:40px; border-top:1px solid var(--border); padding-top:12px; }
+  .tag { display:inline-block; padding:1px 8px; border-radius:10px; font-size:11px; font-weight:600; margin-left:6px; }
+  .t-ok  { background:#1a3322; color:var(--pass); }
+  .t-warn{ background:#332b14; color:var(--incon); }
+  .t-risk{ background:#3a1d1d; color:var(--fail); }
+  .t-auto{ background:#241d3a; color:var(--violet); }
+  .ec { text-align:center; font-weight:700; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>ZLR5401 全系统自动化测试计划 <span class="tag t-auto">全自动 · 修复闭环 · 用户视角评审</span></h1>
+<div class="meta">
+  轮次:Round_098 ｜ 生成:2026-09-02 ｜ 性质:<b>测试计划 — 待确认后执行</b><br>
+  输入:用户需求(见同目录 Demand.md)—— 全功能/协议/升级全量测试, USB + JLink 全开放,
+  测试中发现 BUG 即修复验证, 全程自动化不求助; 终态产出用户视角设计分析 + 优化点。
+</div>
+
+<h2>0. 计划总览(一张图)</h2>
+<div class="box key">
+<b>P0 环境与基线</b>(快照→构建→烧录→存活探测→硬件自适应探测)
+→ <b>P1 协议层</b>(帧/CRC/重组/异常注入)
+→ <b>P2 基础功能</b>(握手/信息/RGB/自检)
+→ <b>P3 电机</b>(参数/运动/健康/行程测试)
+→ <b>P4 UHF</b>(配置持久化/盘点/扫描/读写)
+→ <b>P5 AM</b>(链路/配置/波形)
+→ <b>P6 Locker 业务</b>(七状态机/OneShot 闭环/打断)
+→ <b>P7 升级 IAP</b>(正常升级+四级校验注入+回退)
+→ <b>P8 稳态压力与回归</b>(长跑/循环/复位/挂死诊断)
+→ <b>P9 用户视角设计评审 + 优化建议</b> → Report.html<br>
+贯穿全程:<b>BUG 修复闭环</b>(FAIL→定位→修→烧→回归, 见 §7);每阶段产物落 <span class="code">Agent/Round_098/test/report_*.json</span>,终态汇总。
+</div>
+
+<h2>1. 已核实的环境基线(2026-09-02 实测, 非假设)</h2>
+<table>
+<tr><th>项</th><th>实测结果</th><th>对计划的影响</th></tr>
+<tr><td>JLink</td><td><span class="code">JLinkExe</span> 就绪, 烧录目标 <span class="code">GD32F303RCT6</span> (SWD 4000kHz), <span class="code">flash_all.sh/boot/app.sh</span> 可用</td><td>可全片烧录与砖机恢复; gdb 经 2331 端口 attach</td></tr>
+<tr><td>USB HID</td><td>设备在线 <span class="code">0x5377:0x5378</span> (SW COMPOSITE), 握手回 <span class="code">ZLR5401_V1.0</span></td><td>主机侧协议测试通路畅通</td></tr>
+<tr><td>工具链</td><td><span class="code">arm-none-eabi-gdb/objdump</span> 就绪, CMake Build 可编译</td><td>修复后可立即重编重烧</td></tr>
+<tr><td>测试框架</td><td><span class="code">Round_008/test/zlr</span>(hid_link/frame/const)+10 个用例模块+run_all.py; <span class="code">Round_074/test</span> oneshot/abort 用例</td><td>复用为 Round_098 执行器底座, 不重造轮子</td></tr>
+<tr><td>工作区状态</td><td>6 文件未提交(OneShot 光电门控+持续校对+稳定确认, 上一轮已实现未定稿)</td><td>并入基线一起测; P0 先 <span class="code">./backup.sh</span> 全量快照</td></tr>
+<tr><td class="ec" style="color:var(--incon)">观察项</td><td>DEVICE_INFO 硬件名 <span class="code">C8T6_V1.0</span> 与实际 MCU GD32F303 不一致; <span class="code">zlr.const</span> 缺 FC_SELFTEST_CTRL 等新常量</td><td>非阻塞: 前者列入发现项, 后者执行器补齐</td></tr>
+</table>
+
+<h2>2. 测试对象功能矩阵(全集, 无遗漏清单)</h2>
+<h3>2.1 App 侧协议(10 个 FC, 40+ 子命令)</h3>
+<table>
+<tr><th>FC</th><th>子命令/内容</th><th>覆盖模块</th></tr>
+<tr><td>0x01 HANDSHAKE</td><td>版本/心跳</td><td rowspan="3">App_Dispatch 通用</td></tr>
+<tr><td>0x07 DEVICE_INFO</td><td>硬件名/固件名</td></tr>
+<tr><td>0x08 RESET</td><td>软件复位(破坏性)</td></tr>
+<tr><td>0x0A MOTOR_CTRL</td><td>MOVE/STOP/SPEED/TORQUE/QUERY/CLEAR/TEST(行程测试)/HEALTH(堵转监测)/STATS(运行统计) 9 个</td><td>App_Stepper(_Tim4)/MotorHoming/MotorTest</td></tr>
+<tr><td>0x0B UHF_CTRL</td><td>OPEN/CLOSE/INVENTORY/READ_TAG/WRITE_TAG/STOP/QUERY/GET|SET_CONFIG/GET_TAGS/GET_STATUS/CHECK_ANT/SCAN_START/SCAN_STOP/GET_DUMP 15 个</td><td>App_UHF</td></tr>
+<tr><td>0x0C AM_CTRL</td><td>GET|SET_CONFIG/GET|SET_PARAM/QUERY/GET_STATUS/SET_MODE/GET_WAVE/GET_WAVE_PAGE 9 个</td><td>App_AM</td></tr>
+<tr><td>0x0D LOCKER_CTRL</td><td>CONFIGURE/ADD/START/CANCEL/QUERY/CONSUME_SOFT/GET_EVENT/ONE_SHOT/GET_PROGRESS 9 个</td><td>App_Locker + App_LockerOneShot</td></tr>
+<tr><td>0x0E RGB_CTRL</td><td>SET(mask, 空闲门控+10s 回收)</td><td>App_RgbLed_Pattern(仲裁器)</td></tr>
+<tr><td>0x0F SELFTEST_CTRL</td><td>QUERY/RERUN/CLEAR(16bit 锁存错误位)</td><td>App_BootSelfTest/App_Param</td></tr>
+<tr><td>0x02 ENTER_BOOT</td><td>携 UPG 标志复位进 Boot</td><td rowspan="2">App↔Boot 衔接</td></tr>
+<tr><td>参数区</td><td>paramLoad/Save, CRC 回落, deviceUidHash, UHF/AM 配置持久化</td></tr>
+</table>
+<h3>2.2 Boot 侧协议(IAP 升级链)</h3>
+<table>
+<tr><th>FC</th><th>验证点</th></tr>
+<tr><td>0x01 HANDSHAKE / 0x07 DEVICE_INFO</td><td>Boot 身份标识(区别于 App)</td></tr>
+<tr><td>0x03 UPGRADE_START</td><td>擦除/空间检查(UPG_NO_SPACE/ERASE_FAIL)</td></tr>
+<tr><td>0x04 FW_DATA</td><td>分块写入(<=56B/HID 帧), 地址越界回 DATA_ADDR_ERR, flash 失败回 DATA_FLASH_FAIL</td></tr>
+<tr><td>0x05 UPGRADE_VERIFY</td><td><b>四级校验</b>: CRC / SIZE / VECTOR(栈顶/复位向量合法性)/BIND(deviceUidHash 绑定)</td></tr>
+<tr><td>0x06 UPGRADE_EXEC</td><td>校验通过才允许跳 App; 未过 verify 拒绝</td></tr>
+<tr><td>0x08 RESET / 0x09 EXIT_BOOT</td><td>UPG 标志清理, App 完好性检查后回跳</td></tr>
+</table>
+<h3>2.3 非协议可观测面</h3>
+<ul>
+<li>上电流程: 回零(3 次重试)/POST 自检/参数区回落/IWDG 全程存活 —— 经 SELFTEST QUERY 位图 + 时序观测。</li>
+<li>RGB 灯语仲裁器/蜂鸣 —— 物理输出, 自动化只能验协议路径(BUSY 门控/手动回收); <b>视觉效果列人工观察项清单</b>(见 §9)。</li>
+<li>挂死/复位诊断 —— JLink gdb attach 读 PC/CFSR/HFSR + 栈回溯(§6 JLink 诊断)。</li>
+</ul>
+
+<h2>3. P0 — 环境与基线 + 硬件自适应探测</h2>
+<div class="box">
+<b>步骤:</b>
+<ol>
+<li><span class="code">./backup.sh "Round_098 测试前全量快照"</span> —— 任何修改前先落快照(遵循全局备份规则)。</li>
+<li>干净构建 <span class="code">./build_all.sh</span>(含未提交改动) → 产物 <span class="code">ZLR5401_&lt;ts&gt;.hex</span>;记录 elf/bin CRC 作为升级测试基准。</li>
+<li><span class="code">./flash_all.sh</span> 全片烧录(Boot 0x08000000 + App 0x08006000), 复位运行。</li>
+<li>存活探测: 5s 内握手 OK; DEVICE_INFO 回 ZLR5401_V1.0; SELFTEST QUERY 记录基线位图(期望 errBits=0, 若非 0 记录并归因); MotorQuery=IDLE; 60s 心跳无 IWDG 复位(时间戳单调)。</li>
+<li><b>硬件自适应探测</b>(产出"硬件在场表"决定后续用例集):
+  <ul>
+   <li>UHF: OPEN→INVENTORY×3 轮 → 记录"在场标签 EPC 列表"(有/无)。</li>
+   <li>AM: QUERY → 链路在/断。</li>
+   <li>光电 PC4: 无直读命令, 经 OneShot 短窗间接判定(见 P6 用例 OS-1, 两种结果均为有效断言)。</li>
+   <li>行程开关: SELFTEST QUERY switchErr + Homing ready 位。</li>
+  </ul>
+  探测结果写 <span class="code">hw_presence.json</span>: <b>有硬件→全用例; 无硬件→失败路径用例 + 其余 SKIP(记录, 不算 FAIL)</b>。</li>
+</ol>
+</div>
+
+<h2>4. P1~P8 各阶段用例规划</h2>
+<h3>P1 协议层(App_CustomProtocol 帧引擎)</h3>
+<table>
+<tr><th>编号</th><th>用例</th><th>期望</th></tr>
+<tr><td>A1</td><td>正常帧往返(小/大 data)</td><td>FC_RSP = req^0xFF, data 精确</td></tr>
+<tr><td>A2</td><td>帧头错误 / 长度超限(>1024) / CRC 篡改</td><td>静默丢弃, <b>链路不死</b>: 后续正常帧立即恢复</td></tr>
+<tr><td>A3</td><td>1024B 满 data 多 HID report 流式重组</td><td>跨 report 帧正确重组(LOCKER 大清单场景)</td></tr>
+<tr><td>A4</td><td>半帧残留 → 后续新帧</td><td>解析器状态机恢复, 不粘帧</td></tr>
+<tr><td>A5</td><td>devAddr 过滤(非本机地址)</td><td>不响应; 本机地址响应</td></tr>
+<tr><td>A6</td><td>未知 FC(0x77 等)</td><td>统一错误响应或静默(按现实现记录), 不挂死</td></tr>
+</table>
+
+<h3>P2 基础功能</h3>
+<table>
+<tr><th>编号</th><th>用例</th><th>期望</th></tr>
+<tr><td>B1</td><td>HANDSHAKE ×100 连发</td><td>全 OK, 无重入/错乱</td></tr>
+<tr><td>B2</td><td>DEVICE_INFO</td><td>硬件名/固件名与构建一致(C8T6 命名不一致记发现项)</td></tr>
+<tr><td>B3</td><td>RGB SET: mask 全组合 / mask=0 / 业务运行中 SET</td><td>空闲接受+回显; 运行中 RGB_ERR_BUSY; mask=0 撤销</td></tr>
+<tr><td>B4</td><td>SELFTEST QUERY → RERUN(空闲) → CLEAR 指定位</td><td>RERUN 刷新 bit0~3/5, bit4 仅 CLEAR 可清; RERUN 于 Locker 忙时回 BUSY</td></tr>
+<tr><td>B5</td><td>FC_RESET(独立连接收尾跑)</td><td>回 OK 后 20ms 复位, 重枚举后握手恢复</td></tr>
+</table>
+
+<h3>P3 电机(MOTOR_CTRL)<span class="tag t-warn">真实动作</span></h3>
+<table>
+<tr><th>编号</th><th>用例</th><th>期望</th></tr>
+<tr><td>M1</td><td>SPEED/TORQUE 参数域(1~2000 / 6~100 边界内外)</td><td>界内 OK+QUERY 读回; 界外 MOTOR_ERR_PARAM</td></tr>
+<tr><td>M2</td><td>MOVE 小步数(100/500 微步, 正反向)+STOP</td><td>启动 OK, 步计数单调, STOP 后 IDLE</td></tr>
+<tr><td>M3</td><td>MOVE 期间再 MOVE / TEST</td><td>MOTOR_ERR_BUSY 互斥</td></tr>
+<tr><td>M4</td><td>QUERY / HEALTH / STATS</td><td>字段齐全, 统计随 M2 累加(startCnt/runSec/lastReason)</td></tr>
+<tr><td>M5</td><td>CLEAR(无故障时)</td><td>OK 幂等</td></tr>
+<tr><td>M6</td><td>TEST 行程测试 passes=1<span class="tag t-warn">真实升降</span></td><td>正转触 KEY_UP→反转触 KEY_DOWN→DONE; 期间 MOVE 回 BUSY; 行程开关保护生效(不冲挡块)</td></tr>
+<tr><td>M7</td><td>TEST 中途 STOP/取消路径</td><td>停机安全, 状态回 IDLE 可再 TEST</td></tr>
+</table>
+<div class="box warnbox">安全约束: 不发大步数 MOVE(禁 >1000 微步, 防冲挡块); 动作用例前先 QUERY 确认 IDLE; 每动作用例后 校验 Homing 基准未被破坏(QUERY 步数归位)。</div>
+
+<h3>P4 UHF(自适应)</h3>
+<table>
+<tr><th>编号</th><th>用例</th><th>期望</th></tr>
+<tr><td>U1</td><td>OPEN→QUERY→CLOSE→QUERY</td><td>状态机 READY/NOT_READY 迁移正确</td></tr>
+<tr><td>U2</td><td>GET_CONFIG→SET_CONFIG(改功率/天线/session)→GET_CONFIG</td><td>读回一致</td></tr>
+<tr><td>U3</td><td>SET_CONFIG 后 FC_RESET 重启→GET_CONFIG</td><td><b>持久化</b>一致(param 区)</td></tr>
+<tr><td>U4</td><td>INVENTORY(有标签)</td><td>count>0, RSSI/EPC 解析正确</td></tr>
+<tr><td>U5</td><td>INVENTORY(无标签/取走)</td><td>UHF_ERR_NO_TAG(非 LINK 错)</td></tr>
+<tr><td>U6</td><td>SCAN_START→GET_TAGS 拉取→SCAN_STOP</td><td>缓冲累积+取走清空, STOP 后停止采集</td></tr>
+<tr><td>U7</td><td>CHECK_ANT / GET_STATUS / GET_DUMP</td><td>诊断字段返回完整</td></tr>
+<tr><td>U8</td><td>READ_TAG/WRITE_TAG</td><td>有可写标签则验读写回读; 无则 SKIP 记录</td></tr>
+<tr><td>U9</td><td>未 OPEN 直接 INVENTORY</td><td>UHF_ERR_NOT_READY</td></tr>
+</table>
+
+<h3>P5 AM(自适应)</h3>
+<table>
+<tr><th>编号</th><th>用例</th><th>期望</th></tr>
+<tr><td>AM1</td><td>QUERY 探链</td><td>链路在→OK; 断→AM_ERR_LINK(两种均有效断言)</td></tr>
+<tr><td>AM2</td><td>GET_CONFIG→SET_CONFIG→GET_CONFIG</td><td>读回一致</td></tr>
+<tr><td>AM3</td><td>SET_CONFIG 后 RESET 重启→GET_CONFIG</td><td>持久化一致</td></tr>
+<tr><td>AM4</td><td>SET_PARAM/GET_PARAM 单参数读写</td><td>值一致(amCmd 透传)</td></tr>
+<tr><td>AM5</td><td>SET_MODE(0/1/2)</td><td>模式切换+持久化</td></tr>
+<tr><td>AM6</td><td>GET_STATUS / GET_WAVE(阻塞~1s)+GET_WAVE_PAGE</td><td>事件计数/波形点数自洽, 期间 IWDG 存活</td></tr>
+<tr><td>AM7</td><td>链路断时全部子命令</td><td>统一 AM_ERR_LINK, 不挂死(历史曾因 AM 阻塞收发死于关中断期——重点回归)</td></tr>
+</table>
+
+<h3>P6 Locker 业务(核心)<span class="tag t-warn">含真实升降</span></h3>
+<h4>6a 七状态机(LOCKER_CTRL 0x01~0x07)</h4>
+<table>
+<tr><th>编号</th><th>用例</th><th>期望</th></tr>
+<tr><td>L1</td><td>CONFIGURE+ADD×N+START(无标签场景)</td><td>进入 CONFIGURED(扫描), QUERY 状态=1</td></tr>
+<tr><td>L2</td><td>START 后 GET_EVENT 轮询</td><td>事件队列语义: 无事件 NO_EVENT; 有事件码序符合状态机</td></tr>
+<tr><td>L3</td><td>忙时 CONFIGURE/再 START</td><td>LOCKER_ERR_BUSY</td></tr>
+<tr><td>L4</td><td>ADD 超 16 条 / epcLen 超 12</td><td>LOCKER_ERR_PARAM</td></tr>
+<tr><td>L5</td><td>CANCEL(各状态含 UNLOCK_HOLD)</td><td>升起中先 LOWERING 回降→IDLE, 磁块回 KEY_DOWN</td></tr>
+<tr><td>L6</td><td>纯软标任务(hardCount=0, softCount=N)START</td><td>直入 SOFT_DECODE(本轮基线新行为), CONSUME_SOFT N 次后 DONE+蜂鸣</td></tr>
+<tr><td>L7</td><td>有标签时全闭环: START→命中事件 MATCH_OK→UNLOCK_HOLD→…→DONE</td><td>事件序列/计数(hm/sc/su)全程自洽; 需在场标签(自适应)</td></tr>
+</table>
+<h4>6b OneShot 单标签同步(0x08/0x09)</h4>
+<table>
+<tr><th>编号</th><th>用例</th><th>期望</th></tr>
+<tr><td>OS-1</td><td>短窗 OneShot(maxHold=3s, 假 EPC)</td><td>光电门控生效: 无放标→ONE_ERR_NO_IR 不动磁块; 有放标→过门控进入盘点(两分支均有效断言)</td></tr>
+<tr><td>OS-2</td><td>参数非法: epcLen=0/13/短帧</td><td>ONE_ERR_PARAM 立即回, 不动磁块</td></tr>
+<tr><td>OS-3</td><td>真 EPC 全流程(有标签)</td><td>IR→盘点→命中→升 KEY_UP→保持→(demagCnt=0: 稳定 3s STABLE_OK)→回降, err=OK, riseSteps/lowerSteps 合理(4000±量级)</td></tr>
+<tr><td>OS-4</td><td>假 EPC + 场上有其他标签</td><td>连续 3 轮确认 MISMATCH(红闪), 不升起</td></tr>
+<tr><td>OS-5</td><td>假 EPC + 场上无标签</td><td>预算尽 NO_TAG</td></tr>
+<tr><td>OS-6</td><td>流程中 GET_PROGRESS 轮询</td><td>phase 沿 1→7→3→4→5→6 迁移, holdMs/steps 递增, tagPresent 实时</td></tr>
+<tr><td>OS-7</td><td>流程中 CANCEL(升起/保持段)</td><td>免疫安全回退至 KEY_DOWN 后回 ABORTED; 回退段 CANCEL 不打断</td></tr>
+<tr><td>OS-8</td><td>demagCnt>0 且 AM 断链</td><td>ONE_ERR_AM_LINK, 不动磁块</td></tr>
+<tr><td>OS-9</td><td>OneShot 进行中下发其他 FC(电机/UHF 控制)</td><td>回 BUSY(白名单只放行进度/CANCEL/只读)</td></tr>
+<tr><td>OS-10</td><td>Locker 忙时 OneShot</td><td>ONE_ERR_BUSY 含三方状态字段</td></tr>
+</table>
+
+<h3>P7 升级 IAP<span class="tag t-risk">破坏性 · 独立连接执行</span></h3>
+<table>
+<tr><th>编号</th><th>用例</th><th>期望</th></tr>
+<tr><td>I1</td><td>App ENTER_BOOT</td><td>回 OK→复位→Boot 枚举, Boot 握手/DEVICE_INFO 身份正确</td></tr>
+<tr><td>I2</td><td><b>正常升级全链</b>: UPGRADE_START→FW_DATA 分块(56B/帧)→UPGRADE_VERIFY→UPGRADE_EXEC</td><td>四级校验全过; EXEC 后新 App 运行, DEVICE_INFO/构建时间戳可辨(升级前后 P0~P6 快速回归通过)</td></tr>
+<tr><td>I3</td><td>CRC 注入: 写入后篡改一字节再 VERIFY</td><td>VERIFY_CRC_MISMATCH, EXEC 拒绝</td></tr>
+<tr><td>I4</td><td>SIZE 注入: 宣告长度≠实际</td><td>VERIFY_SIZE_MISMATCH</td></tr>
+<tr><td>I5</td><td>VECTOR 注入: 篡改栈顶/复位向量域</td><td>VERIFY_VECTOR_INVALID</td></tr>
+<tr><td>I6</td><td>未 VERIFY 直接 EXEC / 半途 VERIFY(数据未写完)</td><td>均拒绝, 设备仍活</td></tr>
+<tr><td>I7</td><td>FW_DATA 地址越界 / 重复 START</td><td>DATA_ADDR_ERR / 幂等或错误码(按实现记录)</td></tr>
+<tr><td>I8</td><td>EXIT_BOOT: 不升级直接退出</td><td>UPG 标志清, 校验 App 完好后跳回 App</td></tr>
+<tr><td>I9</td><td>升级中断电模拟(协议层: 数据写一半断开)</td><td>重进 Boot 后可重 START 重写(旧 App 区被擦, EXIT_BOOT 拒跳坏区)</td></tr>
+<tr><td>I10</td><td>砖机恢复演练(收尾)</td><td>JLink <span class="code">flash_all.sh</span> 全片重烧可恢复(验证恢复通道本身)</td></tr>
+</table>
+<div class="box danger"><b>红线:</b>注入用例(I3~I6/I9)只调 VERIFY 验证"拒绝", <b>绝不 EXEC 坏固件</b>; 每轮 IAP 前 <span class="code">backup.sh</span> 已有全量快照 + Build/Firmware 保留当前可用 hex, 砖机有 JLink 全片恢复兜底。</div>
+
+<h3>P8 稳态压力与回归</h3>
+<table>
+<tr><th>编号</th><th>用例</th><th>期望</th></tr>
+<tr><td>S1</td><td>30 分钟混合压力: QUERY/INVENTORY/短窗 OneShot 循环 + 随机非法帧穿插</td><td>无复位(IWDG 存活)、无内存性劣化(响应时延不漂移)、错误码稳定</td></tr>
+<tr><td>S2</td><td>Locker 状态机全循环 ×10(CONFIGURE→…→DONE→IDLE)</td><td>每次终态回 IDLE, 计数清零, 磁块回 KEY_DOWN</td></tr>
+<tr><td>S3</td><td>FC_RESET ×5 循环(复位→握手→参数区校验)</td><td>每次重启 UHF/AM 配置持久、回零成功、SELFTEST 位图不误置</td></tr>
+<tr><td>S4</td><td>挂死哨兵: 全程任何"无响应>10s"自动触发 JLink 诊断</td><td>读 PC/LR/栈定位, 记入 BugList(见 §6)</td></tr>
+<tr><td>S5</td><td>修复后全量回归: 每个 BUG 修复后跑受影响 phase + P1/P2 烟测; 终态跑一遍 P1~P8 全集</td><td>修复不引入回归</td></tr>
+</table>
+
+<h2>5. 执行器设计(Agent/Round_098/test/)</h2>
+<div class="box">
+<ul>
+<li><b>底座</b>: 复用 <span class="code">Round_008/test/zlr</span> 包(HidLink/frame/const), 补齐新常量(FC_SELFTEST_CTRL 等)于 <span class="code">zlr/const.py</span> 扩展副本, 不动原框架。</li>
+<li><b>结构</b>: <span class="code">probe_hw.py</span>(硬件在场表) → <span class="code">cases/</span>(按 §4 编号一一对应) → <span class="code">runner.py</span>(阶段调度/依赖序/破坏性用例独立连接/JSON 落盘) → <span class="code">diag_jlink.py</span>(挂死时 gdb attach 取证) → <span class="code">soak.py</span>(S1 长跑)。</li>
+<li><b>判定</b>: PASS / FAIL / SKIP(硬件缺席, 引用 hw_presence.json) / OBS(人工观察项)。每用例落 verdict+原始帧 hex+耗时。</li>
+<li><b>烧录集成</b>: 修复后自动 <span class="code">build_all.sh</span>(失败即编译期 BUG 闭环) → <span class="code">flash_all.sh</span> → 存活探测 → 回归。</li>
+</ul>
+</div>
+
+<h2>6. 挂死/崩溃诊断通道(JLink)</h2>
+<div class="box">
+自动化"无响应>10s"时触发: <span class="code">JLinkGDBServer -device GD32F303RCT6</span> + <span class="code">arm-none-eabi-gdb</span> 批处理 attach →
+读 <span class="code">PC/LR/SP</span>、<span class="code">HFSR/CFSR</span>(HardFault 归因)、栈回溯定位调用链 → 落 <span class="code">diag_&lt;ts&gt;.txt</span> 供 BugList 引用; 诊断后 halt→reset 恢复设备。
+</div>
+
+<h2>7. BUG 修复闭环(贯穿全程)</h2>
+<div class="box key">
+<b>流程</b>: FAIL → 最小复现(固定种子的重放) → 定位(响应帧分析/复现日志/JLink §6) → 修复(最小改动, 遵循工程注释与命名风格) →
+重编译 → 重烧 → <b>该用例 + 关联用例</b>回归 PASS → 受影响 phase 全量回归 → 记录 BugList。<br>
+<b>BugList 字段</b>: 编号 / 阶段-用例号 / 现象 / 根因 / 修复摘要(diff 行数) / 回归结果 / 关联风险。<br>
+<b>边界纪律</b>: 只修<b>确认的缺陷</b>(与协议文档/注释约定不符的行为); 协议语义、状态机设计、灯语方案等<b>设计层面不动</b> —— 一律进 §P9 建议清单交用户决策。每 N 个修复做一次 git 提交(附 BugList 引用), 全程不改协议文档语义。
+</div>
+
+<h2>8. 阶段顺序与依赖</h2>
+<table>
+<tr><th>顺序</th><th>阶段</th><th>依赖</th><th>破坏性</th><th>预估</th></tr>
+<tr><td>1</td><td>P0 环境+探测</td><td>—</td><td>烧录(有快照兜底)</td><td>30 min</td></tr>
+<tr><td>2</td><td>P1 协议层</td><td>P0</td><td>否</td><td>20 min</td></tr>
+<tr><td>3</td><td>P2 基础功能</td><td>P0</td><td>仅 B5(独立)</td><td>30 min</td></tr>
+<tr><td>4</td><td>P3 电机</td><td>P0(回零就绪)</td><td>真实动作</td><td>40 min</td></tr>
+<tr><td>5</td><td>P4 UHF</td><td>P0</td><td>否</td><td>40 min</td></tr>
+<tr><td>6</td><td>P5 AM</td><td>P0</td><td>否</td><td>30 min</td></tr>
+<tr><td>7</td><td>P6 Locker/OneShot</td><td>P0+P3(电机健康)</td><td>真实动作</td><td>60 min</td></tr>
+<tr><td>8</td><td>P7 IAP</td><td>P0~P6 已绿(升级后要回归)</td><td><b>是</b></td><td>60 min</td></tr>
+<tr><td>9</td><td>P8 压力/回归</td><td>全部修复完成后</td><td>复位循环</td><td>90 min(含 30min 长跑)</td></tr>
+<tr><td>10</td><td>P9 评审 + Report</td><td>以上结果</td><td>否</td><td>30 min</td></tr>
+</table>
+
+<h2>9. P9 — 用户视角设计评审大纲(终态产出)</h2>
+<div class="box">
+以"什么都不懂的普通用户/上位机集成者"双视角评审, 输出进 Report.html:
+<ul>
+<li><b>开锁体验主线</b>: 一条 OneShot 指令的全流程时序是否直观? NO_IR 无放标提示(灯语/蜂鸣)是否可感知? MISMATCH 红闪 3s 够不够明确? 光电门控等待窗(maxHold 兼用)语义是否混淆?</li>
+<li><b>灯语可懂性</b>(衔接 Round_011 需求): 7 稳态+5 闪显的普通用户可辨识度; 蓝通道缺失降级后的颜色撞色(如白→黄 vs 回零黄慢闪)是否会误导; 建议统一颜色语义表。</li>
+<li><b>错误码自解释性</b>: ONE_ERR_x / LOCKER faultReason / SELFTEST 位图 —— 上位机排障是否够用, 缺哪些语义(如 IR 传感器状态无直读命令)。</li>
+<li><b>升级体验</b>: Boot 停留期无 App 业务时的用户感知; 升级失败码是否可指导重试; EXIT_BOOT 后的状态恢复。</li>
+<li><b>状态机视角</b>: FAULT 退出路径(CANCEL 唯一出口)是否窄; DONE 停留 5s 的合理性; 保持窗 2min+30s/标签 与实测节奏的匹配。</li>
+<li><b>协议一致性</b>: 协议 HTML 文档 vs 实测行为 diff 清单(如 DEVICE_INFO 硬件名 C8T6 遗留)。</li>
+</ul>
+每条给出: 现状 → 合理性判定 → <b>具体优化建议(不改码, 供决策)</b>。
+</div>
+
+<h2>10. 交付物清单</h2>
+<ul>
+<li><span class="code">Agent/Round_098/Plan.html</span> — 本计划(待确认)。</li>
+<li><span class="code">Agent/Round_098/test/</span> — 自动化执行器 + 用例(执行期产出)。</li>
+<li><span class="code">Agent/Round_098/Report.html</span> — 终态报告: 各阶段用例矩阵(PASS/FAIL/SKIP/OBS) + BugList(修复闭环记录) + P9 用户视角分析与优化建议 + 人工观察项清单(灯语/蜂鸣等物理输出)。</li>
+<li>git 提交: 修复按组提交, 引用 BugList; ChangeLog 更新。</li>
+</ul>
+
+<h2>11. 风险与对策</h2>
+<table>
+<tr><th>风险</th><th>对策</th></tr>
+<tr><td>升级砖机</td><td>红线: 坏固件只 VERIFY 不 EXEC; JLink flash_all.sh 全片恢复兜底; 每轮前快照</td></tr>
+<tr><td>电机冲撞挡块</td><td>MOVE 限小步数; 动作靠行程开关寻触兜底(超步/停滞/超时三重保护); 每用例前 QUERY IDLE</td></tr>
+<tr><td>硬件缺席(标签/AM)导致伪 FAIL</td><td>hw_presence.json 自适应, 缺席→SKIP 记录, 不误报</td></tr>
+<tr><td>修复引入回归</td><td>每修复跑关联用例+受影响 phase; 终态 P1~P8 全量回归</td></tr>
+<tr><td>物理输出(灯/蜂鸣)无法自动验证</td><td>OBS 人工观察项清单, 与自动化结果并列呈现</td></tr>
+<tr><td>长时间占用户机器(USB/JLink 独占)</td><td>全程无人值守连续跑; 中间产物落 JSON, 断点可续</td></tr>
+</table>
+
+<div class="tail">
+ZLR5401 Round_098 ｜ 本计划待用户确认后执行 ｜ 生成: 2026-09-02<br>
+基线依据: 环境实测(JLink/HID/工具链/框架) + 源码审计(App_CustomProtocol.h 全命令矩阵 / App_Dispatch / Boot_Dispatch / App_Locker(OneShot) / App_RgbLed_Pattern / main.c) + git 历史与未提交 diff。
+</div>
+
+</div>
+</body>
+</html>
