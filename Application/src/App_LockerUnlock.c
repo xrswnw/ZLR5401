@@ -264,7 +264,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
     if (winMs > UNLK_HOLD_MAX_MS) winMs = UNLK_HOLD_MAX_MS;
 
     push_start(winMs);                       /* 受理帧 (含实际 W) */
-    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_SCAN_WAIT);   /* 待放标: 青慢闪 */
+    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_IR_WAIT);   /* 待放标: 白慢闪 (Round_011 A) */
 
     /* ---- ⑵ 光电门控: 等待放标 (PC4, 去抖) ---- */
     {
@@ -280,7 +280,11 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
             } else {
                 irHighSince = 0u;
             }
-            if ((now - t0) >= winMs) { out->err = UNLK_ERR_NO_IR; return; }
+            if ((now - t0) >= winMs) {
+                out->err = UNLK_ERR_NO_IR;
+                App_RgbLedPat_Flash(RGBFLASH_WARN_2S);   /* 未放标: 黄慢闪 2s (Round_011 D4) */
+                return;
+            }
         }
     }
     s_irMs = SysTickHl_GetMs();              /* W 计时基准 = IR 触发时刻 */
@@ -290,25 +294,39 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
      * (防上次流程残留消磁模式在校对期误消软标); 消磁模式待硬标段
      * 结束进软标段 (⑦) 才切, 软标结束/窗满再切回检测模式。*/
     if (softCnt > 0u) {
-        if (App_AM_Query() != APP_AM_ERR_OK) { out->err = UNLK_ERR_AM_LINK; return; }
+        if (App_AM_Query() != APP_AM_ERR_OK) {
+            out->err = UNLK_ERR_AM_LINK;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 (Round_011 D4) */
+            return;
+        }
         AppAMConfig_t amc;
         (void)App_AM_GetConfig(&amc);
         if (amc.mode != AM_MODE_DETECT_ONLY &&
             App_AM_SetParam(AM_CMD_MODE, AM_MODE_DETECT_ONLY) != APP_AM_ERR_OK) {
             out->err = UNLK_ERR_AM_LINK;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
             return;
         }
     }
 
     /* ---- ⑷ UHF 就绪 ---- */
     s_phase = UNLK_PH_VERIFY;
+    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_SCAN_ACTIVE);   /* 盘点校对中: 蓝慢闪 (Round_011 A) */
     if (App_UHF_GetState() == APP_UHF_ERROR) {
         (void)App_UHF_Close();   /* ERROR 态: 彻底下电重上 */
         out->uhfRawErr = App_UHF_Open();
-        if (out->uhfRawErr != APP_UHF_ERR_OK) { out->err = UNLK_ERR_UHF_OPEN; return; }
+        if (out->uhfRawErr != APP_UHF_ERR_OK) {
+            out->err = UNLK_ERR_UHF_OPEN;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
+            return;
+        }
     } else if (App_UHF_GetState() != APP_UHF_READY) {
         out->uhfRawErr = App_UHF_Open();
-        if (out->uhfRawErr != APP_UHF_ERR_OK) { out->err = UNLK_ERR_UHF_OPEN; return; }
+        if (out->uhfRawErr != APP_UHF_ERR_OK) {
+            out->err = UNLK_ERR_UHF_OPEN;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
+            return;
+        }
     }
     App_UHF_ClearTags();                     /* 任务边界: 清陈旧标签 */
     if (s_abort) { out->err = UNLK_ERR_OK; out->endReason = UNLK_END_ABORTED; return; }
@@ -333,6 +351,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
         /* 取走本轮读到的标签, 更新各记录 */
         AppUHFTag_t tag;
         while (App_UHF_TagTake(&tag) == 0) {
+            App_RgbLedPat_Flash(RGBFLASH_TAG_SEEN);   /* 读到一张标签: 蓝单闪 (Round_011 A) */
             UnlkTagRec_t *t = rec_find(&tag);
             if (t != NULL) {
                 if (t->state != UTAG_CONFIRMED) {   /* 已掩码: 静默忽略 */
@@ -400,6 +419,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
             if (lostStart == 0u) lostStart = now;
             if ((now - lostStart) >= UNLK_UHF_LOST_CONFIRM_MS) {
                 hardEnd = UNLK_END_UHF_LOST;
+                App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 (Round_011 D4) */
                 break;
             }
         } else {
@@ -432,6 +452,8 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
     out->confirmed = s_confirmed;
     out->total = s_total;
     out->confirmedBitmap = s_bitmap;
+    if (hardEnd == UNLK_END_PARTIAL_TIMEOUT)
+        App_RgbLedPat_Flash(RGBFLASH_WARN_2S);   /* 窗满未收齐: 黄慢闪 2s (Round_011 D4) */
 
     if (s_risen) {
         s_phase = UNLK_PH_LOWER;
@@ -462,6 +484,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
         /* EPC 校验已通过 (硬标段结束): 此刻才切消磁模式 + 记计数基线 */
         if (App_AM_SetParam(AM_CMD_MODE, AM_MODE_DEACTIVATE) != APP_AM_ERR_OK) {
             out->err = UNLK_ERR_AM_LINK;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 (Round_011 D4) */
             return;
         }
         s_amDemagOn = 1u;

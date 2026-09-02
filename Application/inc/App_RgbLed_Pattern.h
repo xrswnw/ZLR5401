@@ -20,12 +20,13 @@
 typedef enum {
     RGBPAT_OFF             = 0,   /* 灭 (待机/回降/无需关注) */
     RGBPAT_MANUAL          = 1,   /* 上位机手动设色 (占位, 仲裁层级) */
-    RGBPAT_SCAN_WAIT       = 2,   /* EPC 扫描等硬标签: 青慢闪 (降级绿慢闪) */
-    RGBPAT_RISE_HOLD_GREEN = 3,   /* 升起/保持: 绿常亮 */
-    RGBPAT_SOFT_WAIT_WHITE = 4,   /* 软标等待(红外/消磁): 白常亮 (降级黄慢闪) */
-    RGBPAT_HOMING_SLOW     = 5,   /* 回零: 黄慢闪 */
-    RGBPAT_TEST_FAST       = 6,   /* 行程测试/安全回退: 黄快闪 */
-    RGBPAT_FAULT_SOLID     = 7    /* 故障: 红常亮 */
+    RGBPAT_IR_WAIT         = 2,   /* 等待放标(红外窗): 白慢闪 (降级黄慢闪) — Round_011 A */
+    RGBPAT_SCAN_ACTIVE     = 3,   /* 盘点/校对进行中: 蓝慢闪 (降级绿慢闪) — Round_011 A */
+    RGBPAT_RISE_HOLD_GREEN = 4,   /* 升起/保持: 绿常亮 */
+    RGBPAT_SOFT_WAIT_WHITE = 5,   /* 软标等待(红外/消磁): 白常亮 (降级黄慢闪) */
+    RGBPAT_HOMING_SLOW     = 6,   /* 回零: 黄慢闪 */
+    RGBPAT_TEST_FAST       = 7,   /* 行程测试/安全回退: 黄快闪 */
+    RGBPAT_FAULT_SOLID     = 8    /* 故障: 红常亮 */
 } AppRgbPat_t;
 
 /* 一次性闪显 (叠加在当前稳态上, 到期自动回落稳态) */
@@ -33,9 +34,11 @@ typedef enum {
     RGBFLASH_NONE       = 0,
     RGBFLASH_MATCH_OK   = 1,   /* 硬标签匹配: 绿单闪 200ms */
     RGBFLASH_SOFT_OK    = 2,   /* 软标消耗/消磁成功: 白单闪 (降级黄) */
-    RGBFLASH_SOFT_FAIL  = 3,   /* 消磁失败: 红双闪 1s */
+    RGBFLASH_FAIL_DOUBLE= 3,   /* 红双闪 1s: 消磁失败 / UHF·AM 链路断 — Round_011 D4 */
     RGBFLASH_MISMATCH_3S = 4,  /* EPC 失配: 红快闪 3s, 不升起 */
-    RGBFLASH_DONE_3GREEN = 5   /* 结账完成: 绿三连闪 1.8s */
+    RGBFLASH_DONE_3GREEN = 5,  /* 结账完成: 绿三连闪 1.8s */
+    RGBFLASH_TAG_SEEN   = 6,   /* 解码到一张标签(任意EPC): 蓝单闪 200ms (降级黄单闪) — Round_011 A */
+    RGBFLASH_WARN_2S    = 7    /* 未放标/无标签收尾: 黄慢闪 2s (NO_IR/NO_TAG) — Round_011 D4 */
 } AppRgbFlash_t;
 
 /* 稳态声明来源槽位 (各流程互斥, 占槽声明, 仲裁取最高优先级) */

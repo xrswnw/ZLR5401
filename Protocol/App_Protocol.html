@@ -109,11 +109,11 @@ li { margin: 3px 0; }
 <tr><td><code>0x07</code></td><td>FC_DEVICE_INFO</td><td>—</td><td>34B: result/addr/hwVersion/version (App层=swVersion)</td><td>查询版本 / 设备地址</td></tr>
 <tr><td><code>0x08</code></td><td>FC_RESET</td><td>—</td><td>1B: result</td><td>软件复位 (空参数, 回 OK 后延时 20ms 再复位)</td></tr>
 <tr><td><code>0x09</code></td><td>FC_EXIT_BOOT</td><td>—</td><td>1B: result</td><td>退出升级 (Boot 处理); App 忽略</td></tr>
-<tr><td><code>0x0A</code></td><td>FC_MOTOR_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §10 (subCmd 0x01~0x09)</td><td>步进电机 DRV8434S 控制 + 健康监控</td></tr>
-<tr><td><code>0x0B</code></td><td>FC_UHF_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §11 (subCmd 0x01~0x0E, 0x10)</td><td>UHF 超高频 SIM7500 模块控制</td></tr>
+<tr><td><code>0x0A</code></td><td>FC_MOTOR_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §10 (subCmd 0x01~0x09)</td><td>步进电机升降机构控制 + 健康监控</td></tr>
+<tr><td><code>0x0B</code></td><td>FC_UHF_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §11 (subCmd 0x01~0x0E, 0x10)</td><td>UHF 超高频读写模块控制</td></tr>
 <tr><td><code>0x0C</code></td><td>FC_AM_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §12 (subCmd 0x01~0x07)</td><td>AM 消磁器控制</td></tr>
 <tr><td><code>0x0D</code></td><td>FC_LOCKER_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §13 (subCmd 0x01~0x09)</td><td>开锁器业务编排 + ONE_SHOT 同步开锁</td></tr>
-<tr><td><code>0x0E</code></td><td>FC_RGB_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §14 (subCmd 0x01)</td><td>RGB 三色灯 G=PA4/R=PA5/B=PA6 控制</td></tr>
+<tr><td><code>0x0E</code></td><td>FC_RGB_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §14 (subCmd 0x01)</td><td>RGB 三色指示灯手动设色 (G/R/B 位掩码)</td></tr>
 <tr><td><code>0x0F</code></td><td>FC_SELFTEST_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §15 (subCmd 0x01~0x03)</td><td>设备级自检错误位 (锁存位图, App 专属)</td></tr>
 <tr><td><code>0x10</code></td><td>FC_IO_DIAG</td><td>— (空参数)</td><td>10B: 见 §16</td><td>IO/外设状态一帧总览 (红外/行程/UHF/AM/回零/Locker/测试)</td></tr>
 </table>
@@ -239,10 +239,10 @@ length=5 (FC + CRC32)</pre>
 <tr><td><code>0x0D</code></td><td><code>5</code></td><td><code>ONE_ERR_NO_TAG</code></td><td>整窗盘点未读到任何标签（0x08 专属）</td></tr>
 <tr><td><code>0x0D</code></td><td><code>6</code></td><td><code>ONE_ERR_MISMATCH</code></td><td>连续 3 轮读到标签但无期望 EPC，不升起（0x08 专属）</td></tr>
 <tr><td><code>0x0D</code></td><td><code>7</code></td><td><code>ONE_ERR_HOMING</code></td><td>未回零/行程开关错误，禁止运动（0x08 专属）</td></tr>
-<tr><td><code>0x0D</code></td><td><code>8</code></td><td><code>ONE_ERR_MOTOR_FAULT</code></td><td>升降中 DRV8434S 器件故障（0x08 专属）</td></tr>
+<tr><td><code>0x0D</code></td><td><code>8</code></td><td><code>ONE_ERR_MOTOR_FAULT</code></td><td>升降中电机驱动器件故障（0x08 专属）</td></tr>
 <tr><td><code>0x0D</code></td><td><code>9</code></td><td><code>ONE_ERR_MOTOR_TIMEOUT</code></td><td>寻触超时/超步/停滞（0x08 专属）</td></tr>
 <tr><td><code>0x0D</code></td><td><code>10</code></td><td><code>ONE_ERR_AM_LINK</code></td><td>demagCnt&gt;0：AM 链路断/切消磁模式失败（0x08 专属）</td></tr>
-<tr><td><code>0x0D</code></td><td><code>11</code></td><td><code>ONE_ERR_NO_IR</code></td><td>光电门控窗内 PC4 未触发（0x08 专属）</td></tr>
+<tr><td><code>0x0D</code></td><td><code>11</code></td><td><code>ONE_ERR_NO_IR</code></td><td>光电门控窗内未检测到放标（0x08 专属）</td></tr>
 <tr><td colspan="4"><em>以下 FC=0x0F 设备自检结果码：</em></td></tr>
 <tr><td><code>0x0F</code></td><td><code>0</code></td><td><code>SELFTEST_ERR_OK</code></td><td>成功</td></tr>
 <tr><td><code>0x0F</code></td><td><code>1</code></td><td><code>SELFTEST_ERR_PARAM</code></td><td>参数错误（长度不足/未知子命令）</td></tr>
@@ -284,9 +284,9 @@ if (n >= 64 && report[0] == 0x02) {
 </div>
 
 <!-- FC_MOTOR_CTRL -->
-<h2>10. FC_MOTOR_CTRL (0x0A) — 步进电机 DRV8434S 控制</h2>
+<h2>10. FC_MOTOR_CTRL (0x0A) — 步进电机升降机构控制</h2>
 <div class="phase">
-<p>本命令把步进电机（TI DRV8434S 双极步进驱动）暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x06），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。通信接口自选：<strong>SPI3</strong>（SCK=PB3 / MISO=PB4 / MOSI=PB5），片选 <strong>NSCS=PD2</strong>（手动 GPIO，帧间高电平≥500ns），STEP=PB6 / DIR=PB7 / nSLEEP=PB8 / ENABLE=PB9。<strong>步进走 GPIO STEP/DIR</strong>（SPI 仅用于寄存器配置，非 SPI 步进）。</p>
+<p>本命令控制步进电机升降机构。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x06），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。</p>
 
 <h3>10.1 子命令总览</h3>
 <table>
@@ -307,7 +307,7 @@ if (n >= 64 && report[0] == 0x02) {
 <tr><th>字段</th><th>说明</th></tr>
 <tr><td><code>err</code></td><td>0=OK</td></tr>
 <tr><td><code>state</code></td><td>步进电机态: <code>0</code>=IDLE / <code>1</code>=RUN / <code>2</code>=FAULT. <strong>行程测试进行中 (testState=1) 时 state 恒为 1(RUN)</strong>; 测试结束 (DONE/FAULT) 后 state <strong>回落为步进态 (通常 IDLE=0)</strong>, 结果由 <code>testState</code>+<code>diag1</code> 表达, 不再占用 state — 上位机 "等 IDLE" 不会因 DONE 卡住</td></tr>
-<tr><td><code>fault</code></td><td>DRV8434S FAULT 寄存器原始值 (bit7=FAULT, bit6=SPI_ERROR, bit5=UVLO, bit4=CPUV, bit3=OCP, bit2=STALL, bit1=过温, bit0=开路)。<strong>state=FAULT 时为停机瞬间快照</strong>（DRV 状态寄存器读后自清，固件在 FAULT 态冻结轮询以防证据被抹掉，归因靠此快照）；IDLE/RUN 时为实时轮询值</td></tr>
+<tr><td><code>fault</code></td><td>电机驱动故障寄存器原始值 (bit7=FAULT, bit6=SPI_ERROR, bit5=UVLO, bit4=CPUV, bit3=OCP, bit2=STALL, bit1=过温, bit0=开路)。<strong>state=FAULT 时为停机瞬间快照</strong>（DRV 状态寄存器读后自清，固件在 FAULT 态冻结轮询以防证据被抹掉，归因靠此快照）；IDLE/RUN 时为实时轮询值</td></tr>
 <tr><td><code>diag1</code></td><td>行程测试故障原因 (非测试时为 0): 1=步进故障 / 2=挣脱超时 / 3=方向极性错触 / 4=期望触点超时 / 5=RUN中电机停转(外部 STOP/被劫持, 300ms 宽限后判)</td></tr>
 <tr><td><code>diag2</code></td><td>诊断寄存器2 (OTW/OTS/STALL/OL)。state=FAULT 时同为停机瞬间快照</td></tr>
 <tr><td><code>stepsDone</code></td><td>本次运动已完成的微步数 (16bit, 溢出截断; 持续运行意会)</td></tr>
@@ -342,23 +342,23 @@ if (n >= 64 && report[0] == 0x02) {
 <li>两阶段均通过 → 回零完成（蜂鸣提示已不在回零处）。成功蜂鸣移至 POST 末尾统一判据：<strong>电机自检(SPI 回读/器件故障/行程开关) 与 UHF 通信全部通过才蜂鸣 1s</strong>；任一失败静默，由错误灯语表达（AM 通信/参数 CRC 不参与蜂鸣判据，仅记错误位）。</li>
 <li>任一阶段失败(超腿长未触发 / 堵转撞硬挡被 TRQ 停机 / 超步 / 超时) → 置 <code>switchErr</code> 对应位并立即返回(不继续后续阶段), 此时 TEST 回 <code>MOTOR_ERR_FAULT</code>(防冲挡块), 对应错误灯闪, 无蜂鸣。MOVE 不受此门控(开放给上位机), 但运行中开关监控会在超腿长未触发时置位并停机。<code>CLEAR</code> 清错误位。</li>
 </ul>
-自检驱动优先保护设备: 低转速(2000Hz)低转矩(40%) + 每段最大步数上限(腿长实测×2+裕量: 上 8970 / 下 9448 微步) + 30s 超时; 堵转由 TRQ 监测(~600ms 降速 + ~2.4s 停机)兜底。上电后首次驱动存在间歇性瞬态(被 DRV8434S nFAULT+SPI_ERROR 误停, 与位置/负载无关), 每阶段起步若在 &lt;50 步内因 DRV 故障停机则自动清故障重试一次。
+自检驱动优先保护设备: 低转速(2000Hz)低转矩(40%) + 每段最大步数上限(腿长实测×2+裕量: 上 8970 / 下 9448 微步) + 30s 超时; 堵转由 TRQ 监测(~600ms 降速 + ~2.4s 停机)兜底。上电后首次驱动存在间歇性瞬态(被电机驱动瞬态故障误停, 与位置/负载无关), 每阶段起步若在 &lt;50 步内因 DRV 故障停机则自动清故障重试一次。
 </div>
 
 <div class="note">
 <div class="note-title">运行中开关监控 + 灯色指示 (新增)</div>
 <ul>
 <li>正向(奔上)超过上腿限制 <code>LEG_UP_LIMIT</code> 未触上开关 → 置 switchErr.bit0; 反向(奔下)超下腿限制未触下开关 → 置 bit1.</li>
-<li>灯色(500ms 闪烁): 上行程错=黄(<code>G+R</code>), 下行程错=粉红(<code>R+B</code>, B 为 PA7 蓝灯占位; 需后续接入蓝色 LED 硬件才可见).</li>
+<li>灯色(500ms 闪烁): 上行程错=黄, 下行程错=粉红.</li>
 </ul>
 </div>
 </div>
 
 
 <!-- FC_UHF_CTRL -->
-<h2>11. FC_UHF_CTRL (0x0B) — UHF 超高频 SIM7500 模块控制</h2>
+<h2>11. FC_UHF_CTRL (0x0B) — UHF 超高频读写模块控制</h2>
 <div class="phase">
-<p>本命令把超高频（UHF）RFID 读写模块 <strong>SIM7500</strong>（芯联创展 / Silion，基于 Impinj E710 平台，EPC Class 1 Gen2 / ISO 18000-6C）暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x0C），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。通信经 <strong>USART3</strong>（PB10=TX / PB11=RX，115200-8-N-1，TTL）的 EX10 通用 <code>0xFF</code> 帧（FF + len + cmd + data + CRC16）。模块控制引脚：UHF_EN=PB12（高电平上电）、UHF_REG_OUT2=PB13 / UHF_REG_IN1=PB14 / UHF_REG_IN2=PB15、UHF_NRST=PC6、UHF_OUT1=PC7。板上无 MCU 天线切换脚（SIM7500 天线选择经模块命令）。</p>
+<p>本命令控制超高频（UHF）RFID 读写模块（EPC Class 1 Gen2 / ISO 18000-6C）。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x0C），其后为参数。所有响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），其余随命令。</p>
 
 <p>控制面 / 数据面解耦：状态机（IDLE/READY/INVENTORY/READ/WRITE/ERROR/ANT_CHECK/GETBUF）由设备内部管理。开放/设置时下发功率、频段、Gen2(Session/Target/Q)；<code>OPEN</code> 时同步执行<strong>回波检测</strong>判断天线连接。<code>INVENTORY</code> 为<strong>多标签同步盘存</strong>（0x22，带内部超时）→ 0x29 取回缓存，设备内部<strong>同步阻塞</strong>完成整段流程后，把全部标签内联在响应里直接带回——<b>上位机一次请求即可拿到场内所有标签</b>，无需分步拉取、无主动上报。</p>
 
@@ -399,7 +399,7 @@ if (n >= 64 && report[0] == 0x02) {
 <h3>11.2 配置字段 (SET_CONFIG / GET_CONFIG)</h3>
 <table>
 <tr><th>字段</th><th>范围</th><th>说明</th></tr>
-<tr><td><code>power</code></td><td>5~30</td><td>发射功率 (dBm)，SIM7500 可调范围 5~30 dBm</td></tr>
+<tr><td><code>power</code></td><td>5~30</td><td>发射功率 (dBm)，可调范围 5~30 dBm</td></tr>
 <tr><td><code>antenna</code></td><td>0~1</td><td>天线: 0=ANT1 / 1=ANT2</td></tr>
 <tr><td><code>checksumEn</code></td><td>0~1</td><td>1=启用模块帧 CRC16 校验; 0=关闭</td></tr>
 <tr><td><code>session</code></td><td>0~3</td><td>Gen2 session S0~S3</td></tr>
@@ -447,7 +447,7 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <!-- FC_AM_CTRL -->
 <h2>12. FC_AM_CTRL (0x0C) — AM 消磁器控制</h2>
 <div class="phase">
-<p>本命令把 AM EAS <strong>消磁器（Deactivator）</strong>暴露给上位机。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x09），其后为参数。硬件经 <strong>USART1</strong>（RS232 全双工，PA9=TX / PA10=RX，<code>0x2A 0xA2</code> 帧族）与消磁器通信。16 位参数值高字节在后：<code>(H&lt;&lt;8)|L</code>。</p>
+<p>本命令控制 AM EAS <strong>消磁器（Deactivator）</strong>。<code>data</code> 区<strong>首字节为子命令码 <code>cmd</code></strong>（0x01~0x09），其后为参数。16 位参数值高字节在后：<code>(H&lt;&lt;8)|L</code>。</p>
 <div class="warn">
 <b>设备语义（实测）</b>：这是 <b>消磁器</b>（检测标签→消磁/报警），<b>不读标签唯一 ID</b>。<b>读回全部参数走总查询 <code>0x63</code></b>（真读回存储值，非回显）；逐参数命令单独发仍是回显。cmd17 是设备主动上报的<b>消磁结果</b>：<code>2A A2 17 01 01 07 5B0 5B1 5B2 5B3 5B4 00 00 校验</code>。5B 字段 <code>FF FF FF FF FF</code> = <b>消磁失败（标签无法消磁，持续连发重试上报）</b>；单帧/非 FF 字段 = <b>消磁成功（仅一帧后停）</b>。GET_STATUS 据此分类：≥3 帧连发 FF×5 判失败、单帧/静默判成功、静默 >300ms 复位空闲。
 </div>
@@ -523,22 +523,24 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <p><strong>请求</strong>：<code>[cmd, tmoL,tmoH, irWaitL,irWaitH, holdL,holdH, epcLen, epc.., (demagCnt)]</code> — <code>tmoMs</code> 单轮盘点超时（0→1000，上限 10000）；<code>irWaitMs</code> 光电门控+标签出现窗（0→10000 缺省，上限 60000）；<code>holdMs</code> 升起后保持窗（0→30000 缺省，上限 60000）；<code>epcLen</code> 1~12；<code>demagCnt</code> 软标消磁数（<strong>可省略，缺省 0=跳过消磁流程</strong>，不触碰 AM）。<em>帧长 &lt;8 / epcLen=0 或 &gt;12 / 8+epcLen &gt; 帧长 均 err=2 PARAM。</em>参数钳位后<strong>同步阻塞执行</strong>，期间仅 QUERY/GET_PROGRESS/CANCEL（及各 FC 只读命令）被放行，其余回 BUSY。<em>原 maxHold 单窗已拆为 irWait（放标等待）与 hold（升起保持）两个独立参数 — 原布局 [cmd,tmoL,tmoH,holdL,holdH,epcLen,..] 帧因缺 irWait 域回 PARAM，主机须按新布局下发。</em></p>
 <p><strong>流程</strong>（固件 App_LockerOneShot.c）：</p>
 <pre>⑴   前置检查 (Locker/UHF/电机空闲 + 已回零)
-⑴.5 <b>光电门控</b>: 等客户放标 (PC4 高=检测到, 200ms 去抖), 窗=irWaitMs
-     窗满未触发 -> err=11 NO_IR (不动磁块)
+⑴.5 <b>光电门控</b>: 等客户放标 (红外光电检测, 200ms 去抖), 窗=irWaitMs
+     [灯] 等放标=白慢闪
+     窗满未触发 -> err=11 NO_IR (不动磁块; 黄慢闪 2s 灯语)
 ⑴.6 消磁准备 (demagCnt>0: AM 探链 + 强制检测模式 — <b>校验期仅检测
      不消磁</b>; =0 跳过, 不触碰 AM)
 ⑵   UHF 上电/配置 (扫描窗内强制 session S0, 结束还原)
+     [灯] 盘点校对中=蓝慢闪; 每解码到一张标签=蓝单闪
 ⑶   <b>持续校对</b>: 反复盘点比对期望 EPC (单轮 ~1/4 漏读属正常),
      预算=irWaitMs (自光电触发起)
      命中 -> 升起; 连续 3 轮读到标签但无期望 -> MISMATCH (不升起);
      窗内无任何标签 -> NO_TAG
 ⑷   命中 -> (demagCnt>0 先切 AM <b>消磁模式</b> — EPC 校验通过才消磁)
-     上行至 KEY_UP 触点停住 (绿常亮)
+     上行至 KEY_UP 触点停住 [灯] 升起=绿常亮
 ⑸   保持期监控 (窗=holdMs, 先到先回降):
      消磁数达标(demagCnt>0) /
      <b>EPC 稳定确认(demagCnt=0: 连续在场 3s -> 结账成功 end=7)</b> /
      保持窗超时 / 期望标签稳定移除 / 移除后读到其他 EPC / UHF 失联
-⑹   下行回退至 KEY_DOWN 触点; 流程结束(含失败/打断) AM 切回检测模式
+⑹   下行回退至 KEY_DOWN 触点 [灯] 回降=灭; 流程结束(含失败/打断) AM 切回检测模式
 ⑺   回最终帧 (13.2)</pre>
 
 <h3>13.2 ONE_SHOT 响应格式（随 err 变体）</h3>
@@ -552,10 +554,10 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <tr><td><code>5</code> NO_TAG</td><td>[cmd, 5, uhfRawErr]</td><td>整窗盘点未读到任何标签</td></tr>
 <tr><td><code>6</code> MISMATCH</td><td>[cmd, 6, tagsFound, epcLen, epc..]</td><td>持续校对确认失配：不升起、RGB 红闪 3s；<code>tagsFound</code>=累计读到标签数（1B），<code>epc</code>=读到的第一张非期望 EPC（供"读到≠期望"展示）</td></tr>
 <tr><td><code>7</code> HOMING</td><td>[cmd, 7, switchErr]</td><td>未回零/行程开关错误，禁止运动（bit0=上 bit1=下）</td></tr>
-<tr><td><code>8</code> MOTOR_FAULT</td><td>[cmd, 8, fault, diag1, diag2, steps(3), phase, retreat]</td><td>升降中 DRV8434S 器件故障；<code>phase</code> 1=升段 2=降段；<code>retreat</code> 0=已回退下端 1=回退失败 2=未尝试</td></tr>
+<tr><td><code>8</code> MOTOR_FAULT</td><td>[cmd, 8, fault, diag1, diag2, steps(3), phase, retreat]</td><td>升降中电机驱动器件故障；<code>phase</code> 1=升段 2=降段；<code>retreat</code> 0=已回退下端 1=回退失败 2=未尝试</td></tr>
 <tr><td><code>9</code> MOTOR_TIMEOUT</td><td>[cmd, 9, steps(3), phase, retreat]</td><td>寻触超时/超步/停滞</td></tr>
 <tr><td><code>10</code> AM_LINK</td><td>[cmd, 10]</td><td>demagCnt&gt;0 时 AM 链路断/切消磁模式失败</td></tr>
-<tr><td><code>11</code> NO_IR</td><td>[cmd, 11]</td><td>光电门控窗内 PC4 未触发（客户未放标/光电传感器故障）</td></tr>
+<tr><td><code>11</code> NO_IR</td><td>[cmd, 11]</td><td>光电门控窗内未检测到放标（客户未放标/光电传感器故障）</td></tr>
 </table>
 <div class="note">
 <div class="note-title">endReason（err=0 时的结束原因）</div>
@@ -571,7 +573,7 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <p><strong>解锁窗 W</strong>：<code>holdMs=0 → 120000 + (m-1)*30000 ms</code>（首标签 2min，每多一标签加 30s），绝对上限 240000ms；非零时取 min(上位机值, 上限)。W 自光电触发时刻起算，兼任光电等待窗与校对预算。</p>
 <p><strong>流程</strong>（固件 App_LockerUnlock.c）：</p>
 <pre>⑴ 前置检查 (0x08/Locker/UHF/电机空闲 + 已回零) -> 推 0x0F 受理帧 (含实际 W)
-⑵ <b>光电门控</b>: 等放标 (PC4, 200ms 去抖), 窗=W; 窗满 -> err=11 NO_IR
+⑵ <b>光电门控</b>: 等放标 (红外光电检测, 200ms 去抖), 窗=W; 窗满 -> err=11 NO_IR
 ⑶ 消磁准备 (softCnt>0: AM 探链 + 强制检测模式 — <b>校验期仅检测
     不消磁</b>; =0 跳过)
 ⑷ UHF 上电/配置 + 连续盘点
@@ -610,10 +612,10 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <tr><td><code>3</code> UHF_OPEN</td><td>[cmd, 3, uhfRawErr]</td><td>UHF 上电/配置失败</td></tr>
 <tr><td><code>4</code> UHF_LINK</td><td>[cmd, 4, uhfRawErr]</td><td>UHF 通信失败</td></tr>
 <tr><td><code>7</code> HOMING</td><td>[cmd, 7, switchErr]</td><td>未回零/行程开关错误，禁止运动（bit0=上 bit1=下）</td></tr>
-<tr><td><code>8</code> MOTOR_FAULT</td><td>[cmd, 8, fault, diag1, diag2, steps(3), phase, retreat]</td><td>DRV8434S 器件故障：<code>phase</code> 1=升段 2=降段；<code>retreat</code> 0=已回退下端 1=回退失败 2=未尝试（失败发生在运动前）</td></tr>
+<tr><td><code>8</code> MOTOR_FAULT</td><td>[cmd, 8, fault, diag1, diag2, steps(3), phase, retreat]</td><td>电机驱动器件故障：<code>phase</code> 1=升段 2=降段；<code>retreat</code> 0=已回退下端 1=回退失败 2=未尝试（失败发生在运动前）</td></tr>
 <tr><td><code>9</code> MOTOR_TIMEOUT</td><td>[cmd, 9, steps(3), phase, retreat]</td><td>寻触超时/超步/停滞</td></tr>
 <tr><td><code>10</code> AM_LINK</td><td>[cmd, 10]</td><td>softCnt&gt;0：AM 链路断/切消磁模式失败</td></tr>
-<tr><td><code>11</code> NO_IR</td><td>[cmd, 11]</td><td>光电门控窗内 PC4 未触发（客户未放标/光电传感器故障）</td></tr>
+<tr><td><code>11</code> NO_IR</td><td>[cmd, 11]</td><td>光电门控窗内未检测到放标（客户未放标/光电传感器故障）</td></tr>
 </table>
 <div class="note">
 <div class="note-title">UNLOCK_MULTI endReason（err=0 时的硬标段结束原因）</div>
@@ -628,7 +630,7 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <!-- FC_RGB -->
 <h2>14. FC_RGB_CTRL (0x0E) — RGB 三色灯控制</h2>
 <div class="phase">
-<p>控制板载 RGB 三色灯：<strong>G=PA4、R=PA5、B=PA6</strong>（高电平点亮）。<code>data</code> 区首字节为子命令码 <code>cmd</code>（0x01），其后为参数。响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），并回显 <code>mask</code>。</p>
+<p>控制板载 RGB 三色指示灯（绿/红/蓝三通道）。<code>data</code> 区首字节为子命令码 <code>cmd</code>（0x01），其后为参数。响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK），并回显 <code>mask</code>。</p>
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
 <tr><td><code>0x01</code></td><td>SET</td><td>[cmd, mask, reserved]</td><td>[cmd, err, mask]</td><td>手动设色：<code>mask</code> bit0=G 绿 / bit1=R 红 / bit2=B 蓝，其余位与 <code>reserved</code> 预留（忽略）。仅设备空闲（Locker/OneShot/行程测试均未运行）时接受，作为手动灯语保持 <strong>10s 自动回收</strong>（业务灯语优先，到期自动灭）；<code>mask=0</code> 立即撤销。运行中回 <code>err=2 BUSY</code></td></tr>
@@ -642,21 +644,21 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <code>0</code>=OK, <code>1</code>=参数非法/长度不足, <code>2</code>=BUSY（结账/开锁/行程测试流程运行中，拒绝手动设色）。
 </div>
 <div class="note">
-<div class="note-title">本地灯语（Round_010 起自动驱动，不受本命令控制）</div>
-RGB 灯带由固件按业务状态自动指示：扫描等待=青慢闪 · 标签匹配=绿单闪 · 升起开锁=绿常亮 · 失配=红快闪 3s · 软标等待=白常亮 · 软标成功=白单闪 · 消磁失败=红双闪 · 结账完成=绿三连闪+蜂鸣 · 故障=红常亮 · 行程开关错误=黄/粉红闪。手动 SET 仅在空闲时叠加显示。
+<div class="note-title">本地灯语（固件按业务状态自动驱动，不受本命令控制；协议层含义如下）</div>
+RGB 灯带由固件按业务状态自动指示（上位机不可控、亦无需控制；<b>语义与硬件无关</b>，仅映射流程状态）：<b>等待放标=白慢闪（该你了）· 盘点校对中=蓝慢闪（该我了）· 解码到一张标签=蓝单闪 · 标签匹配=绿单闪 · 升起开锁=绿常亮 · 失配=红快闪 3s · 软标等待=白常亮 · 软标成功=白单闪 · 未放标/窗满未收齐=黄慢闪 2s · 链路断=红双闪 · 结账完成=绿三连闪+蜂鸣 · 故障=红常亮 · 设备自检类=黄系（回零慢闪/测试快闪/行程错误黄·粉红闪）</b>。手动 SET 仅在空闲时叠加显示。全流程灯语时序详见 <b>App_Unlock_Flow.html</b>。
 </div>
 </div>
 
 <!-- FC_SELFTEST_CTRL -->
 <h2>15. FC_SELFTEST_CTRL (0x0F) — 设备级自检/锁存错误位</h2>
 <div class="phase">
-<p>设备级健康监控：上电 POST 逐个探测外设（步进电机 DRV8434S / UHF / AM 消磁器），结果沉淀为 <strong>16bit 锁存错误位图 <code>errBits</code></strong>；运行期故障（开锁器 UHF 链路故障、未回零）与参数区 CRC 失败亦联动置位。<code>data</code> 区首字节为子命令码 <code>cmd</code>。响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK）。<strong>App 专属命令</strong>（Bootloader 收到 0x0F 忽略）。</p>
+<p>设备级健康监控：上电 POST 逐个探测外设（步进电机 / UHF / AM 消磁器），结果沉淀为 <strong>16bit 锁存错误位图 <code>errBits</code></strong>；运行期故障（开锁器 UHF 链路故障、未回零）与参数区 CRC 失败亦联动置位。<code>data</code> 区首字节为子命令码 <code>cmd</code>。响应同步返回：<code>data[0]=cmd</code>，<code>data[1]=err</code>（0=OK）。<strong>App 专属命令</strong>（Bootloader 收到 0x0F 忽略）。</p>
 
 <h3>15.1 错误位定义 (errBits, 16bit LE)</h3>
 <table>
 <tr><th>bit</th><th>宏</th><th>含义</th><th>置位来源</th></tr>
-<tr><td>bit0</td><td><code>SELF_ERR_MOTOR_SPI</code></td><td>DRV8434S SPI 配置回读不一致（通信/落配置失败）</td><td>POST / RERUN 探测</td></tr>
-<tr><td>bit1</td><td><code>SELF_ERR_MOTOR_FAULT</code></td><td>DRV8434S 器件故障（FAULT 位）</td><td>POST / RERUN 探测</td></tr>
+<tr><td>bit0</td><td><code>SELF_ERR_MOTOR_SPI</code></td><td>电机驱动配置回读不一致（通信/落配置失败）</td><td>POST / RERUN 探测</td></tr>
+<tr><td>bit1</td><td><code>SELF_ERR_MOTOR_FAULT</code></td><td>电机驱动器件故障（FAULT 位）</td><td>POST / RERUN 探测</td></tr>
 <tr><td>bit2</td><td><code>SELF_ERR_UHF_COMM</code></td><td>UHF Open/Query 通信失败</td><td>POST / RERUN 探测；运行期开锁器 UHF 链路故障</td></tr>
 <tr><td>bit3</td><td><code>SELF_ERR_AM_COMM</code></td><td>AM 消磁器 Query 通信失败</td><td>POST / RERUN 探测</td></tr>
 <tr><td>bit4</td><td><code>SELF_ERR_PARAM_CRC</code></td><td>参数区 CRC 失败回落默认值</td><td>仅上电置位（不随探测刷新，只能 CLEAR 手动清）</td></tr>
@@ -677,8 +679,8 @@ RGB 灯带由固件按业务状态自动指示：扫描等待=青慢闪 · 标�
 <table>
 <tr><th>字段</th><th>含义</th></tr>
 <tr><td><code>errBitsL / errBitsH</code></td><td>锁存错误位图（低/高字节，bit 定义见 15.1）</td></tr>
-<tr><td><code>motorCommOk</code></td><td>1 = DRV8434S SPI 配置回读一致（查询时实时再读 CTRL3 微步档 + CTRL7 EN_SSC）</td></tr>
-<tr><td><code>drvFault</code></td><td>DRV8434S 实时故障寄存器（0=无故障）</td></tr>
+<tr><td><code>motorCommOk</code></td><td>1 = 电机驱动配置回读一致（查询时实时复核寄存器）</td></tr>
+<tr><td><code>drvFault</code></td><td>电机驱动实时故障寄存器（0=无故障）</td></tr>
 <tr><td><code>uhfLink</code></td><td>UHF 实时链路：0=正常 / 1=超时 / 2=CRC 错误</td></tr>
 <tr><td><code>amLink</code></td><td>AM 实时链路：0=正常 / 非0=掉线</td></tr>
 <tr><td><code>paramCrc</code></td><td>1 = 本次上电参数区曾 CRC 失败回落默认值（= errBits bit4 的镜像）</td></tr>
@@ -704,7 +706,7 @@ FC_MOTOR_CTRL QUERY/HEALTH 已提供电机细粒度诊断（switchErr、堵转�
 <table>
 <tr><th>偏移</th><th>字段</th><th>说明</th></tr>
 <tr><td>0</td><td><code>result</code></td><td>0=OK</td></tr>
-<tr><td>1</td><td><code>ir</code></td><td>红外光电门 PC4 原始读数 (1=触发/有遮挡)</td></tr>
+<tr><td>1</td><td><code>ir</code></td><td>红外光电门原始读数 (1=触发/检测到放标)</td></tr>
 <tr><td>2</td><td><code>keyUp</code></td><td>上行程开关 (1=释放 / 0=按下, 低有效)</td></tr>
 <tr><td>3</td><td><code>keyDown</code></td><td>下行程开关 (1=释放 / 0=按下)</td></tr>
 <tr><td>4</td><td><code>uhfPowered</code></td><td>UHF 模块电源 (1=上电)</td></tr>
@@ -746,11 +748,11 @@ FC_UPGRADE_EXEC           = 0x06   // Boot
 FC_DEVICE_INFO            = 0x07
 FC_RESET                  = 0x08
 FC_EXIT_BOOT              = 0x09   // 退出升级 (Boot 处理)
-FC_MOTOR_CTRL             = 0x0A   // 步进电机 DRV8434S 控制
-FC_UHF_CTRL               = 0x0B   // UHF 超高频 SIM7500 模块控制
+FC_MOTOR_CTRL             = 0x0A   // 步进电机升降机构控制
+FC_UHF_CTRL               = 0x0B   // UHF 超高频读写模块控制
 FC_AM_CTRL                = 0x0C   // AM 消磁器控制
 FC_LOCKER_CTRL            = 0x0D   // 开锁器业务编排
-FC_RGB_CTRL               = 0x0E   // RGB 三色灯控制 (G=PA4/R=PA5/B=PA6)
+FC_RGB_CTRL               = 0x0E   // RGB 三色指示灯控制
 
 // FC=0x0A 子命令码 (FC_MOTOR_CTRL)
 MOTOR_SUB_MOVE            = 0x01   // 启动运动 [dir, steps 24bit]
@@ -880,10 +882,10 @@ ONE_ERR_UHF_LINK          = 4     // 持续校对阶段 UHF 通信失败
 ONE_ERR_NO_TAG            = 5     // 整窗盘点未读到任何标签
 ONE_ERR_MISMATCH          = 6     // 连续3轮读到标签但无期望EPC, 不升起
 ONE_ERR_HOMING            = 7     // 未回零/行程开关错误, 禁止运动
-ONE_ERR_MOTOR_FAULT       = 8     // 升降中 DRV8434S 器件故障
+ONE_ERR_MOTOR_FAULT       = 8     // 升降中电机驱动器件故障
 ONE_ERR_MOTOR_TIMEOUT     = 9     // 寻触超时/超步/停滞
 ONE_ERR_AM_LINK           = 10    // demagCnt>0: AM 链路断/切消磁模式失败
-ONE_ERR_NO_IR             = 11    // 光电门控窗内 PC4 未触发
+ONE_ERR_NO_IR             = 11    // 光电门控窗内未检测到放标
 // endReason (err=0)
 ONE_END_TAG_REMOVED       = 1     // 期望标签稳定移除 (3s 防抖)
 ONE_END_HOLD_TIMEOUT      = 2     // 保持窗超时
@@ -903,7 +905,7 @@ ONE_PH_LOWER              = 6
 ONE_PH_IR_WAIT            = 7     // 光电门控, 等客户放标</pre>
 </div>
 
-<div class="foot">App USB Protocol · 版本 2 · Round 018 蓝白改版 + 协议一致性修正 · 2026-07-26 · Round 102 补 ONE_SHOT 0x08/GET_PROGRESS 0x09（光电门控/持续校对/EPC 稳定判定语义 + 全错误码表）· 2026-09-02 · Round 105 补 UNLOCK_MULTI 0x0A 多标签解锁（0x0B~0x0F 推送事件帧/终帧/双门限确认语义）· 2026-09-02 · Round 106 AM 模式时序收紧（EPC 校验通过才切消磁模式 / 软标结束或超时切回检测模式，0x08/0x0A 同步）· 2026-09-02 · Round 098 修正批（优化 #3~#4 MOVE/TEST 互斥与 TEST 完成语义 · #9 开机 UHF 配置自动恢复 · #10 AM 断线自动探测 · #11 后台回零窗口 BUSY · #12 协议同步 · #15 UHF QUERY NOT_READY · #20 ONE_SHOT irWait/hold 拆分 · #21 Locker 扫描会话 S0 · 新增 §16 FC_IO_DIAG）· 2026-09-02</div>
+<div class="foot">App USB Protocol · 版本 2 · Round 018 蓝白改版 + 协议一致性修正 · 2026-07-26 · Round 102 补 ONE_SHOT 0x08/GET_PROGRESS 0x09（光电门控/持续校对/EPC 稳定判定语义 + 全错误码表）· 2026-09-02 · Round 105 补 UNLOCK_MULTI 0x0A 多标签解锁（0x0B~0x0F 推送事件帧/终帧/双门限确认语义）· 2026-09-02 · Round 106 AM 模式时序收紧（EPC 校验通过才切消磁模式 / 软标结束或超时切回检测模式，0x08/0x0A 同步）· 2026-09-02 · Round 098 修正批（优化 #3~#4 MOVE/TEST 互斥与 TEST 完成语义 · #9 开机 UHF 配置自动恢复 · #10 AM 断线自动探测 · #11 后台回零窗口 BUSY · #12 协议同步 · #15 UHF QUERY NOT_READY · #20 ONE_SHOT irWait/hold 拆分 · #21 Locker 扫描会话 S0 · 新增 §16 FC_IO_DIAG） · Round 011 灯语方案 A（等待放标=白慢闪 / 盘点中=蓝慢闪 / 读到标签=蓝单闪 / NO_IR·NO_TAG=黄慢闪 2s / 链路断=红双闪，全流程详见 App_Unlock_Flow.html）+ 协议文档硬件层净化（去引脚/器件型号/总线表述，仅协议层语义）· 2026-09-02</div>
 
 </div>
 </body>

@@ -177,7 +177,7 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
      * (Round_098 #20 拆分: 原 maxHoldMs 双语义之一),
      * 窗满未触发 -> NO_IR 失败 (不动磁块, 不碰 UHF/AM)。 */
     s_phase = ONE_PH_IR_WAIT;
-    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_SCAN_WAIT);   /* 等待放标: 青慢闪 */
+    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_IR_WAIT);   /* 等待放标: 白慢闪 (Round_011 A) */
     {
         uint32_t t0 = SysTickHl_GetMs();
         uint32_t irHighSince = 0u;
@@ -191,7 +191,11 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
             } else {
                 irHighSince = 0u;
             }
-            if ((now - t0) >= irWaitMs) { out->err = ONE_ERR_NO_IR; return; }
+            if ((now - t0) >= irWaitMs) {
+                out->err = ONE_ERR_NO_IR;
+                App_RgbLedPat_Flash(RGBFLASH_WARN_2S);   /* 未放标: 黄慢闪 2s (Round_011 D4) */
+                return;
+            }
         }
     }
 
@@ -201,27 +205,40 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
      * 命中后 (⑷ 升起前) 才切, 流程结束切回检测模式。*/
     uint32_t demagBase = 0u;
     if (demagCnt > 0u) {
-        if (App_AM_Query() != APP_AM_ERR_OK) { out->err = ONE_ERR_AM_LINK; return; }
+        if (App_AM_Query() != APP_AM_ERR_OK) {
+            out->err = ONE_ERR_AM_LINK;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 (Round_011 D4) */
+            return;
+        }
         AppAMConfig_t amc;
         (void)App_AM_GetConfig(&amc);
         if (amc.mode != AM_MODE_DETECT_ONLY &&
             App_AM_SetParam(AM_CMD_MODE, AM_MODE_DETECT_ONLY) != APP_AM_ERR_OK) {
             out->err = ONE_ERR_AM_LINK;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
             return;
         }
     }
 
     /* ---- ⑵ UHF 就绪 ---- */
     s_phase = ONE_PH_UHF_READY;
-    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_SCAN_WAIT);   /* 扫描等待: 青慢闪 */
+    App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_SCAN_ACTIVE);   /* 盘点校对中: 蓝慢闪 (Round_011 A) */
     if (App_UHF_GetState() == APP_UHF_ERROR) {
         /* ERROR 态(已上电但链路坏): Stop 不清 ERROR, 彻底下电重上 */
         (void)App_UHF_Close();
         out->uhfRawErr = App_UHF_Open();
-        if (out->uhfRawErr != APP_UHF_ERR_OK) { out->err = ONE_ERR_UHF_OPEN; return; }
+        if (out->uhfRawErr != APP_UHF_ERR_OK) {
+            out->err = ONE_ERR_UHF_OPEN;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
+            return;
+        }
     } else if (App_UHF_GetState() != APP_UHF_READY) {
         out->uhfRawErr = App_UHF_Open();
-        if (out->uhfRawErr != APP_UHF_ERR_OK) { out->err = ONE_ERR_UHF_OPEN; return; }
+        if (out->uhfRawErr != APP_UHF_ERR_OK) {
+            out->err = ONE_ERR_UHF_OPEN;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
+            return;
+        }
     }
     if (s_abort) { out->err = ONE_ERR_OK; out->endReason = ONE_END_ABORTED; return; }
 
@@ -239,13 +256,16 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
             if (r == APP_UHF_ERR_NO_TAG) {
                 mismatchRounds = 0u;         /* 本轮无标签: 清失配计数, 继续轮 */
             } else if (r < 0) {
-                out->err = ONE_ERR_UHF_LINK; out->uhfRawErr = r; return;
+                out->err = ONE_ERR_UHF_LINK; out->uhfRawErr = r;
+                App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
+                return;
             } else {
                 uint8_t roundTag = 0u;
                 AppUHFTag_t tag;
                 while (App_UHF_TagTake(&tag) == 0) {
                     roundTag = 1u;
                     out->tagsFound++;
+                    App_RgbLedPat_Flash(RGBFLASH_TAG_SEEN);  /* 读到一张标签: 蓝单闪 (Round_011 A) */
                     if (one_epc_eq(epc, epcLen, tag.epc, tag.epcLen)) {
                         matched = 1u;
                     } else if (out->epcLen == 0u) {
@@ -266,6 +286,7 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
             if ((SysTickHl_GetMs() - invT0) >= irWaitMs) {
                 out->err = ONE_ERR_NO_TAG;
                 out->uhfRawErr = APP_UHF_ERR_NO_TAG;
+                App_RgbLedPat_Flash(RGBFLASH_WARN_2S);   /* 无标签收尾: 黄慢闪 2s (Round_011 D4) */
                 return;
             }
         }
@@ -278,6 +299,7 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
     if (demagCnt > 0u) {
         if (App_AM_SetParam(AM_CMD_MODE, AM_MODE_DEACTIVATE) != APP_AM_ERR_OK) {
             out->err = ONE_ERR_AM_LINK;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 (Round_011 D4) */
             return;
         }
         s_amDemagOn = 1u;
@@ -385,6 +407,7 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
                 if (lostStart == 0u) lostStart = now;
                 if ((now - lostStart) >= ONE_UHF_LOST_CONFIRM_MS) {
                     out->endReason = ONE_END_UHF_LOST;
+                    App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 (Round_011 D4) */
                     break;
                 }
             } else {

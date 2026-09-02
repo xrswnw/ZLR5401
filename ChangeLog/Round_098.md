@@ -65,3 +65,18 @@ P8-S3 10/10 (session=S2 连续 2 周期亦过) · P9-optfix 30/0 (新增: 互斥
 QUERY 重映射/OneShot 布局/S2 会话/回零时序) · P9b-storm 9/0 (JLink RAM 注入,
 计数=3 锁定+EXIT_BOOT 救援+计数=2 不锁)。
 固件 ZLR5401_202609022300.hex, App text 77120B, RAM 风暴孔约束核验通过。
+
+## Round_011 — RGB 灯带灯语方案 A "五色叙事" (2026-09-02)
+
+需求: Agent/Round_011/Demand.md (灯带 8 色状态演示, 普通人视角直观简洁)。
+
+| 位置 | 变更 |
+|------|------|
+| App_RgbLed_Pattern.h/.c | SCAN_WAIT(青慢闪) 拆为 IR_WAIT(白慢闪, 等放标) + SCAN_ACTIVE(蓝慢闪, 盘点中); 新增闪显 TAG_SEEN(蓝单闪, 读到一张标签) / WARN_2S(黄慢闪 2s, NO_IR/NO_TAG/窗满); SOFT_FAIL 更名 FAIL_DOUBLE(消磁失败+链路断); 全部含无蓝降级 (白→黄/蓝→绿/蓝闪→黄闪) |
+| App_LockerOneShot.c / App_LockerUnlock.c / App_Locker.c | 三主线调用点改色: 等放标白慢闪 / 盘点蓝慢闪 / 每解码一张蓝单闪 (命中绿单闪随后覆盖); 全部链路断出口 (UHF_OPEN/UHF_LINK/AM_LINK/UHF_LOST) 红双闪; NO_IR/NO_TAG/PARTIAL_TIMEOUT 黄慢闪 2s |
+| Protocol/App_Protocol.html | 灯语 note 更新为方案 A; ONE_SHOT 流程逐阶段 [灯] 标注; 硬件层净化 32 处 (去引脚/器件型号/总线/寄存器表述, 仅协议层语义) |
+| Protocol/App_Unlock_Flow.html (新) | 解锁全流程详解: 就绪时序 + 三主线逐阶段 (协议交互+灯语+蜂鸣+推送帧) + 失败→错误码→灯语总表 + 灯语时序图; 全文协议层视角 |
+
+纯灯语层变更: 仲裁器架构/协议帧/业务判定零改动。回归 P2 16/0 · P3 26/0 ·
+P4 23/0 · P5 16/0 · P6 51/0 · P9 30/0。固件 ZLR5401_202609022328.hex。
+灯语肉眼辨识度留人工验收 (Agent/Round_011/Report.html §5)。

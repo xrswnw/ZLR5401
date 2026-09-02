@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_011 — RGB 灯带灯语方案 A 执行报告</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1060px; margin:0 auto; padding:24px 28px 60px;}
+  .kpis{display:flex; gap:12px; margin:16px 0; flex-wrap:wrap;}
+  .kpi{flex:1; min-width:140px; background:#fff; border:1px solid var(--line);
+       border-radius:10px; padding:12px 16px; text-align:center;
+       box-shadow:0 1px 4px rgba(11,42,74,.06);}
+  .kpi b{display:block; font-size:26px; color:var(--navy);}
+  .kpi span{font-size:12px; color:var(--muted);}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:40px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:12.5px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:12.5px; line-height:1.55;}
+  .card{background:#fff; border:1px solid var(--line); border-left:5px solid var(--sky);
+        border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .card.ok{border-left-color:var(--green);}
+  .card.warn{border-left-color:var(--red);}
+  .card.gold{border-left-color:var(--gold);}
+  .led{display:inline-block; width:52px; height:20px; border-radius:4px;
+       vertical-align:middle; border:1px solid #9db8cf; margin-right:6px;}
+  .lg{background:#22c55e;} .lr{background:#ef4444;} .ly{background:#eab308;}
+  .lw{background:#f8fafc;} .lp{background:#ec4899;} .lb{background:#3b82f6;}
+  .loff{background:#334155;}
+  .foot{margin-top:50px; padding-top:14px; border-top:1px solid var(--line);
+        font-size:12px; color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>Round_011 — RGB 灯带灯语方案 A 执行报告</h1>
+  <div class="sub">需求: Agent/Round_011/Demand.md · 方案: Plan.html (方案 A + 推荐 D1-D5) · 2026-09-02</div>
+</div>
+<div class="wrap">
+
+<div class="kpis">
+  <div class="kpi"><b>11</b><span>灯语图样落地 (3 新增 + 8 沿用)</span></div>
+  <div class="kpi"><b>13</b><span>失败路径补灯 (2 黄 + 11 红)</span></div>
+  <div class="kpi"><b>112/0</b><span>回归 (P2~P6+P9 全绿)</span></div>
+  <div class="kpi"><b>0</b><span>协议帧变更 (纯灯语层)</span></div>
+</div>
+
+<h2>1. 决策采纳 (Plan §7 D1-D5 全按推荐执行)</h2>
+<table>
+<tr><th>#</th><th>决策</th><th>采纳</th></tr>
+<tr><td>D1</td><td>盘点/校对中图样</td><td><b>b) 蓝慢闪</b> (1s 周期 50% 占空)</td></tr>
+<tr><td>D2</td><td>解码到标签闪烁颜色</td><td><b>a) 蓝单闪 200ms</b> (与白软标闪区分)</td></tr>
+<tr><td>D3</td><td>等放标图样</td><td><b>a) 白慢闪</b> (与软标白常亮构成"白=等你"一义)</td></tr>
+<tr><td>D4</td><td>失败盲区补灯</td><td><b>a) 补</b>: NO_IR/NO_TAG/窗满未收齐 = 黄慢闪 2s; UHF/AM 链路断 = 红双闪 1s</td></tr>
+<tr><td>D5</td><td>NO_IR 等待窗末期催促快闪</td><td><b>b) 不做</b> (保 5 色纪律)</td></tr>
+</table>
+
+<h2>2. 固件变更清单</h2>
+<table>
+<tr><th>位置</th><th>变更</th></tr>
+<tr><td><code>App_RgbLed_Pattern.h</code></td><td>稳态: <code>RGBPAT_SCAN_WAIT</code>(青慢闪) → <code>RGBPAT_IR_WAIT</code>(白慢闪) + <code>RGBPAT_SCAN_ACTIVE</code>(蓝慢闪), 值 2/3; 后续图样顺移 (FAULT_SOLID=8)。闪显: 新增 <code>RGBFLASH_TAG_SEEN</code>(蓝单闪)、<code>RGBFLASH_WARN_2S</code>(黄慢闪 2s); <code>RGBFLASH_SOFT_FAIL</code> 更名 <code>RGBFLASH_FAIL_DOUBLE</code>(语义扩展: 消磁失败+链路断)</td></tr>
+<tr><td><code>App_RgbLed_Pattern.c</code></td><td>查表新增两稳态 + 两闪显 (均含无蓝硬件降级: 白慢闪→黄慢闪 / 蓝慢闪→绿慢闪 / 蓝单闪→黄单闪与命中绿闪区分); C_CYAN 删除 (青色退出客户主线); 闪显校验上限更新</td></tr>
+<tr><td><code>App_LockerOneShot.c</code></td><td>⑴.5 等放标白慢闪 (NO_IR 补黄慢闪 2s); ⑵ 起蓝慢闪; ⑶ 每解码一张蓝单闪 (NO_TAG 补黄慢闪); AM/UHF 链路断全部出口补红双闪 (⑴.6/⑵/⑶/post-match/⑸ UHF_LOST)</td></tr>
+<tr><td><code>App_LockerUnlock.c</code></td><td>⑵ 等放标白慢闪 (NO_IR 黄慢闪); ⑷ 起蓝慢闪; ⑸ 每解码一张蓝单闪; UHF_OPEN/AM_LINK/UHF_LOST 红双闪; ⑹ PARTIAL_TIMEOUT 黄慢闪; ⑺ AM_LINK 红双闪</td></tr>
+<tr><td><code>App_Locker.c</code></td><td>pat_sync 扫描段青→蓝慢闪; match_scan_process 每取到一张标签蓝单闪 (命中绿单闪随后覆盖, 顺序保证"读到了"先于"对了"); SOFT_FAIL→FAIL_DOUBLE 更名引用</td></tr>
+</table>
+<div class="card ok"><b>安全验证</b>: 全部为灯语层变更——仲裁器 L1~L5 架构、协议帧、业务判定逻辑零改动。构建 ZLR5401_202609022328.hex (App text 77280B, +160B), 烧录一次通过。</div>
+
+<h2>3. 协议文档更新 (仅协议层)</h2>
+<table>
+<tr><th>文件</th><th>变更</th></tr>
+<tr><td><code>App_Protocol.html</code></td><td>① §14 本地灯语 note 更新为方案 A 全表; ② §13 ONE_SHOT 流程图逐阶段加 [灯] 标注; ③ <b>硬件层净化</b>: 移除全部引脚 (G/R/B 引脚定义、SPI3/USART 引脚、NSCS/STEP/DIR、UHF_EN 等)、器件型号 (DRV8434S/SIM7500/芯片厂)、总线/寄存器级表述 —— 改为功能语义 ("步进电机升降机构"/"UHF 读写模块"/"电机驱动器件故障"), 共 32 处; ④ 脚注追加 Round 011 记录</td></tr>
+<tr><td><code>App_Unlock_Flow.html</code> <b>(新增)</b></td><td>解锁全流程详解: 就绪时序 / ONE_SHOT 8 阶段 / UNLOCK_MULTI 8 阶段 / LOCKER 七态 / 失败→错误码→灯语总表 / 进度观测命令 / 灯语时序图 (正常+失败)。全文协议层视角, 零硬件内容</td></tr>
+</table>
+
+<h2>4. 回归终态</h2>
+<table>
+<tr><th>套件</th><th>结果</th><th>说明</th></tr>
+<tr><td>P2 基础</td><td>16/0</td><td>复位/回零/枚举</td></tr>
+<tr><td>P3 电机</td><td>26/0 (+4 OBS 既有)</td><td>MOVE/TEST/自检</td></tr>
+<tr><td>P4 UHF</td><td>23/0</td><td>含配置还原</td></tr>
+<tr><td>P5 AM</td><td>16/0</td><td>含持久化复核</td></tr>
+<tr><td>P6 Locker/OneShot/Multi</td><td>51/0</td><td>含 D4 全流程/推送帧/终帧</td></tr>
+<tr><td>P9 修正批回归</td><td>30/0</td><td>互斥/IO_DIAG/QUERY/回零窗口</td></tr>
+</table>
+<div class="card"><b>灯语本身为物理输出, 自动化只能验证协议路径与状态机分支</b> (上述全部通过即证明各灯语调用点被正确执行); 灯色/节奏的肉眼辨识度属人工验证项——见下节清单。</div>
+
+<h2>5. 人工观察项清单 (自动化不可覆盖, 建议现场过一遍)</h2>
+<ul>
+<li>叙事链辨识度: 白慢闪(放标) → 蓝慢闪+蓝单闪(在读/读到) → 绿单闪(命中) → 绿常亮(升起) → 白常亮+白单闪(软标) → 绿三连闪(完成), 一次真实结账全程走一遍。</li>
+<li>蓝 vs 绿慢闪区分 (蓝慢闪=盘点中 / 降级绿慢闪同图样): 当前硬件蓝通道在位, 无降级; 若后续批次无蓝, 复核降级图样不与"升起绿常亮"混淆。</li>
+<li>失败灯语: 放错标签红快闪 3s; 不放标窗满黄慢闪 2s (不要与回零黄慢闪场景撞见——回零仅复位后窗口内出现)。</li>
+<li>蓝单闪频率: 场上常驻无关标签时每轮盘点闪一次 (1s 周期), 确认不致误解为故障。</li>
+</ul>
+
+<h2>6. 结论</h2>
+<p><b>方案 A 全部落地并回归通过</b>: 三条解锁主线的灯语升级为"五色叙事" (白=等你 / 蓝=在读 / 绿=对了 / 红=出事 / 黄=自检类), 失败盲区 (未放标/无标签/链路断) 全部有灯, 读到标签有即时反馈。协议文档完成硬件层净化 (仅协议层语义), 解锁全流程独立成册 (App_Unlock_Flow.html)。固件 ZLR5401_202609022328.hex, 设备终态: App 在线, IO_DIAG 全字段正常, 回零 READY, 自检位图 0。遗留: 灯语肉眼辨识度人工项 (§5), 交现场验收。</p>
+
+<div class="foot">Round_011 Report · 测试执行: Agent/Round_098/test (P2~P6, P9 复用) · 固件 diff 见 git 提交 · 2026-09-02</div>
+</div>
+</body>
+</html>

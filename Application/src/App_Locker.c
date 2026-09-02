@@ -348,6 +348,7 @@ static void match_scan_process(uint32_t now)
     /* 取一条放置的硬标签 (一次一个) */
     AppUHFTag_t tag;
     if (App_UHF_TagTake(&tag) == 0) {
+        App_RgbLedPat_Flash(RGBFLASH_TAG_SEEN);   /* 读到一张标签: 蓝单闪 (Round_011 A) */
         /* 清单比对: 先未解锁项 (新匹配), 再已解锁项 (重复读不算失配) */
         int idx = -1;
         uint8_t seenMatched = 0u;
@@ -436,7 +437,7 @@ static void locker_process_soft(void)
     uint32_t fail = App_AM_GetFailCount();
     if (fail != s_amFailSeen) {
         s_amFailSeen = fail;
-        App_RgbLedPat_Flash(RGBFLASH_SOFT_FAIL);
+        App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);
     }
     if (deadline_hit(now)) {
         evr_push(LOCKER_EVT_TIMEOUT, (const uint8_t *)0, 0u);
@@ -488,7 +489,7 @@ static void locker_process_fault(void)
 }
 
 /* ---- RGB 灯语稳态映射 (每拍声明, 幂等; 仲裁见 App_RgbLed_Pattern) ----
- *  扫描段(CONFIGURED/HOLD, 未在升起) -> SCAN_WAIT 青慢闪: 等放硬标签
+ *  扫描段(CONFIGURED/HOLD, 未在升起) -> SCAN_ACTIVE 蓝慢闪: 盘点校对进行中 (Round_011 A)
  *  寻触上升中 -> RISE_HOLD_GREEN 绿常亮 (升起到位后回扫描色, 继续等余下标签)
  *  软标阶段(未在上升) -> SOFT_WAIT_WHITE 白常亮: 轮到软标(红外/消磁)
  *  FAULT -> 红常亮; IDLE/DONE/LOWERING -> 灭 */
@@ -498,7 +499,7 @@ static void pat_sync(void)
     switch (s_ctx.state) {
     case LOCKER_CONFIGURED:
     case LOCKER_UNLOCK_HOLD:
-        pat = (s_motor == M_RISE) ? RGBPAT_RISE_HOLD_GREEN : RGBPAT_SCAN_WAIT;
+        pat = (s_motor == M_RISE) ? RGBPAT_RISE_HOLD_GREEN : RGBPAT_SCAN_ACTIVE;
         break;
     case LOCKER_SOFT_DECODE:
         pat = (s_motor == M_RISE) ? RGBPAT_RISE_HOLD_GREEN : RGBPAT_SOFT_WAIT_WHITE;

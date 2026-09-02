@@ -10,19 +10,19 @@
  * 稳态由各流程按槽位声明, 仲裁取最高优先级图样。
  * ===================================================================== */
 
-/* 颜色掩码 (蓝灯硬件缺失时降级: 青->绿, 白->黄, 粉红->红) */
+/* 颜色掩码 (蓝灯硬件缺失时降级: 白->黄, 粉红->红; Round_011 图样级降级见查表) */
 #if RGB_HAS_BLUE
 #define C_GREEN   (RGB_BIT_G)
 #define C_RED     (RGB_BIT_R)
 #define C_YELLOW  (RGB_BIT_G | RGB_BIT_R)
-#define C_CYAN    (RGB_BIT_G | RGB_BIT_B)
+#define C_BLUE    (RGB_BIT_B)
 #define C_WHITE   (RGB_BIT_G | RGB_BIT_R | RGB_BIT_B)
 #define C_PINK    (RGB_BIT_R | RGB_BIT_B)
 #else
 #define C_GREEN   (RGB_BIT_G)
 #define C_RED     (RGB_BIT_R)
 #define C_YELLOW  (RGB_BIT_G | RGB_BIT_R)
-#define C_CYAN    (RGB_BIT_G)                  /* 降级: 青只亮绿 */
+#define C_BLUE    (RGB_BIT_G)                  /* 降级: 蓝只亮绿 */
 #define C_WHITE   (RGB_BIT_G | RGB_BIT_R)       /* 降级: 白只亮黄 */
 #define C_PINK    (RGB_BIT_R)                   /* 降级: 粉红只亮红 */
 #endif
@@ -34,8 +34,16 @@ typedef struct {
     uint16_t onMs;
 } PatDesc_t;
 
+/* Round_011 方案A "五色叙事": 等放标=白慢闪(该你了), 盘点中=蓝慢闪(该我了);
+ * 无蓝硬件时图样级降级 (白慢闪->黄慢闪, 蓝慢闪->绿慢闪), 与颜色掩码降级独立. */
 static const PatDesc_t s_pat[] = {
-    [RGBPAT_SCAN_WAIT]       = { C_CYAN,  RGB_PAT_BLINK_MS, RGB_PAT_BLINK_MS / 2u },
+#if RGB_HAS_BLUE
+    [RGBPAT_IR_WAIT]         = { C_WHITE, RGB_PAT_BLINK_MS, RGB_PAT_BLINK_MS / 2u },
+    [RGBPAT_SCAN_ACTIVE]     = { C_BLUE,  RGB_PAT_BLINK_MS, RGB_PAT_BLINK_MS / 2u },
+#else
+    [RGBPAT_IR_WAIT]         = { C_YELLOW, RGB_PAT_BLINK_MS, RGB_PAT_BLINK_MS / 2u },
+    [RGBPAT_SCAN_ACTIVE]     = { C_GREEN,  RGB_PAT_BLINK_MS, RGB_PAT_BLINK_MS / 2u },
+#endif
     [RGBPAT_RISE_HOLD_GREEN] = { C_GREEN, 0u, 0u },
 #if RGB_HAS_BLUE
     [RGBPAT_SOFT_WAIT_WHITE] = { C_WHITE, 0u, 0u },           /* 白常亮 */
@@ -62,9 +70,15 @@ static const FlashDesc_t s_flash[] = {
 #else
     [RGBFLASH_SOFT_OK]     = { C_YELLOW, 200u,  200u,  200u },   /* 降级黄单闪 */
 #endif
-    [RGBFLASH_SOFT_FAIL]   = { C_RED,    500u,  250u, 1000u },   /* 红双闪 */
+    [RGBFLASH_FAIL_DOUBLE] = { C_RED,    500u,  250u, 1000u },   /* 红双闪 */
     [RGBFLASH_MISMATCH_3S] = { C_RED,    500u,  250u, 3000u },   /* 红快闪 3s */
     [RGBFLASH_DONE_3GREEN] = { C_GREEN,  600u,  300u, 1800u },   /* 绿三连闪 */
+#if RGB_HAS_BLUE
+    [RGBFLASH_TAG_SEEN]    = { C_BLUE,   200u,  200u,  200u },   /* 蓝单闪: 读到一张标签 */
+#else
+    [RGBFLASH_TAG_SEEN]    = { C_YELLOW, 200u,  200u,  200u },   /* 降级黄单闪 (与命中绿闪区分) */
+#endif
+    [RGBFLASH_WARN_2S]     = { C_YELLOW, 1000u,  500u, 2000u },  /* 黄慢闪 2s: 未放标/无标签收尾 */
 };
 
 static uint8_t  s_claim[RGBSRC_COUNT];   /* 各源当前稳态声明 (0=OFF) */
@@ -97,7 +111,7 @@ void App_RgbLedPat_Clear(uint8_t src)
 
 void App_RgbLedPat_Flash(uint8_t id)
 {
-    if (id == RGBFLASH_NONE || id > RGBFLASH_DONE_3GREEN) return;
+    if (id == RGBFLASH_NONE || id > RGBFLASH_WARN_2S) return;
     s_flashId = id;
     s_flashT0 = SysTickHl_GetMs();
 }
