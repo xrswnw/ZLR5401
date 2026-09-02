@@ -213,7 +213,7 @@ N+7    crc32       4B    CRC32 (LE), 覆盖前 N+3 字节
                 <tr><th>FC</th><th>名称</th><th>Request payload</th><th>Response payload</th><th>说明</th></tr>
                 <tr><td>0x01</td><td>FC_HANDSHAKE</td><td>(空)</td><td>28B: result/protoVer/status/UID/uidHash/layer(0)/upgradeCount/baudRate</td><td>握手, layer=0 表示 Boot (与 App 字段一致, 仅 Layer 不同; Round 019)</td></tr>
                 <tr><td>0x03</td><td>FC_UPGRADE_START</td><td>16 或 17 字节: FwSize(4) + FwCrc32(4) + FwVer(4) + BindVerify(4) + [VerifyLevel(1)]</td><td>1 字节: result</td><td>启动升级, 擦除 Flash, 进入 IAP_ERASED 状态</td></tr>
-                <tr><td>0x04</td><td>FC_FW_DATA</td><td>≥4 字节: seq(2) + addrOffset(2) + data(N)</td><td>3 字节: seq(2) + result(1)</td><td>传输一包固件数据 (写 flash)</td></tr>
+                <tr><td>0x04</td><td>FC_FW_DATA</td><td>≥6 字节: seq(2) + addrOffset(4) + data(N)</td><td>3 字节: seq(2) + result(1)</td><td>传输一包固件数据 (写 flash)</td></tr>
                 <tr><td>0x05</td><td>FC_UPGRADE_VERIFY</td><td>(空)</td><td>2 字节: result + subCode</td><td>CRC32 + Size + 向量 + 绑定校验 (按 VerifyLevel)</td></tr>
                 <tr><td>0x06</td><td>FC_UPGRADE_EXEC</td><td>(空)</td><td>1 字节: result</td><td>写 Param + NVIC_SystemReset() 跳 App</td></tr>
                 <tr><td>0x07</td><td>FC_DEVICE_INFO</td><td>(空)</td><td>34B: result/addr/hwVersion/bootVersion</td><td>设备信息, version 字段在 Boot 层内容为 bootVersion</td></tr>
@@ -262,7 +262,7 @@ N+7    crc32       4B    CRC32 (LE), 覆盖前 N+3 字节
 5. 数据传输: 多次 FC_FW_DATA (0x04)
    └─ 每包 Request data (≥4 字节):
         [0..1]   seq (u16 LE)            // 包序号
-        [2..3]   addrOffset (u16 LE)     // APP 区偏移 (0..FwSize-1)
+        [2..5]   addrOffset (u32 LE)     // APP 区偏移 (0..FwSize-1) — Round_098 BUG#4: 原 u16 在固件 &gt;64KB 时无编码, 扩为 u32
         [4..N]   data (N-4 字节)          // 实际固件数据
    └─ Boot 处理:
         检查 state==IAP_ERASED
@@ -378,7 +378,7 @@ for (i = 0; i < erasePages; i++) {
             <pre>data (≥4 字节, LE):
   Offset  字段         长度  说明
   0x00    seq          2B    包序号 (主机递增, 用于匹配响应)
-  0x02    addrOffset   2B    APP 区偏移 (0..FwSize-1, 从 APP_FLASH_ORIGIN 开始)
+  0x02    addrOffset   4B    APP 区偏移 (u32 LE, 0..FwSize-1, 从 APP_FLASH_ORIGIN 开始)
   0x04    data         N     实际固件数据 (N = dataLen - 4)
 
 frame.length = 5 + N (N = addrOffset_end - addrOffset, 主机分片决定)

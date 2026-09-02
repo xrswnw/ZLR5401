@@ -193,7 +193,12 @@ int main(void) {
 
     JumpToApp();
 
-    /* JumpToApp returned — app flash is invalid, stay in update loop*/
+    /* JumpToApp returned — app flash is invalid, stay in update loop.
+     * Round_098 BUG#5: SysTick 已在上行 Stop, 兜底循环若不重启, ms 计时冻结,
+     * 任何协议响应的 WaitEp1Ready 自旋 (50ms 上限依赖 GetMs) 变成无限死等,
+     * 设备永久哑死 (JLink 实测: tick 冻结在 2500, PC 卡 WaitEp1Ready).
+     * App 无效时 JumpToApp 必然回落到这里, 必须恢复 SysTick. */
+    SysTickHl_Init();
     stayInUpdate = 1;
     while (1) {
         Proto_Poll();

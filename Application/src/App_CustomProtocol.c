@@ -197,8 +197,11 @@ extern volatile uint8_t App_Usb_TxBusy;
 static void WaitEp1Ready(void)
 {
     uint32_t t0 = SysTickHl_GetMs();
+    /* Round_098 BUG#5 防御 (同步 Boot): 硬迭代上限不依赖 SysTick —
+     * SysTick 停止时 50ms 时间上限永不触发, 自旋退化为死等. */
+    uint32_t guard = 4000000u;
     while (((GetEPTxStatus(ENDP1) & EP_TX_VALID) || App_Usb_TxBusy) &&
-           (SysTickHl_GetMs() - t0) < 50) { /* spin*/ }
+           (SysTickHl_GetMs() - t0) < 50 && --guard) { /* spin*/ }
 }
 
 void Proto_TxFrame(uint8_t channel, uint8_t fc, const uint8_t *data, uint16_t len) {

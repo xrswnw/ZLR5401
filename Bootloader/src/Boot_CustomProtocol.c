@@ -195,8 +195,12 @@ extern volatile uint8_t g_boot_usb_tx_busy;
 static void WaitEp1Ready(void)
 {
     uint32_t t0 = SysTickHl_GetMs();
+    /* Round_098 BUG#5 防御: 硬迭代上限不依赖 SysTick — 若 SysTick 停止
+     * (ms 冻结), 50ms 时间上限永不触发, 自旋退化为死等. 4e6 次迭代
+     * @72MHz ≈ 0.2~0.4s 兜底脱离, 之后 TxDma 覆写 PMA (上一包已丢失). */
+    uint32_t guard = 4000000u;
     while (((GetEPTxStatus(ENDP1) & EP_TX_VALID) || g_boot_usb_tx_busy) &&
-           (SysTickHl_GetMs() - t0) < 50) { /* spin*/ }
+           (SysTickHl_GetMs() - t0) < 50 && --guard) { /* spin*/ }
 }
 
 void Proto_TxFrame(uint8_t channel, uint8_t fc, const uint8_t *data, uint16_t len) {

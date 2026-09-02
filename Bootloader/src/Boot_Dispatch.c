@@ -114,7 +114,7 @@ void BootDispatch(ProtoFrame_t *f) {
 
     case FC_FW_DATA: {
         uint8_t rsp[3];
-        if (f->dataLen < 4 || g_sIap.State != IAP_ERASED) {
+        if (f->dataLen < 6 || g_sIap.State != IAP_ERASED) {
             rsp[0] = (uint8_t)f->data[0];
             rsp[1] = (uint8_t)(f->dataLen > 1 ? f->data[1] : 0);
             rsp[2] = DATA_ADDR_ERR;
@@ -123,9 +123,14 @@ void BootDispatch(ProtoFrame_t *f) {
         }
 
         uint16_t seq = (uint16_t)f->data[0] | ((uint16_t)f->data[1] << 8);
-        uint16_t addrOffset = (uint16_t)f->data[2] | ((uint16_t)f->data[3] << 8);
-        uint16_t dataLen = f->dataLen - 4;
-        const uint8_t *data = &f->data[4];
+        /* Round_098 BUG#4: addrOffset 原 u16 (≤65535), 而 APP_FLASH_SIZE 已扩到
+         * 232KB 且当前固件 78KB — 偏移超出 u16 后无编码, IAP 对真实固件静默
+         * 失效 (Boot_Config 扩容时未同步扩宽本字段). 扩为 u32 (帧 data[2..5]),
+         * 协议文档 Boot_Protocol.html 已同步更新. */
+        uint32_t addrOffset = (uint32_t)f->data[2] | ((uint32_t)f->data[3] << 8)
+                            | ((uint32_t)f->data[4] << 16) | ((uint32_t)f->data[5] << 24);
+        uint16_t dataLen = f->dataLen - 6;
+        const uint8_t *data = &f->data[6];
 
         uint32_t target = APP_FLASH_ORIGIN + addrOffset;
         if (target < APP_FLASH_ORIGIN || target + dataLen > APP_FLASH_END) {

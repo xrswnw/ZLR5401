@@ -1,6 +1,7 @@
 /* * Boot_Usb_HL.c - USB Hardware Layer for Bootloader (STM32 official USB lib)*/
 #include "Boot_Usb_HL.h"
 #include "Boot_Config.h"
+#include "Boot_SysTick_HL.h"
 #include "usb_lib.h"
 #include "usb_conf.h"
 #include "stm32f10x_rcc.h"
@@ -15,6 +16,7 @@ __attribute__((aligned(4))) u8 g_boot_usb_tx_buf[64];
 volatile u8 g_boot_usb_configured = 0;
 volatile u8 g_boot_usb_connected  = 0;
 volatile u8 g_boot_usb_tx_busy    = 0;
+static volatile uint32_t s_u32TxBusyMs = 0;  /* Round_098 BUG#6: tx_busy 置位时刻*/
 
 extern void App_Usb_OnReceive(const uint8_t *data, uint16_t len);
 
@@ -90,13 +92,22 @@ void Boot_Usb_HL_Transmit(const uint8_t *data, uint16_t len)
 {
     extern vu32 bDeviceState;
     (void)bDeviceState;  /* 放宽 CONFIGURED 硬校验, 对齐 App DIAG*/
-    if (g_boot_usb_tx_busy) return;
+    if (g_boot_usb_tx_busy) {
+        /* Round_098 BUG#6: IN 完成中断一旦丢失 (主机侧竞态), tx_busy 永久
+         * 锁存 -> 所有后续响应静默丢弃, 设备"活着"却永久哑. >200ms 强制
+         * 回收: NAK 清 EP_TX_VALID + busy 复零, 本次照发 (上一包已丢,
+         * 协议层可重试). */
+        if ((SysTickHl_GetMs() - s_u32TxBusyMs) < 200u) return;
+        g_boot_usb_tx_busy = 0;
+        SetEPTxStatus(ENDP1, EP_TX_NAK);
+    }
     if (len > 63) len = 63;
     g_boot_usb_tx_buf[0] = 0x02;
     for (uint16_t i = 0; i < len; i++) g_boot_usb_tx_buf[i + 1] = data[i];
     /* 尾部清零: PMA 尾部恒为 0, 防短帧残留*/
     for (uint16_t i = len + 1; i < 64; i++) g_boot_usb_tx_buf[i] = 0;
     g_boot_usb_tx_busy = 1;
+    s_u32TxBusyMs = SysTickHl_GetMs();
     UserToPMABufferCopy(g_boot_usb_tx_buf, ENDP1_TXADDR, 64);
     SetEPTxValid(ENDP1);
 }
