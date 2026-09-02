@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_011 — RGB 灯带灯语设计 (普通人视角) 设计方案</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1060px; margin:0 auto; padding:24px 28px 60px;}
+  .toc{background:#fff; border:1px solid var(--line); border-radius:10px; padding:16px 22px;
+       box-shadow:0 1px 4px rgba(11,42,74,.06);}
+  .toc b{color:var(--navy);}
+  .toc ol{margin:8px 0 0; padding-left:20px;}
+  .toc li{margin:3px 0; font-size:14px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:40px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:12.5px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:12.5px; line-height:1.55;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-left:5px solid var(--sky);
+        border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .card.warn{border-left-color:var(--red);}
+  .card.ok{border-left-color:var(--green);}
+  .card.gold{border-left-color:var(--gold);}
+  .led{display:inline-block; width:52px; height:20px; border-radius:4px;
+       vertical-align:middle; border:1px solid #9db8cf; margin-right:6px;}
+  .lg{background:#22c55e;} .lr{background:#ef4444;} .ly{background:#eab308;}
+  .lc{background:#06b6d4;} .lw{background:#f8fafc;} .lp{background:#ec4899;}
+  .lb{background:#3b82f6;} .loff{background:#334155;}
+  .tag{display:inline-block; font-size:11px; padding:1px 8px; border-radius:10px;
+       color:#fff; margin-left:4px;}
+  .t-keep{background:var(--green);} .t-new{background:var(--blue);} .t-chg{background:var(--gold);}
+  .t-risk{background:var(--red);} .t-dec{background:#7a8ca0;}
+  .foot{margin-top:50px; padding-top:14px; border-top:1px solid var(--line);
+        font-size:12px; color:var(--muted);}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>Round_011 — RGB 灯带灯语设计 · 普通人视角</h1>
+  <div class="sub">需求: Agent/Round_011/Demand.md · 本文档为设计方案, <b>不执行</b>, 待用户查看裁决 · 2026-09-02</div>
+</div>
+<div class="wrap">
+
+<div class="toc">
+<b>目录</b>
+<ol>
+  <li><a href="#s1">解锁相关流程总览 (两条主线 + 背景)</a></li>
+  <li><a href="#s2">现状灯语盘点 (8 色能力 + 已占用表)</a></li>
+  <li><a href="#s3">需求建议逐条评估 (白等待 / 全灭 / 单标闪烁 / 扫描展示)</a></li>
+  <li><a href="#s4">普通人视角: 哪些状态值得亮灯 (重要性排序)</a></li>
+  <li><a href="#s5">提案灯语方案 (推荐 + 备选)</a></li>
+  <li><a href="#s6">实施变更清单与影响面</a></li>
+  <li><a href="#s7">待用户裁决的决策点</a></li>
+</ol>
+</div>
+
+<!-- ============ 1 ============ -->
+<h2 id="s1">1. 解锁相关流程总览</h2>
+<p>设备有两条解锁主线 ( Locker 多标签结账编排 / OneShot 单标签同步开锁 ) 和三个背景流程 ( 回零 / 行程测试 / 行程错误 )。客户能"看见"的灯带语全部来自这五条线。</p>
+
+<h3>1.1 OneShot 单标签同步开锁 (客户在场, 交互主流程)</h3>
+<pre>
+⑴ 前置检查 (Locker/UHF/电机空闲 + 已回零)         → BUSY/HOMING 直接回错误
+⑴.5 <b>等红外: 等客户放硬标签</b> (PC4 光电, 窗=irWaitMs)   ★青慢闪 (现状)
+⑴.6 消磁准备 (仅 demagCnt>0: 探链, 保持检测模式)
+⑵ UHF 就绪 (必要时上电)                            ★青慢闪 (现状)
+⑶ <b>持续盘点校对 EPC</b>: 反复 0x22 读场内标签       ★青慢闪 (现状)
+     读到标签但非期望 → 连续 N 轮 → MISMATCH 红闪 3s 不升起
+     校对预算内无任何标签 → NO_TAG
+     命中期望 EPC → (此刻才切 AM 消磁模式)
+⑷ <b>升起</b>: 上行至 KEY_UP 触点                   ★绿常亮 (现状)
+⑸ 软标消耗: demagCnt 个软标 (AM 消磁 + 红外计数)    ★白常亮 (现状)
+⑹ 回降: 下行至 KEY_DOWN                            ★灭 (现状)
+     全程完成 → 绿三连闪 1.8s
+</pre>
+
+<h3>1.2 Locker 多标签结账编排 (七状态机, 后台运行)</h3>
+<pre>
+IDLE → CONFIGURED (配清单等放硬标, 持续扫描)          ★青慢闪
+     → UNLOCK_HOLD (逐张匹配; 命中→绿单闪+升起)       ★升=绿常亮 / 扫描段=青慢闪
+     → SOFT_DECODE (硬标全解, 轮软标: 红外+消磁)      ★白常亮
+     → DONE (全部消耗完; 绿三连闪) → LOWERING 回降     ★灭
+     → FAULT (8 种故障归因)                           ★红常亮
+</pre>
+
+<h3>1.3 背景流程 (客户不交互, 但灯会被占用)</h3>
+<table>
+<tr><th>流程</th><th>触发</th><th>现状灯语</th></tr>
+<tr><td>上电/复位后台回零</td><td>USB 就绪后 ~7.3-12s</td><td><span class="led ly"></span>黄慢闪</td></tr>
+<tr><td>行程测试 (TEST)</td><td>上位机命令</td><td><span class="led ly"></span>黄快闪</td></tr>
+<tr><td>行程开关错误</td><td>回零失败/运行越腿长</td><td>上错=<span class="led ly"></span>黄闪 / 下错=<span class="led lp"></span>粉红闪 (最高优先级, 盖过一切)</td></tr>
+<tr><td>待机 IDLE</td><td>无业务</td><td><span class="led loff"></span>灭</td></tr>
+</table>
+
+<!-- ============ 2 ============ -->
+<h2 id="s2">2. 现状灯语盘点 — 8 色能力与占用</h2>
+<p>灯带为开关型 GPIO 三色 (G=PA4 / R=PA5 / B=PA6, <b>蓝通道硬件已回归</b>, <code>RGB_HAS_BLUE=1</code>), 无调光 — 图样 = 颜色 + 周期/占空比。理论 8 色 × (常亮/慢闪1s/快闪0.5s/短闪0.2s) 组合充足, 但<b>客户可见语义应控制在 5 色以内</b> (见 §4)。</p>
+<table>
+<tr><th>颜色</th><th>组合</th><th>当前用途 (状态)</th><th>当前用途 (事件闪)</th></tr>
+<tr><td><span class="led lg"></span>绿 G</td><td>100</td><td>升起/解锁保持 (常亮)</td><td>硬标命中 (单闪 200ms) / 结账完成 (三连闪)</td></tr>
+<tr><td><span class="led lr"></span>红 R</td><td>010</td><td>故障 FAULT (常亮)</td><td>EPC 失配 (快闪 3s) / 消磁失败 (双闪)</td></tr>
+<tr><td><span class="led ly"></span>黄 G+R</td><td>110</td><td>回零 (慢闪) / 行程测试 (快闪)</td><td>—</td></tr>
+<tr><td><span class="led lc"></span>青 G+B</td><td>101</td><td>扫描等硬标签 (慢闪) ★与"等放标"共用一色</td><td>—</td></tr>
+<tr><td><span class="led lw"></span>白 G+R+B</td><td>111</td><td>软标等待/红外消磁 (常亮)</td><td>软标消耗成功 (单闪)</td></tr>
+<tr><td><span class="led lp"></span>粉红 R+B</td><td>011</td><td>下行程开关错误 (闪, 工程语义)</td><td>—</td></tr>
+<tr><td><span class="led lb"></span>蓝 B</td><td>001</td><td><b>完全未使用 — 空闲色</b></td><td>—</td></tr>
+<tr><td><span class="led loff"></span>灭</td><td>000</td><td>待机 / 回降 / DONE 后</td><td>—</td></tr>
+</table>
+<div class="card"><b>现状结论</b>: 8 色实际用了 6 色 + 灭, 蓝色完全空闲; 客户主线只占 绿/红/青/白 四色, 工程语义 (黄/粉红) 与客户语义已天然分离。已有仲裁器 (L1 行程错 → L2 事件闪 → L3 稳态 → L4 手动 → L5 灭) 结构完备, <b>新增灯语只是查表加行 + 调用点改色, 不动架构</b>。</div>
+
+<!-- ============ 3 ============ -->
+<h2 id="s3">3. 需求建议逐条评估</h2>
+<table>
+<tr><th>需求建议</th><th>现状</th><th>评估</th><th>结论</th></tr>
+<tr><td>一致 → 绿亮升起开锁</td><td>绿常亮 (升起)</td><td>已实现, 语义直观, 保留</td><td><span class="tag t-keep">保留</span></td></tr>
+<tr><td>不一致 → 红闪不升起</td><td>红快闪 3s + 不升起</td><td>已实现, 保留</td><td><span class="tag t-keep">保留</span></td></tr>
+<tr><td>等待红外 → 白色</td><td>青慢闪</td><td>可行。白目前 = 软标等待 (也是"等人操作"), 把白统一为<b>"等待你的操作"</b>语义, 等放硬标/等软标消磁同色, 普通人记一种就够。建议白<b>慢闪</b> (等待中) 与软标白<b>常亮</b> (流程已过半) 区分层级</td><td><span class="tag t-chg">采纳·改白慢闪</span></td></tr>
+<tr><td>等待硬标签解码 → 全灭</td><td>青慢闪 (与等放标同色, 无法区分阶段)</td><td><b>方向对 (该阶段应与"等放标"区分), 但全灭有代价</b>: ①与待机/关机无法区分, 客户放了标却见设备"没反应", 分不清是在读还是死了; ②灯带灭 1-10s 的盘点窗内没有任何"活着"的证据。<b>备选</b>: 蓝慢闪 ("正在读标签") 或 长周期心跳蓝 (3s 周期亮 150ms, 视觉接近"安静的呼吸")</td><td><span class="tag t-dec">决策点 D1</span></td></tr>
+<tr><td>解码成功一个标签 → 闪一下</td><td>无任何反馈 (仅命中那张绿闪)</td><td><b>这是现状最大盲区, 强烈建议新增</b>。客户把标签放上去之后, 现在只有"命中"(绿) 和"失配"(红) 两种结局灯, 中间读到过什么都不说 — 现场极易误判"设备读不到/坏了"。建议每解码一张 (无论是否期望标签) 蓝单闪 200ms, 给"我看到东西了"的即时触觉反馈。闪显槽深 1, 连续多张会合并成一次闪, 恰好不会闪成爆闪</td><td><span class="tag t-new">新增·蓝单闪</span></td></tr>
+<tr><td>EPC 扫描中 → 展示</td><td>无独立展示 (与等放标共用青闪)</td><td>与"等待解码"同一阶段 (⑶ 盘点校对)。即 D1 决定的颜色/图样就是"扫描中"的展示; 若选蓝系, 则形成完整叙事: <b>白=等你放 → 蓝=正在读 → 闪一下=读到了 → 绿=对了 → 红=错了</b></td><td><span class="tag t-dec">随 D1</span></td></tr>
+<tr><td>其他实际状态 (开放项)</td><td>见 §5 表"失败类盲区"</td><td>NO_IR / NO_TAG / 链路断等失败路径目前灯直接回灭, 现场人无任何失败提示 (仅上位机能看到 err 码) — 建议补, 见 D4</td><td><span class="tag t-dec">决策点 D4</span></td></tr>
+</table>
+
+<!-- ============ 4 ============ -->
+<h2 id="s4">4. 普通人视角: 哪些状态值得亮灯</h2>
+<p>站在"什么都不懂、只想把标签解开"的使用者角度, 按重要性排序 (①最优先):</p>
+<table>
+<tr><th>#</th><th>用户心里的问题</th><th>对应状态</th><th>现状能回答吗</th><th>重要性依据</th></tr>
+<tr><td>①</td><td>"我现在该干什么?"</td><td>等放标 / 等软标</td><td>能 (青/白), 但两色无"等你"的统一感</td><td>每单必经, 最高频</td></tr>
+<tr><td>②</td><td>"我放的东西它读到了吗?"</td><td>盘点中读到标签 (含非期望)</td><td><b>不能 — 盲区</b></td><td>读不到 vs 设备坏了, 客户无法自救, 直接找店员/售后</td></tr>
+<tr><td>③</td><td>"成功了吗 / 错了吗?"</td><td>命中升起 / 失配 / 完成</td><td>能 (绿/红闪/绿三连闪), 语义已直观</td><td>结局时刻, 决定客户走还是留</td></tr>
+<tr><td>④</td><td>"设备是活的吗?"</td><td>任何流程进行中 vs 待机/死机</td><td>部分能; 若采纳"全灭"则不能</td><td>黑屏焦虑 — 无人值守场景尤其重要</td></tr>
+<tr><td>⑤</td><td>"坏了是什么坏法?"</td><td>NO_IR/NO_TAG/链路断/机械故障</td><td><b>基本不能</b> (仅失配有红闪; 其余灯直接灭)</td><td>店员排障第一入口, 但可用声音/上位机兜底</td></tr>
+<tr><td>—</td><td>(工程状态: 回零/测试/行程错)</td><td>装机调试期状态</td><td>能 (黄系/粉红, 已与客户语义分离)</td><td>客户不关心, 维持现状即可</td></tr>
+</table>
+<div class="card gold"><b>设计原则 (从上面推导, 越少越直观)</b>:
+<ul>
+<li><b>一色一义</b>: 绿=成功 / 红=出错 / 白=等你操作 / 蓝=我在读标签 / 黄=设备自检忙 (工程)。粉红仅工程用。</li>
+<li><b>闪=需要你注意或正在活动, 常亮=状态稳定</b>: 慢闪(1s)=等待/进行中, 快闪(0.5s)=告警级, 短闪(0.2s)=瞬时事件确认。</li>
+<li><b>绝不全灭表达"正在工作"</b> — 灭只属于"待机/完成"。</li>
+<li><b>客户可见色 ≤5</b> (绿红白蓝 + 灭); 超过这个数, 普通人就开始查手册, 设计就失败了。</li>
+<li>时序完整性: 灯语叙事链条 <b>白(等你) → 蓝(在读) → 蓝闪(读到了) → 绿(对了/升起来了) → 绿三闪(办完了) / 红闪(不对) / 红常亮(坏了)</b>。</li>
+</ul></div>
+
+<!-- ============ 5 ============ -->
+<h2 id="s5">5. 提案灯语方案</h2>
+
+<h3>5.1 推荐方案 (方案 A: "五色叙事")</h3>
+<table>
+<tr><th>阶段/事件</th><th>图样</th><th>现状</th><th>变化</th></tr>
+<tr><td>等放硬标签 (OneShot ⑴.5 红外窗)</td><td><span class="led lw"></span>白慢闪 1s</td><td>青慢闪</td><td><span class="tag t-chg">改</span></td></tr>
+<tr><td>UHF 就绪 + 盘点校对中 (⑵/⑶; Locker 扫描段)</td><td><span class="led lb"></span>蓝慢闪 1s</td><td>青慢闪</td><td><span class="tag t-chg">改</span></td></tr>
+<tr><td>解码到一张标签 (任何 EPC, 每轮盘点)</td><td><span class="led lb"></span>蓝单闪 200ms</td><td>无</td><td><span class="tag t-new">新增</span></td></tr>
+<tr><td>命中期望标签</td><td><span class="led lg"></span>绿单闪 200ms</td><td>绿单闪</td><td><span class="tag t-keep">不变</span></td></tr>
+<tr><td>升起 / 解锁保持</td><td><span class="led lg"></span>绿常亮</td><td>绿常亮</td><td><span class="tag t-keep">不变</span></td></tr>
+<tr><td>软标等待 (红外/消磁)</td><td><span class="led lw"></span>白常亮</td><td>白常亮</td><td><span class="tag t-keep">不变</span></td></tr>
+<tr><td>软标消耗成功</td><td><span class="led lw"></span>白单闪 200ms</td><td>白单闪</td><td><span class="tag t-keep">不变</span></td></tr>
+<tr><td>消磁失败</td><td><span class="led lr"></span>红双闪 1s</td><td>红双闪</td><td><span class="tag t-keep">不变</span></td></tr>
+<tr><td>EPC 失配 (不升起)</td><td><span class="led lr"></span>红快闪 3s</td><td>红快闪 3s</td><td><span class="tag t-keep">不变</span></td></tr>
+<tr><td>结账完成</td><td><span class="led lg"></span>绿三连闪 1.8s</td><td>绿三连闪</td><td><span class="tag t-keep">不变</span></td></tr>
+<tr><td>回降 / 待机 / DONE 后</td><td><span class="led loff"></span>灭</td><td>灭</td><td><span class="tag t-keep">不变</span></td></tr>
+<tr><td>故障 FAULT</td><td><span class="led lr"></span>红常亮</td><td>红常亮</td><td><span class="tag t-keep">不变</span></td></tr>
+<tr><td>回零 / 行程测试 / 行程错 (工程)</td><td><span class="led ly"></span>黄系 / <span class="led lp"></span>粉红</td><td>同左</td><td><span class="tag t-keep">不变</span></td></tr>
+</table>
+<div class="card ok"><b>为什么这样分白/蓝</b>: 白 = "该你了" (设备在等人动作 — 放标、消磁), 蓝 = "该我了" (设备自己在干活 — 射频读标签)。绿/红保持不变是因为已经是对的。青色从客户主线退场 (空闲出来, 留给未来扩展), 客户面从 4 色减到 4 色但<b>每色一义、每阶段一色</b>, 阶段推进时灯必变色, 客户永远知道流程走到哪了。</div>
+
+<h3>5.2 失败类盲区补齐 (方案 A 附加项, 对应需求 #2 "其他实际状态")</h3>
+<table>
+<tr><th>失败</th><th>现状</th><th>建议</th><th>备注</th></tr>
+<tr><td>NO_IR (irWaitMs 内没放标)</td><td>灯直接灭, 无提示</td><td><span class="led ly"></span>黄慢闪 2s ×1 次</td><td>"没看到东西" — 黄与客户红/绿不冲突, 借工程色表示"非故障的未完成"</td></tr>
+<tr><td>NO_TAG (校对预算内场内无标签)</td><td>灯直接灭</td><td><span class="led ly"></span>黄慢闪 2s ×1 次</td><td>同上 (标被拿走了/没放到位)</td></tr>
+<tr><td>UHF/AM 链路断 (流程失败)</td><td>灯直接灭</td><td><span class="led lr"></span>红双闪 1s ×1 次</td><td>设备级问题, 用红但与失配的"快闪3s"区分节奏</td></tr>
+<tr><td>NO_IR 等待窗进行中 (最后 3s)</td><td>白慢闪不变</td><td>白快闪 (可选)</td><td>"快没时间了" — 可做可不做, 见 D5</td></tr>
+</table>
+
+<h3>5.3 备选方案 B (严格按需求原案)</h3>
+<p>等待解码阶段 = <b>全灭</b>, 其余同方案 A。实现最简单, 但付出: 流程 1~10s 内灯带全黑, 与待机/断电不可区分 (§4 ④); 期间读标闪烁 (蓝单闪) 会成为黑暗中唯一信号, "闪一下然后又黑"体验上像接触不良。若确认现场有屏显/声音兜底告示"扫描中", 此方案可接受。</p>
+
+<!-- ============ 6 ============ -->
+<h2 id="s6">6. 实施变更清单与影响面</h2>
+<table>
+<tr><th>#</th><th>变更</th><th>位置</th><th>量级</th></tr>
+<tr><td>C1</td><td>新增稳态 <code>RGBPAT_SCAN_ACTIVE</code> (蓝慢闪) + 降级 (蓝硬件缺失时→绿慢闪)</td><td><code>App_RgbLed_Pattern.h/.c</code> 查表加行</td><td>小</td></tr>
+<tr><td>C2</td><td>新增闪显 <code>RGBFLASH_TAG_SEEN</code> (蓝单闪 200ms)</td><td>同上 + <code>App_Locker.c</code>/<code>App_LockerUnlock.c</code> 盘点回调处各 1 行</td><td>小</td></tr>
+<tr><td>C3</td><td>等放标 青慢闪 → 白慢闪; 盘点段 青慢闪 → 蓝慢闪</td><td><code>App_LockerOneShot.c</code> ⑴.5/⑵/⑶、<code>App_Locker.c</code> pat_sync 扫描段</td><td>小 (改色不改构)</td></tr>
+<tr><td>C4</td><td>(若采纳 D4) 失败路径补黄慢闪/红双闪 ×1</td><td>OneShot 各失败 return 前 + Locker fault 入口</td><td>小</td></tr>
+</table>
+<div class="card"><b>不动的东西</b>: 仲裁器架构 (L1-L5)、绿/红全部既有图样、工程黄系、协议 (RGB 手动设色 0x0E 不受影响)、蜂鸣判据、任何业务逻辑 — <b>纯灯语层变更, 无回归风险外溢</b>。测试面: P6 Locker/OneShot 用例只断言协议结果, 不断言灯色, 预计零回归; 新增灯语断言可加在 P9 (IO_DIAG 无灯字段, 灯语验证仍只能人工 — 已在 §7 标注)。</div>
+<div class="card warn"><b>风险与已知边界</b>:
+<ul>
+<li>蓝通道依赖 <code>RGB_HAS_BLUE=1</code> (PA6 已回归硬件); 若现场批次蓝灯缺失, C_CYAN/C_WHITE/C_PINK 走既有降级路径, 新增蓝图样需同样配降级 (C1 已含)。</li>
+<li>"读到一张标签闪一下"在 Locker 连续扫描下每轮盘点都会闪 (1s 周期) — 若场上常驻无关标签, 灯会规律蓝闪, 这是预期 ("一直看到那张标"), 但需现场确认不致误解为故障。</li>
+<li>OneShot ⑶ 盘点循环是阻塞泵 (LockerSeek_Pump 内推进灯), 闪显与稳态切换时序已由仲裁器保证, 无需额外处理。</li>
+</ul></div>
+
+<!-- ============ 7 ============ -->
+<h2 id="s7">7. 待用户裁决的决策点</h2>
+<table>
+<tr><th>#</th><th>问题</th><th>选项</th><th>我的建议</th></tr>
+<tr><td>D1</td><td>"等待硬标签解码 / EPC 扫描中"用什么图样?</td><td>a) 全灭 (原案) / b) 蓝慢闪 / c) 心跳蓝 (3s 周期亮 150ms)</td><td><b>b</b> — "正在读"的明确感; c 是 b 的安静版, 高端场合可选</td></tr>
+<tr><td>D2</td><td>"解码到一张标签"闪烁颜色</td><td>a) 蓝 / b) 白</td><td><b>a 蓝</b> — 白已留给"软标消耗成功"闪, 两义撞色会混</td></tr>
+<tr><td>D3</td><td>等放标 = 白慢闪, 与软标白常亮同色系</td><td>a) 同色系 (慢闪/常亮区分) / b) 维持青慢闪</td><td><b>a</b> — "白=等你"一义贯通; b 则保留青色第 5 客户色</td></tr>
+<tr><td>D4</td><td>失败盲区补灯 (NO_IR/NO_TAG 黄慢闪, 链路断红双闪)</td><td>a) 补 / b) 不补 (依赖上位机/蜂鸣)</td><td><b>a</b> — 成本一行灯语, 换现场自助排障</td></tr>
+<tr><td>D5</td><td>NO_IR 等待窗最后 3s 白快闪催促</td><td>a) 做 / b) 不做</td><td><b>b 不做</b> — 增加一个图样但信息量低, 先保 5 色纪律</td></tr>
+</table>
+<div class="card gold"><b>本方案不执行</b>。以上 D1-D5 裁决后, 按 §6 清单实施 (预计 4 处小改, 半轮内含构建/烧录/回归 + Report.html 收尾)。若对推荐方案 A 整体认可, 直接回复"按方案 A 执行"即可全采纳。</div>
+
+<div class="foot">Round_011 Plan · 依据: Agent/Round_011/Demand.md + 源码取证 (App_RgbLed_Pattern.h/.c, App_LockerOneShot.c, App_Locker.c, App_Config.h) + Round_010 灯语仲裁器架构 · 2026-09-02 · 待用户查看, 不执行</div>
+</div>
+</body>
+</html>
