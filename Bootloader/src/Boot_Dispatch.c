@@ -5,6 +5,7 @@
 #include "Boot_Param_HL.h"
 #include "Boot_SysTick_HL.h"   /* SysTickHl_DelayMs (FC_RESET 等 20ms)*/
 #include "Boot_Iwdg_HL.h"      /* IwdgHl_Feed (长擦除循环喂狗)*/
+#include "Boot_FaultStorm.h"  /* BootStorm_Clear (EXEC/EXIT_BOOT 提交成功)*/
 #include "stm32f10x.h"
 
 IapCtx_t g_sIap;
@@ -269,6 +270,7 @@ void BootDispatch(ProtoFrame_t *f) {
         g_sParam.deviceStatus  = PARAM_STATUS_RUN;
         ParamSave(&g_sParam);
 
+        BootStorm_Clear();     /* 升级提交成功: 主机已能救援, 清 fault 风暴计数 */
         NVIC_SystemReset();
         break;
     }
@@ -356,6 +358,7 @@ void BootDispatch(ProtoFrame_t *f) {
         rsp[0] = RESULT_OK;
         Proto_TxResponseTo(ch, devAddr, FC_EXIT_BOOT, rsp, 1);
         SysTickHl_DelayMs(50);
+        BootStorm_Clear();     /* 主机主动退出且 App 校验通过: 清 fault 风暴计数 */
         NVIC_SystemReset();
         break;
     }

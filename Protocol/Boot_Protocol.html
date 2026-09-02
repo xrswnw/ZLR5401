@@ -246,13 +246,13 @@ N+7    crc32       4B    CRC32 (LE), 覆盖前 N+3 字节
 
 4. 启动升级: FC_UPGRADE_START (0x03)
    └─ Request data (16 字节):
-        [0..3]   FwSize (u32 LE)         // 固件大小 (字节, ≤ 40KB)
+        [0..3]   FwSize (u32 LE)         // 固件大小 (字节, ≤ 232KB)
         [4..7]   FwCrc32 (u32 LE)        // 期望 CRC32
         [8..11]  FwVer (u32 LE)          // 固件版本号
         [12..15] BindVerify (u32 LE)     // 绑定校验值 (VerifyLevel=FULL 时使用)
         [16]     VerifyLevel (u8, 可选) // 0=FULL / 1=MID(默认) / 2=BASIC
    └─ Boot 处理:
-        FwSize 校验 (≤ 40KB = APP_FLASH_SIZE, > 0)
+        FwSize 校验 (≤ 232KB = APP_FLASH_SIZE, > 0)
         FlashHl_WriteBegin
         擦除 ceil(FwSize/PAGE) 页 (PAGE=1KB)
         FlashHl_WriteEnd
@@ -337,7 +337,7 @@ N+7    crc32       4B    CRC32 (LE), 覆盖前 N+3 字节
             <h3>请求帧</h3>
             <pre>data (16 或 17 字节, LE):
   Offset  字段         长度  说明
-  0x00    FwSize       4B    固件大小 (字节, ≤ APP_FLASH_SIZE = 40KB)
+  0x00    FwSize       4B    固件大小 (字节, ≤ APP_FLASH_SIZE = 232KB)
   0x04    FwCrc32      4B    期望 CRC32 (覆盖 APP_FLASH_ORIGIN..+FwSize)
   0x08    FwVer        4B    固件版本号 (任意业务定义)
   0x0C    BindVerify   4B    绑定校验值 (VerifyLevel=FULL 时必填)
@@ -349,7 +349,7 @@ frame.length = 5 + 17 = 22 = 0x16 (带 VerifyLevel)</pre>
             <pre>data (1 字节):
   Offset  字段    值       说明
   0x00    result  0=OK     擦除成功, 进入 IAP_ERASED 状态, 可开始 FC_FW_DATA
-                1=NO_SPACE   FwSize > 40KB 或 == 0
+                1=NO_SPACE   FwSize > 232KB 或 == 0
                 2=ERASE_FAIL Flash 擦除失败
 
 完整响应帧: 53 77 ADDR 00 0600 FC result [CRC32 4B]
@@ -362,7 +362,7 @@ erasePages = (FwSize + FLASH_PAGE_SIZE - 1) / FLASH_PAGE_SIZE
               = ceil(FwSize / 1024)
 for (i = 0; i < erasePages; i++) {
     addr = APP_FLASH_ORIGIN + i * 1024
-    if (addr >= APP_FLASH_END) break    // 40KB 越界保护
+    if (addr >= APP_FLASH_END) break    // 232KB 越界保护
     FlashHl_ErasePage(addr)
 }</pre>
             <div class="warn">
@@ -711,9 +711,10 @@ extern DeviceParam_t g_sParam;  // 共享设备参数</pre>
     uint32_t baud = g_sParam.baudRate;
     Uart_Init(baud);                   // HOST_UART (USART2)
     Boot_Usb_Init();                   // USB HL + 注册 USB transport (Round 044, 与 App 对齐)
-    IwdgHl_Init();                     // 独立看门狗 (未启用)
+    IwdgHl_Init();                    // 独立看门狗 (升级态启用, ~2s 预算; 跳 App 后 App 同步接管喂狗)
 
     int stayInUpdate = (g_sParam.deviceStatus == PARAM_STATUS_UPG);
+    if (BootStorm_Check() != 0) stayInUpdate = 1;   // ★ fault 风暴锁存 -> 常驻升级循环 (见下)
 
     __asm volatile ("cpsie i")         // ★ 开中断 (所有初始化完成)
 
@@ -727,17 +728,36 @@ extern DeviceParam_t g_sParam;  // 共享设备参数</pre>
 
     SysTickHl_Stop();
     BootLedOff();
-    JumpToApp();                       // 校验 + 关中断 + 清 NVIC + 设 VTOR + 跳
+    JumpToApp();                       // 校验 + BootStorm_Clear + 关中断 + 清 NVIC + 设 VTOR + 跳
 }</pre>
             <h3>超时与跳转决策</h3>
-            <pre>BOOT_TIMEOUT_MS = 500ms:
+            <pre>BOOT_TIMEOUT_MS = 2500ms:
   IDLE/RUN/FAULT:
-    → 500ms 内无 EnterBoot, 跳 APP
-  UPG (deviceStatus=2):
-    → 停留等待 FC_HANDSHAKE/START
-    → 收到任何升级命令, bootStartMs 重置 (再给 500ms)
+    → 2.5s 内无 EnterBoot/升级命令, 跳 APP
+  UPG (deviceStatus=2) / fault 风暴锁存:
+    → 停留等待 FC_HANDSHAKE/START/EXIT_BOOT (不超时)
+    → 收到任何升级命令, bootStartMs 重置 (再给 2.5s)
     → 完成升级 (Exec 后) NVIC_SystemReset → APP
-    → 主机可以通过 FC_ENTER_BOOT 把 Boot 状态再延 500ms</pre>
+    → 主机可以通过 FC_ENTER_BOOT 把 Boot 状态再延长</pre>
+            <h3>🛡 Fault 复位风暴保护 (Round_098 优化 #7)</h3>
+            <pre>RAM 保留区计数器 (跨复位保持, App .bss 覆盖区之上):
+  0x20002A00  magic 'STOR' (0x53544F52)   0x20002A04  count
+
+  HardFault/MemManage/BusFault/UsageFault → BootStorm_OnFault():
+      count += 1
+      count &lt; 3  → NVIC_SystemReset()          // 偶发 fault: 正常重启
+      count &gt;= 3 → 常驻升级循环 (无限 Proto_Poll + LED + 喂狗)
+                   // 不再复位: 打破 "fault→复位→再 fault" 复位风暴,
+                   // USB 持续可响应, 主机可 IAP 救援或 EXIT_BOOT 退出
+
+  计数清除时机 (任一):
+      JumpToApp 跳转前      — App 成功启动即视为系统健康
+      FC_UPGRADE_EXEC 提交  — 升级成功, 主机已接管
+      FC_EXIT_BOOT 成功     — 主机主动退出且 App 校验通过
+  注: 计数阈值内的复位不清计数 (3 次内仍给正常启动机会); App 自身的
+  fault 复位会重新经过 Boot, 若 App 持续 fault 同样计入并最终锁定到
+  常驻升级循环 — 现象: HANDSHAKE layer=0 持续应答, 主机 EXIT_BOOT
+  或重烧 App 即可恢复。</pre>
         </div>
 
         <!-- Flash 布局 -->
@@ -747,7 +767,7 @@ extern DeviceParam_t g_sParam;  // 共享设备参数</pre>
 ─────────────────────────────────────────────────────────────────
 0x08000000      BOOT_CODE        22 KB   Bootloader 代码
 0x08005800      PARAM            2 KB    参数区 (主 256B + 影子 256B, 实际 512B)
-0x08006000      APP              40 KB   Application 代码 (升级目标)
+0x08006000      APP              232 KB  Application 代码 (升级目标, 0x08006000~0x08040000)
 0x08010000      Flash 末尾
 ─────────────────────────────────────────────────────────────────
 
@@ -848,7 +868,7 @@ APP 区擦除策略:
                 <tr><td>状态机</td><td>NORMAL → BOOT_PENDING</td><td>IDLE → ERASED → DATA_DONE → VERIFY_OK</td></tr>
                 <tr><td>主用通道</td><td>USB HID (Round 044 注册 App_Usb_GetTransport)</td><td>USB HID (Round 044 注册 Boot_Usb_GetTransport, SetDefaultChannel=USB)</td></tr>
                 <tr><td>UART 通道</td><td>未注册</td><td>已注册 (备用, PROTO_CH_UART)</td></tr>
-                <tr><td>ROM 区</td><td>0x08006000-0x08010000 (40KB)</td><td>0x08000000-0x08005800 (22KB)</td></tr>
+                <tr><td>ROM 区</td><td>0x08006000-0x08040000 (232KB)</td><td>0x08000000-0x08005800 (22KB)</td></tr>
                 <tr><td>跳转方向</td><td>BOOT_PENDING → NVIC_SystemReset → Boot</td><td>Exec → NVIC_SystemReset → App</td></tr>
                 <tr><td>CRC32 算法</td><td>MPEG-2 (poly=0x04C11DB7, init=0xFFFFFFFF, 无反射, 无最终 XOR)</td><td>MPEG-2 (同 App, 见 App_Param.c:14 / Boot_Param.c:14)</td></tr>
             </table>

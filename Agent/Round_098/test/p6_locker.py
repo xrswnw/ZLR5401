@@ -8,7 +8,7 @@ sys.path.insert(0, '.')
 sys.path.insert(0, '../../Round_008/test')
 from zlr import const as C
 from zlr.hid_link import HidLink
-from lib import Recorder, open_link, tx, txm, drain, reopen_until_alive
+from lib import Recorder, open_link, tx, txm, drain, reopen_until_alive, wait_settled
 
 FC = C.FC_LOCKER_CTRL
 FCM = C.FC_MOTOR_CTRL
@@ -37,7 +37,7 @@ def q(lk, timeout_s=3):
 
 def mq(lk):
     d, _ = txm(lk, FCM, [C.MOTOR_QUERY], timeout_s=3)
-    return d[4] if d is not None and len(d) > 4 else None   # state
+    return d[2] if d is not None and len(d) > 2 else None   # state (0=IDLE/1=RUN)
 
 
 def collect(lk, want_sub, timeout_s, stash):
@@ -58,6 +58,8 @@ def run():
     lk, dt = reopen_until_alive(25)
     rec = Recorder("P6-Locker")
     assert lk, "设备未就绪"
+    wait_settled(lk)   # 前一阶段可能以 FC_RESET 收尾: 等后台回零完成,
+                       # 否则 START 被 BUSY 拒 / 匹配撞上"未回零"硬故障
 
     def a(sub, data=None, timeout_s=4):
         payload = [sub] + (list(data) if data else [])
@@ -242,16 +244,17 @@ def run():
     d = a(ONE, [1, 2])
     rec.check("C2a", "ONE_SHOT 短帧 -> PARAM", d is not None and d[1] == ONE_ERR_PARAM, "err=2",
               f"d={d.hex() if d else 'TO'}")
-    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 0])
+    # Round_098 优化 #20 后帧布局: [cmd,tmoL,tmoH,irWaitL,irWaitH,holdL,holdH,epcLen,epc..,(demagCnt)]
+    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 0xB8, 0x0B, 0])
     rec.check("C2b", "epcLen=0 -> PARAM", d is not None and d[1] == ONE_ERR_PARAM, "err=2", "")
-    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 13] + list(FAKE_EPC) + [0xCC])
+    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 0xB8, 0x0B, 13] + list(FAKE_EPC) + [0xCC])
     rec.check("C2c", "epcLen=13 -> PARAM", d is not None and d[1] == ONE_ERR_PARAM, "err=2", "")
-    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 4, 1, 2])
+    d = a(ONE, [0xE8, 0x03, 0xD0, 0x07, 0xB8, 0x0B, 4, 1, 2])
     rec.check("C2d", "帧长不足 -> PARAM", d is not None and d[1] == ONE_ERR_PARAM, "err=2", "")
 
     # C3: 短 IR 窗 (1200ms): PC4 低 -> NO_IR; PC4 高 -> 全流程. 断言按实际分支
     stash = []
-    lk.send_frame(1, FC, bytes([ONE, 0xE8, 0x03, 0xB0, 0x04, 12] + list(REAL_EPC)))
+    lk.send_frame(1, FC, bytes([ONE, 0xE8, 0x03, 0xB0, 0x04, 0xB8, 0x0B, 12] + list(REAL_EPC)))
     fin = collect(lk, ONE, 15, stash)
     m = mq(lk)
     if fin is not None and fin[1] == ONE_ERR_NO_IR:
@@ -270,7 +273,7 @@ def run():
 
     # C4: CANCEL 打断 (长窗, 打断点依 IR 态落在 IR等待/盘点/升起/保持)
     stash = []
-    lk.send_frame(1, FC, bytes([ONE, 0xE8, 0x03, 0x80, 0x1F, 12] + list(REAL_EPC)))
+    lk.send_frame(1, FC, bytes([ONE, 0xE8, 0x03, 0x80, 0x1F, 0x30, 0x75, 12] + list(REAL_EPC)))
     time.sleep(0.8)
     lk.send_frame(1, FC, bytes([PROG]))
     prog = collect(lk, PROG, 3, stash)

@@ -39,3 +39,29 @@ p4 U3d (新增): U2b 持久化验证写 session=S2 未还原 — S2 会话下标
 MOVE-TEST 互斥 / SWD 重烧后 Boot 驻留的工程恢复 / UHF 下电过渡期语义 /
 IR 直读 / 文档陈旧项 / **UHF session S2/S3 静默废掉 Locker 连续重扫 (#21, 高)** 等)。
 
+
+## 修正批 2 — §6 优化项实现 (2026-09-02 第二批, 用户裁决 #3/4/7/8/9/10/11/12/15/20/21)
+
+| 项 | 位置 | 实现 |
+|----|------|------|
+| #3 | App_Dispatch.c / App_MotorTest | MOVE/TEST/后台回零在途时再下发一律 MOTOR_ERR_BUSY, 不替换在途运动 |
+| #4 | App_MotorTest.h/.c + QUERY | 单程超时 90s→10s; 新增停转宽限 300ms→FAULT(mtReason=5); 完成结果经 QUERY testState+diag1 取走, 完成后可立即再 TEST |
+| #7 | Boot main/BootStorm (新) | RAM 风暴计数 @0x20002A00/0x2A04 (Boot _ebss 不清区): fault 复位 <3 次正常 2.5s 窗口, ≥3 常驻升级循环; JumpToApp/EXEC/EXIT_BOOT 清零 |
+| #8 | App_Dispatch.c | 新增 FC_IO_DIAG(0x10): 10B [result, ir, keyUp, keyDown, uhfPowered, antennaOk, amLink, homing(0-3), locker, testState] |
+| #9 | App 启动 (POST) | UHF 配置恢复先于 USB 就绪: POST 期自动上电+下发持久化配置, 枚举即可用即 READY |
+| #10 | App_AM | 链路断线自动探测: 突发帧静默判掉线, 0x63 探测退避 2s/4s/8s, 自动回链 |
+| #11 | App 启动 + MOVE/TEST/LOCKER 门控 | 回零后台化: USB 就绪 ~7.2s / 回零 ~7.3-12s, 期间运动类命令 BUSY, IO_DIAG homing 可观测 |
+| #12 | Protocol/App_Protocol.html + Boot_Protocol.html | 全量刷新: 15 命令表+0x10; MOVE BUSY/TEST 完成语义/QUERY 重映射; UHF QUERY NOT_READY; SET_CONFIG 持久化+开机恢复; ONE_SHOT irWait/hold 拆分; 新增 §16 FC_IO_DIAG; Boot 7× 40KB→232KB + 启动伪码 + 风暴保护节 |
+| #15 | App_Dispatch.c | UHF CLOSE 后 QUERY 返回 NOT_READY (原 LINK) |
+| #20 | App_LockerOneShot + 协议 | ONE_SHOT 请求拆 irWaitMs/holdMs (等待窗/保持窗独立), 响应含 demagCnt |
+| #21 | App_UHF.c ScanSession + App_Dispatch.c | Locker START 强制扫描会话 S0 (保存→切换→结束还原); ScanSessionBegin apply 3 次重试×300ms (模块中止后 ~700ms 忙窗) |
+| 新BUG-1 | App_UHF.c | ScanSessionBegin 无重试: 模块忙窗内 apply 失败即 S0 切换失败 → 匹配防抖饿死 (S2 周期#2 失败根因) |
+| 新BUG-2 | App_Dispatch.c | SET_CONFIG 仅在 OK 时持久化: LINK 失败配置已生效但不落盘, 复位回退 → 除 PARAM 错外均持久化 |
+
+## 修正批 2 回归终态
+
+P2 16/0 · P3 26/0 (+4 OBS 钳位语义, 既有) · P4 23/0 · P5 16/0 · P6 51/0 ·
+P8-S3 10/10 (session=S2 连续 2 周期亦过) · P9-optfix 30/0 (新增: 互斥/完成/IO_DIAG/
+QUERY 重映射/OneShot 布局/S2 会话/回零时序) · P9b-storm 9/0 (JLink RAM 注入,
+计数=3 锁定+EXIT_BOOT 救援+计数=2 不锁)。
+固件 ZLR5401_202609022300.hex, App text 77120B, RAM 风暴孔约束核验通过。

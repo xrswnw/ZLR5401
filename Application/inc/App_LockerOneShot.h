@@ -6,16 +6,16 @@
 /* =====================================================================
  * 单条同步开锁 (LOCKER_SUB_ONE_SHOT 0x08) — 用户视角一帧全流程。
  *
- * 请求帧带: UHF 盘点超时 + 最大保持窗 + 期望 EPC。固件同步阻塞执行:
+ * 请求帧带: UHF 盘点超时 + 等待放标窗 + 保持窗 + 期望 EPC。固件同步阻塞执行:
  *   ⑴ 前置检查 (Locker IDLE / 电机 IDLE / 已回零)
  *   ⑴.5 光电门控: 等客户放置标签 (PC4 高=检测到, 200ms 去抖),
- *       等待窗 = maxHoldMs, 窗满未触发 -> NO_IR 失败
+ *       等待窗 = irWaitMs (Round_098 #20 拆分), 窗满未触发 -> NO_IR 失败
  *   ⑴.6 消磁准备 (demagCnt>0: AM 探链+强制检测模式 — 校验期不消磁;
  *       demagCnt=0 跳过, 不触碰 AM)
  *   ⑵ UHF 就绪 (上电+配置)
  *   ⑶ 持续校对: 反复盘点比对期望 EPC (单轮 ~1/4 漏读属正常, 未命中
  *       继续轮); 读到标签但连续 3 轮均无期望 -> MISMATCH (红闪不升起);
- *       校对预算 (maxHoldMs) 内无任何标签 -> NO_TAG
+ *       校对预算 (irWaitMs) 内无任何标签 -> NO_TAG
  *   ⑷ 命中 → (demagCnt>0 先切 AM 消磁模式) 电机上行至 KEY_UP 上行程
  *       触点, 停住保持; 流程结束 (含失败/打断) 切回 AM 检测模式
  *   ⑸ 保持期监控 (先到先回降):
@@ -77,8 +77,11 @@
 #define ONE_MISMATCH_CONFIRM_ROUNDS 3u  /* 持续校对: 读到标签但连续此轮数无期望 -> MISMATCH */
 #define ONE_IR_CONFIRM_MS        200u   /* 光电门控去抖: PC4 连续高此时长 -> 放标触发 */
 #define ONE_UHF_LOST_CONFIRM_MS  5000u  /* 链路异常持续此时长 -> 失联回降 */
-#define ONE_HOLD_MAX_MS          60000u /* 保持窗硬上限 (maxHoldMs 参数钳位) */
-#define ONE_HOLD_DEFAULT_MS      30000u /* maxHoldMs=0 时的默认保持窗 */
+/* Round_098 #20: 原 maxHoldMs 双语义 (IR 等待窗 / 保持窗) 拆分 */
+#define ONE_IRWAIT_MAX_MS        60000u /* irWaitMs 参数钳位上限 */
+#define ONE_IRWAIT_DEFAULT_MS    10000u /* irWaitMs=0 时的默认等待放标窗 */
+#define ONE_HOLD_MAX_MS          60000u /* holdMs 参数钳位上限 */
+#define ONE_HOLD_DEFAULT_MS      30000u /* holdMs=0 时的默认保持窗 */
 
 /* 结果出参: 由协议层组帧回上位机, 字段随 err 取用 */
 typedef struct {
@@ -114,12 +117,15 @@ typedef struct {
 
 /* 同步阻塞执行整个单标签开锁流程 (在 FC_LOCKER_CTRL 分发上下文调用)。
  * 返回时结果已填好; 调用方负责组响应帧。epcLen: 1~12。
+ * tmoMs: 单轮盘点超时 (1~10s)。
+ * irWaitMs: 等待放标窗 (IR 门控 + 标签出现预算, Round_098 #20 拆分);
+ * holdMs: 升起后保持窗上限。
  * demagCnt: 请求消磁的 AM 标签数; 0=跳过消磁流程 (不触碰 AM),
  * >0 时期望 EPC 命中后才切 AM 消磁模式, 保持期等待成功消磁事件数
  * 达标即回降, 流程结束切回检测模式 (不再消磁)。 */
 void App_LockerOneShot_Run(const uint8_t *epc, uint8_t epcLen,
-                           uint16_t tmoMs, uint16_t maxHoldMs, uint8_t demagCnt,
-                           LockerOneShotResult_t *out);
+                           uint16_t tmoMs, uint16_t irWaitMs, uint16_t holdMs,
+                           uint8_t demagCnt, LockerOneShotResult_t *out);
 
 /* ---- 流程中交互 (阻塞期间经泵循环内嵌 Proto_Poll 服务) ---- */
 uint8_t App_LockerOneShot_IsBusy(void);             /* 0=空闲, 1=流程进行中 */

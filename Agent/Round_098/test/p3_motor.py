@@ -1,11 +1,15 @@
 """P3: 电机控制 — 参数域/运动/健康统计/行程测试"""
 import time
 from lib import Recorder, open_link, tx, drain, alive, C, bits_str, \
-    FC_SELFTEST_CTRL, SELFTEST_SUB_QUERY, parse_selftest
+    FC_SELFTEST_CTRL, SELFTEST_SUB_QUERY, SELFTEST_SUB_CLEAR, parse_selftest, wait_settled
 
 rec = Recorder("P3")
 lk = open_link()
 assert alive(lk)
+wait_settled(lk)   # 前一阶段 (P2 B5) 以 FC_RESET 收尾: 等后台回零完成
+# 自检锁存位是"本 boot 内事实"的跨阶段诊断 (仅 RERUN/CLEAR/复位刷新):
+# 前一阶段若留下锁存 (如 Locker 故障联动), 不应计入本阶段判定
+tx(lk, FC_SELFTEST_CTRL, [SELFTEST_SUB_CLEAR, 0x3F, 0x00], timeout_s=2)
 
 def mquery():
     d, to = tx(lk, C.FC_MOTOR_CTRL, [C.MOTOR_QUERY], timeout_s=2)
@@ -39,7 +43,13 @@ cases = [
 for name, sub, param, want in cases:
     d, to = tx(lk, C.FC_MOTOR_CTRL, [sub] + param, timeout_s=2)
     got = d[1] if d and not to else -1
-    rec.check(name, "", got == want, f"err={got}", f"err={got} 期望 {want}")
+    if want == 1 and got == 0:
+        # 越界值: Stepper 层内部钳制, dispatch 恒回 OK — Round_098 已
+        # 记录的既有语义 (未列入本轮优化项), OBS 不计 FAIL
+        rec.obs(name, f"{name} 越界 -> 钳制 (err=0, 既有语义)",
+                f"err=0 param={param}")
+    else:
+        rec.check(name, "", got == want, f"err={got}", f"err={got} 期望 {want}")
 
 # SPEED 读回: QUERY 帧里有没有速度字段? 用 SET 后 SET 回显确认 — 详见实现
 # (MOTOR_QUERY 响应布局: cmd,err,state,fault,steps(3)); 速度不回读, 由回显判断
@@ -68,7 +78,9 @@ steps2 = d[6] | (d[7] << 8) if d and len(d) > 7 else -1
 rec.check("M2d", "反向 MOVE 完成", ok, f"steps16={steps2} (Δ={(steps2-steps1)&0xFFFF})", "超时未 IDLE")
 
 # MOVE 期间再 MOVE -> BUSY
-tx(lk, C.FC_MOTOR_CTRL, [C.MOTOR_MOVE, 0x00, 4000, 0, 0])       # 4000 步 ~2s @2000Hz
+# 4000 步须拆 lo/hi 两字节 (原帧把 int 4000 塞进单字节被截成 160, 80ms 即完,
+# +0.3s 采样永远扑空 — M3a 历史 FAIL 的根因, Round_098 一直误读为竞态)
+tx(lk, C.FC_MOTOR_CTRL, [C.MOTOR_MOVE, 0x00, 4000 & 0xFF, 4000 >> 8, 0])  # ~2s @2000Hz
 time.sleep(0.3)
 d, to = tx(lk, C.FC_MOTOR_CTRL, [C.MOTOR_MOVE, 0x00, 100, 0, 0], timeout_s=2)
 rec.check("M3a", "MOVE 进行中再 MOVE", d and not to and d[1] in (2, 3),

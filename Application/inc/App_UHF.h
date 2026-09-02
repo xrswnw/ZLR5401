@@ -104,6 +104,15 @@ AppUHFState_t App_UHF_GetState(void);
 int      App_UHF_GetLinkStatus(void);     /* 0=正常, 非0=掉线 */
 uint32_t App_UHF_GetTotalTags(void);      /* 累计盘点标签计数 */
 int      App_UHF_IsBusy(void);            /* 是否有活动操作 */
+int      App_UHF_IsPowered(void);         /* 1=模块已上电 (Close 后 0) */
+
+/* ---- 业务扫描会话 S0 强制 (Round_098 优化 #21) ----
+ * session=S2/S3 时硬标签盘点标志在连续盘存的场脉冲间不复位, 首读后
+ * 连续重扫永无匹配且无任何错误码 (P8-S3 实证). 开锁类业务 (Locker/
+ * OneShot/Unlock) 扫描窗起止调用 Begin/End: 非 S0 时临时切 S0 (不落
+ * 参数区), 窗结束还原用户配置. S0 时零开销. */
+int  App_UHF_ScanSessionBegin(void);     /* 0=就绪 (含本就 S0); 负=下发失败(链路) */
+void App_UHF_ScanSessionEnd(void);      /* 幂等; 还原用户会话配置 */
 
 /* ---- 真机盘点诊断 (Round_050/051 临时: 定位 0x22 TagsFound=0) ----
  * 记录最近一次 0x22/0x29 请求与响应的原始字节, 供上位机取证. */

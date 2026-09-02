@@ -42,6 +42,10 @@ static AppAMDeactState_t   s_deact;        /* 当前/最近结算结果 (0空闲
 static uint32_t            s_deactCount;   /* 成功消磁累计 (单帧事件结算) */
 static uint32_t            s_failCount;    /* 消磁失败累计 (>=2 帧事件结算) */
 
+/* Round_098 #10: 链路瞬断自动探测 (App_AM_Process 尾部) */
+static uint32_t            s_probeNextMs;  /* 下次探链时刻 (0=未调度) */
+static uint8_t             s_probeBackoff; /* 退避级数 0~3 (2s/4s/8s) */
+
 /* 波形缓存 (cmd 0x64 采集结果, 供上位机分页取回) */
 static uint8_t       s_wave[AM_WAVE_POINTS];
 static uint16_t      s_waveCount;     /* 已收集点数 (可能 <400, 实时背靠背丢包已知) */
@@ -108,6 +112,32 @@ void App_AM_Process(void)
         if (s_burstFrames == 1u) { s_deact = AM_DEACT_SUCCESS; s_deactCount++; }
         else                     { s_deact = AM_DEACT_FAILURE; s_failCount++;  }
         s_burstFrames = 0u;
+    }
+
+    /* Round_098 优化 #10: 链路瞬断自动恢复. 复位/UHF 大电流动作后 AM 链路
+     * 常断开数秒, 原实现 s_link 保持错误直到下一条主机命令才恢复.
+     * 断链且无消磁事件结算在进行时, 轻量探链 (0x63 单帧确认, 150ms
+     * 预算 — 不取全 12 帧), 成功即恢复就绪; 失败按 2s/4s/8s 退避重试,
+     * 避免 AM 缺席时长期占用主循环节拍. */
+    if (s_link != 0 && s_burstFrames == 0u) {
+        uint32_t now = SysTickHl_GetMs();
+        if (s_probeNextMs == 0u || (int32_t)(now - s_probeNextMs) >= 0) {
+            uint32_t period = 2000u << ((s_probeBackoff > 2u) ? 2u : s_probeBackoff);
+            s_probeNextMs = now + period;
+            static const uint8_t kProbeData[2] = {0u, 0u};
+            AM_HL_RxFlush();
+            AM_HL_SendFrame(AM_CMD_QUERY_ALL, kProbeData, 2u);
+            uint8_t prcmd, prdata[AM_HL_PAYLOAD_MAX];
+            uint8_t prlen;
+            if (AM_HL_RecvFrame(&prcmd, prdata, &prlen, 150u) == 0) {
+                s_link = 0;              /* 任意合法回帧 -> 链路恢复就绪 */
+                s_probeBackoff = 0u;
+            } else if (s_probeBackoff < 3u) {
+                s_probeBackoff++;
+            }
+        }
+    } else {
+        s_probeNextMs = 0u;               /* 链路正常/事件结算中: 不探测 */
     }
 }
 

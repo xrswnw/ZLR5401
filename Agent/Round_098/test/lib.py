@@ -127,6 +127,18 @@ def tx(lk, fc, data, timeout_s=2.0):
         return None, True
 
 
+def wait_settled(lk, timeout_s=25):
+    """等待后台回零完成 (Round_098 #11: 复位后 ~12s 回零窗口内电机 RUN,
+    业务/电机命令会被 BUSY 拒绝). IO_DIAG d[7]: 2=READY. 返回是否就绪."""
+    t0 = time.time()
+    while time.time() - t0 < timeout_s:
+        d, to = tx(lk, 0x10, [], timeout_s=1.5)
+        if (not to) and d is not None and len(d) >= 10 and d[7] == 2:
+            return True
+        time.sleep(0.4)
+    return False
+
+
 def reopen_until_alive(timeout_s=20):
     """设备复位/重枚举后重开句柄直至握手成功. 返回 (lk|None, 耗时s)."""
     t0 = time.time()

@@ -22,6 +22,7 @@
 #define MT_FR_ESCAPE_MS 2   /* 挣脱被压住离出触点超时 */
 #define MT_FR_WRONG     3   /* 方向极性错触 */
 #define MT_FR_EXPECT_MS 4   /* 期望触点单程超时 */
+#define MT_FR_STOPPED   5   /* (Round_098 #4) RUN 中电机停转 (外部 STOP/被劫持) */
 
 static AppMotorTestState_t s_state = MT_STATE_IDLE;
 static uint8_t s_faultReason = MT_FR_NONE;
@@ -134,6 +135,17 @@ void App_MotorTest_Process(void)
         if (App_Stepper_GetState() == APP_STEPPER_FAULT) {
             App_Stepper_Stop();
             s_faultReason = MT_FR_STP_FAULT;
+            s_state = MT_STATE_FAULT;
+            return;
+        }
+
+        /* 1.5) (Round_098 #4) 电机停转死区监护: 测试腿为持续运行, 电机
+         * 不该在中途变 IDLE (外部 STOP/命令劫持/TRQ 停机已被上面 FAULT
+         * 分支先行). 超宽限即判 FAULT, 不再空等单程超时. */
+        if (App_Stepper_GetState() == APP_STEPPER_IDLE &&
+            (now - s_legStartMs) >= MT_STOP_GRACE_MS) {
+            App_Stepper_Stop();
+            s_faultReason = MT_FR_STOPPED;
             s_state = MT_STATE_FAULT;
             return;
         }

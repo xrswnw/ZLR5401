@@ -4,25 +4,30 @@
 #include <stdint.h>
 
 /* =====================================================================
- * 上电行程自检 / 回零 (App_MotorHoming.c)
- *  在开全局中断后、首次业务运动前调用一次; 无论电机停在何处均完整自检:
+ * 上电行程自检 / 回零 (App_MotorHoming.c) — Round_098 #11 后台化
+ *  非阻塞状态机: System_Init 末尾 App_MotorHoming_Start() 启动,
+ *  主循环 App_MotorHoming_Process() 推进; 回零期间 USB 协议照常服务
+ *  (MOVE/TEST 回 BUSY, 见 App_Dispatch), 回零完成后自动放行。
+ *  无论电机停在何处均完整自检:
  *     阶段1 向上找 KEY_UP  (验证上行程开关在位/可达)
  *     阶段2 向下回 KEY_DOWN (验证下行程开关并建立下行程绝对基准)
- *     任一阶段失败(堵转/超步/超时) -> 置对应错误位(bit0=上,bit1=下)并禁止 MOVE/TEST
- *  返回值: 0=自检通过且已回零(可运动)  非0=失败(行程开关异常, 需人工处置)
+ *     任一阶段失败(堵转/超步/超时) -> 整体重试至多 3 次(200ms 间隔),
+ *     全部失败置对应错误位(bit0=上,bit1=下)+自检锁存位, 禁止 MOVE/TEST
  * ===================================================================== */
 
-/* 行程自检/回零结果 */
+/* 回零状态 (IO 诊断/上位机可见) */
 typedef enum {
-    MOTOR_HOMING_OK     = 0,   /* 成功: 已回零至 KEY_DOWN, 可运动 */
-    MOTOR_HOMING_NOSW   = -1,  /* 上/下行程开关均缺失(开路): 禁止运动 */
-    MOTOR_HOMING_TIMEOUT= -2,  /* 回零超时/超限(单开关失效) */
-    MOTOR_HOMING_FAULT  = -3   /* 电机故障 */
-} MotorHomingResult_t;
+    HOMING_STAT_NONE    = 0,   /* 未启动 */
+    HOMING_STAT_RUNNING = 1,   /* 进行中 (BUSY) */
+    HOMING_STAT_READY   = 2,   /* 已回零, 可运动 */
+    HOMING_STAT_FAILED  = 3    /* 失败 (行程开关异常, 需人工处置) */
+} MotorHomingStatus_t;
 
-MotorHomingResult_t App_MotorHoming_Run(void);
+void    App_MotorHoming_Start(void);      /* 启动后台回零 (幂等: 已启动/完成则忽略) */
+void    App_MotorHoming_Process(void);    /* 主循环推进 (未启动时为空操作) */
+uint8_t App_MotorHoming_GetStatus(void);  /* MotorHomingStatus_t */
 
-/* 1=已回零/建立基准 (可安全 MOVE/TEST); 0=行程开关缺失或回零失败 */
+/* 1=已回零/建立基准 (可安全 MOVE/TEST); 0=未完成/失败/未启动 */
 int  App_MotorHoming_IsReady(void);
 
 #endif /* __APP_MOTORHOMING_H */

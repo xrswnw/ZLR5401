@@ -838,6 +838,44 @@ void App_UHF_Process(void)
 AppUHFState_t App_UHF_GetState(void) { return s_state; }
 int      App_UHF_GetLinkStatus(void) { return s_link; }
 uint32_t App_UHF_GetTotalTags(void)  { return s_totalTags; }
+int      App_UHF_IsPowered(void)     { return s_powered; }
+
+/* ---- 业务扫描会话 S0 强制 (Round_098 优化 #21) ---- */
+static AppUHFConfig_t s_scanSessSaved;   /* 用户会话配置快照 */
+static uint8_t        s_scanSessActive;  /* 0=无窗 1=本就 S0 2=已临时切 S0 */
+
+int App_UHF_ScanSessionBegin(void)
+{
+    if (s_scanSessActive != 0u) return 0;          /* 已在窗内 (幂等) */
+    if (s_cfg.session == 0u) { s_scanSessActive = 1u; return 0; }
+    s_scanSessSaved = s_cfg;
+    s_cfg.session = 0u;                            /* 仅 RAM, 不落参数区 */
+    if (s_powered) {
+        /* 模块在上一轮被中止的 0x22 窗口内会短暂拒答 (单发 SET_GEN2CFG
+         * 可失败), 无重试时扫描以 S2 开跑 -> 硬标签首读后标志不复位,
+         * 匹配去抖饿死 (表现为 CONFIGURED 停 45s 无错误码). 300ms 间隔
+         * 重试 3 次覆盖该忙窗. */
+        for (uint8_t i = 0u; i < 3u; i++) {
+            int r = uhf_apply_config();
+            if (r == APP_UHF_ERR_OK) { s_scanSessActive = 2u; return 0; }
+            SysTickHl_DelayMs(300u);
+        }
+        s_cfg = s_scanSessSaved;               /* 重试仍失败: 还原, 窗不开 */
+        s_scanSessActive = 0u;
+        return APP_UHF_ERR_LINK;
+    }
+    s_scanSessActive = 2u;
+    return 0;
+}
+
+void App_UHF_ScanSessionEnd(void)
+{
+    uint8_t a = s_scanSessActive;
+    s_scanSessActive = 0u;
+    if (a != 2u) return;
+    s_cfg = s_scanSessSaved;
+    if (s_powered) (void)uhf_apply_config();       /* 还原用户会话, 尽力而为 */
+}
 int      App_UHF_IsBusy(void)
 {
     return (s_state == APP_UHF_INVENTORY || s_state == APP_UHF_READ ||

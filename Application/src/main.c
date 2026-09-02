@@ -135,7 +135,13 @@ void System_Init(void)
     /* 9. 开全局中断 (最后一步 Sys_EnableInt, USB 准备就绪后才开)*/
     __asm volatile ("cpsie i");
 
-    /* 9.4 AM 持久化配置复位 (开中断后执行 — 不可提前)
+    /* 9.4 上电自检 (POST): RGB 白闪 + 电机/UHF/AM 探测 (Round_098 #9:
+     * POST 内含 UHF Open+按持久化配置下发, 提前到 AM 复位/回零之前,
+     * 保证协议开始服务时 UHF 模块状态与参数区一致, 消除复位后早期
+     * GET_CONFIG 读到模块默认值的窗口)。探测阻塞期间喂狗。 */
+    App_BootSelfTest_Run();
+
+    /* 9.5 AM 持久化配置复位 (开中断后执行 — 不可提前)
      * App_AM_SetConfig 为阻塞收发: 等回帧依赖 USART1 RX 中断, 500ms
      * 超时依赖 SysTick ms 计数. 此前放在 8.8 (步骤4~9 关中断期),
      * 一旦 AM 解码器不在设备侧 (接上位机/未接), 回帧永不到且超时
@@ -159,27 +165,11 @@ void System_Init(void)
         }
     }
 
-    /* 9.5 上电行程自检/回零: 用行程开关建立绝对位置基准.
-     * 必须在开全局中断后调用 —— 回零阻塞驱动依赖 TIM4 中断(推进 STEP)
-     * 与 SysTick 中断(ms 计时), 中断关着会卡死; 期间喂狗.
-     * 上电首驱存在间歇性 nFAULT/开关漏读 (实测 ~1/3 概率单次失败, 再次
-     * 驱动即正常): 失败自动重试至多 3 次并清故障寄存器, 全部失败才置
-     * 错误位, 上层 MOVE/TEST 将被禁止以防冲挡块. */
-    /* 回零为阻塞循环 (主循环不跑), 无法走 Tick 闪烁 -> 黄常亮示意;
-     * 结束保持黄, 衔接 POST (彩灯自检白闪后回到黄, 探测全程黄常亮),
-     * 由 POST 末尾统一熄灭, 交主循环灯语仲裁器接管。 */
-    RgbLedHl_Set(RGB_BIT_G | RGB_BIT_R);
-    for (uint8_t homTry = 0u; homTry < 3u; homTry++) {
-        if (App_MotorHoming_Run() == MOTOR_HOMING_OK) break;
-        (void)App_Stepper_ClearFault();
-        SysTickHl_DelayMs(200u);
-        IwdgHl_Feed();
-    }
-
-    /* 9.6 上电自检 (POST): 蜂鸣器 500ms + 外设链路监控经调试串口打印.
-     * 需在开全局中断后调用 (UHF/AM 帧回依赖 USART 收中断). 阻塞期间喂狗.
-     * 呼吸灯由主循环 AppLedProcess 持续运行 (Task 2 常驻). */
-    App_BootSelfTest_Run();
+    /* 9.6 后台回零启动 (Round_098 #11: 原阻塞回零占住启动 10~20s,
+     * USB 已枚举但协议无人服务; 改为非阻塞状态机, 主循环推进
+     * App_MotorHoming_Process, 回零期间 MOVE/TEST 由分发层回 BUSY,
+     * 灯语黄慢闪, 完成/失败自动撤销。失败置 switchErr+自检锁存位。 */
+    App_MotorHoming_Start();
 }
 
 int main(void)
@@ -203,6 +193,10 @@ int main(void)
 
         /* 步进电机状态机推进 (步进 + 故障监测)*/
         App_Stepper_Process();
+
+        /* 后台回零推进 (Round_098 #11: 上电非阻塞回零, 完成前
+         * MOVE/TEST 由分发层回 BUSY) */
+        App_MotorHoming_Process();
 
         /* 开锁器业务状态机推进 (硬标签EPC比对/软标解码编排)*/
         App_Locker_Process();

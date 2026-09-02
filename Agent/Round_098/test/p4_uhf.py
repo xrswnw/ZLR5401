@@ -33,12 +33,12 @@ rec.check("U1b", "OPEN 后 QUERY (链路+状态)", ok,
           f"resp={d.hex() if d else 'TO'}")
 d = u(C.UHF_CLOSE)
 rec.check("U1c", "UHF CLOSE", d is not None and d[1] == 0, "err=0", f"err={d[1] if d else 'TO'}")
-time.sleep(1.5)   # Round_098: 下电过渡期 QUERY 可回 LINK(4), 等 1.5s 再验
+time.sleep(1.5)   # 下电过渡
 d = u(C.UHF_QUERY)
-# Round_098: CLOSE 后模块已下电, QUERY 稳定回 LINK(4) (语义上更宜 NOT_READY,
-# 已记 P9 优化清单); 过渡期亦可回 NOT_READY(3)
-ok = d is not None and d[1] in (0, C.UHF_ERR_NOT_READY, C.UHF_ERR_LINK)
-rec.check("U1d", "CLOSE 后 QUERY", ok,
+# 优化 #15: CLOSE 后模块已下电, QUERY 必须回 NOT_READY(3) — 不再与
+# "链路坏" (LINK=4) 混淆, 也不做必然超时的链路探测
+ok = d is not None and d[1] == C.UHF_ERR_NOT_READY
+rec.check("U1d", "CLOSE 后 QUERY -> NOT_READY(3)", ok,
           f"err={d[1]} state={d[2] if d else '?'}" if d else "TO",
           f"resp={d.hex() if d else 'TO'}")
 

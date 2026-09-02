@@ -245,6 +245,10 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
     if (App_UHF_GetState() == APP_UHF_SCAN)          { fill_busy(out); return; }
     if (App_UHF_IsBusy())                           { fill_busy(out); return; }
     if (App_Stepper_GetState() != APP_STEPPER_IDLE)  { fill_busy(out); return; }
+    if (App_MotorHoming_GetStatus() == HOMING_STAT_RUNNING) {
+        fill_busy(out);                 /* Round_098 #11: 后台回零进行中 -> BUSY */
+        return;
+    }
     if (App_MotorHoming_IsReady() == 0) {
         out->err = UNLK_ERR_HOMING;
         out->switchErr = App_Stepper_GetSwitchErr();
@@ -494,11 +498,15 @@ void App_LockerUnlock_Run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
                           uint16_t tmoMs, uint16_t holdMaxMs, uint8_t softCnt,
                           uint8_t channel, LockerUnlockResult_t *out)
 {
+    /* Round_098 #21: 流程窗内强制会话 S0 (连续盘存对 S2/S3 敏感),
+     * 含全部提前失败出口统一还原. */
+    (void)App_UHF_ScanSessionBegin();
     if (out) {
         unlk_run(epc, epcLen, epcCnt, tmoMs, holdMaxMs, softCnt, channel, out);
         if (out->elapsedMs == 0u && s_irMs != 0u)
             out->elapsedMs = SysTickHl_GetMs() - s_irMs;
     }
+    App_UHF_ScanSessionEnd();
     /* 软标段结束 (达标/窗满/任意出口): 切回 AM 检测模式, 不再消磁 */
     if (s_amDemagOn) {
         s_amDemagOn = 0u;

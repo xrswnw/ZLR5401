@@ -14,6 +14,7 @@
 #include "App_LockerUnlock.h"
 #include "App_RgbLed_Pattern.h"
 #include "App_BootSelfTest.h"
+#include "App_NewPeriph_HL.h"   /* FC_IO_DIAG: IR/行程开关直读 */
 #include "stm32f10x.h"
 #include "App_Config.h"
 
@@ -133,7 +134,17 @@ void AppDispatch(ProtoFrame_t *f) {
         case MOTOR_CMD_MOVE: {
             if (f->dataLen >= 5 && f->data[1] <= 1u) {
                 /* MOVE 不受行程自检门控: 电机完全开放给上位机控制;
-                 * 开关错误位(switchErr)仅作报警/诊断, 由上位机自行决策. */
+                 * 开关错误位(switchErr)仅作报警/诊断, 由上位机自行决策.
+                 * (Round_098 #3) 忙时互斥: 运行中 MOVE / 行程测试中 /
+                 * 后台回零中一律 BUSY, 不再静默替换/劫持在途运动
+                 * (原替换语义是 P3 十项设计层问题之首, 竞态源头).
+                 * 需改目标请先 STOP. */
+                if (App_MotorTest_IsBusy() ||
+                    App_MotorHoming_GetStatus() == HOMING_STAT_RUNNING ||
+                    App_Stepper_GetState() == APP_STEPPER_RUN) {
+                    err = MOTOR_ERR_BUSY;
+                    break;
+                }
                 AppStepperMove_t mv;
                 mv.dir = f->data[1];
                 mv.steps = (uint32_t)f->data[2] | ((uint32_t)f->data[3] << 8) | ((uint32_t)f->data[4] << 16);
@@ -162,15 +173,17 @@ void AppDispatch(ProtoFrame_t *f) {
         case MOTOR_CMD_QUERY: {
             /* Query 响应: [cmd, err, state, fault, mtReason, diag2, stepsDoneL, stepsDoneH, switchErr, testState]
              * switchErr bit0=上行程错, bit1=下行程错 (回零/运行中开关监控置位)
-             * state 歧义消解: testState(末字节)!=0 时 state 为行程测试态
-             * (1=RUN 2=DONE 3=测试FAULT), 否则为步进态 (2=步进FAULT)。 */
+             * (Round_098 #4) state 语义: 测试进行中(testState=1) -> state=1(RUN);
+             * 测试结束(DONE/FAULT) -> state 回退为步进态 (通常 IDLE=0),
+             * 结果经 testState(2=DONE/3=FAULT)+mtReason 取走, 保持至下次
+             * TEST/STOP/CLEAR. 原实现 DONE 也占 state=2, 上位机 "等 IDLE"
+             * 永远等不到, 且无法区分完成与进行中. */
             uint8_t qrsp[10];
             qrsp[0] = cmd;
             qrsp[1] = MOTOR_ERR_OK;
-            /* 行程测试进行中/结束后上报测试态, 让上位机看到 DONE(2)/FAULT(3);
-             * 测试态=IDLE 时回退到步进状态. */
-            qrsp[2] = (App_MotorTest_GetState() != MT_STATE_IDLE)
-                      ? (uint8_t)App_MotorTest_GetState()
+            uint8_t mt = (uint8_t)App_MotorTest_GetState();
+            qrsp[2] = (mt == MT_STATE_RUN)
+                      ? (uint8_t)MT_STATE_RUN
                       : (uint8_t)App_Stepper_GetState();
             qrsp[3] = App_Stepper_GetFault();
             qrsp[4] = App_MotorTest_GetFaultReason();   /* 测试故障原因; 非测试时为 0 */
@@ -183,9 +196,16 @@ void AppDispatch(ProtoFrame_t *f) {
             break;
         }
         case MOTOR_CMD_TEST: {
-            /* [cmd, passes]  passes=往返次数; 进行中再下发回 BUSY */
+            /* [cmd, passes]  passes=往返次数; 进行中再下发回 BUSY
+             * (Round_098 #3) 电机在途(MOVE)/后台回零进行中 -> BUSY;
+             * 回零失败/未完成 -> FAULT (行程基准缺失, 禁止测试). */
             if (f->dataLen < 2u) {
                 err = MOTOR_ERR_PARAM;
+                break;
+            }
+            if (App_Stepper_GetState() == APP_STEPPER_RUN ||
+                App_MotorHoming_GetStatus() == HOMING_STAT_RUNNING) {
+                err = MOTOR_ERR_BUSY;
                 break;
             }
             if (App_MotorHoming_IsReady() == 0) {   /* 行程基准未建立 -> 禁止 TEST */
@@ -381,6 +401,15 @@ void AppDispatch(ProtoFrame_t *f) {
             }
             break;
         case UHF_SUB_QUERY: {
+            /* (Round_098 优化 #15) 未上电直接回 NOT_READY, 不再做必然
+             * 超时的链路探测 (CLOSE 后原回 LINK=4, 与 "链路坏" 语义
+             * 混淆 — 模块根本没开, 属 NOT_READY=3). */
+            if (!App_UHF_IsPowered()) {
+                uint8_t r[5] = { sub, UHF_ERR_NOT_READY,
+                                (uint8_t)App_UHF_GetState(), 0u, 0u };
+                Proto_TxResponse(ch, FC_UHF_CTRL, r, sizeof(r));
+                break;
+            }
             int e = App_UHF_Query();
             uint8_t r[1 + 1 + 3] = { sub, UHF_ERR_OK,
                 (uint8_t)App_UHF_GetState(),
@@ -417,8 +446,10 @@ void AppDispatch(ProtoFrame_t *f) {
             uint8_t r[2] = { sub, UHF_ERR_OK };
             if (e == APP_UHF_ERR_PARAM) r[1] = UHF_ERR_PARAM;
             else if (e == APP_UHF_ERR_LINK) r[1] = UHF_ERR_LINK;
-            else {
-                /* 持久化 */
+            if (e != APP_UHF_ERR_PARAM) {
+                /* 持久化: 值域已校验且 s_cfg 已更新 (模块忙导致的 LINK
+                 * 仅代表本次未下发成功, 不应丢持久化 — 否则复位后回到旧值,
+                 * 与 GET_CONFIG 即时回读不一致). */
                 UHFUserCfg_t pc = { c.powerDbm, c.antenna, c.checksumEn,
                                     c.session, c.target, c.q, c.band };
                 (void)UhfParam_Save(&pc);
@@ -912,23 +943,27 @@ void AppDispatch(ProtoFrame_t *f) {
             break;
         }
         case LOCKER_SUB_ONE_SHOT: {
-            /* [cmd, tmoL,tmoH, maxHoldL,maxHoldH, epcLen, epc.., (demagCnt)]
+            /* [cmd, tmoL,tmoH, irWaitL,irWaitH, holdL,holdH, epcLen, epc.., (demagCnt)]
              * 单标签同步开锁: 阻塞全流程后回一帧 (App_LockerOneShot.c)。
+             * Round_098 #20: 原 maxHoldL/H 拆为 irWait (等待放标+标签出现窗)
+             * 与 hold (升起后保持窗) 两个独立参数。
              * demagCnt: 消磁标签数, 缺省 0=跳过消磁流程。 */
-            if (f->dataLen < 6u || f->data[5] == 0u || f->data[5] > 12u ||
-                (uint16_t)(6u + f->data[5]) > f->dataLen) {
+            if (f->dataLen < 8u || f->data[7] == 0u || f->data[7] > 12u ||
+                (uint16_t)(8u + f->data[7]) > f->dataLen) {
                 uint8_t r[2] = { sub, ONE_ERR_PARAM };
                 Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
                 break;
             }
             uint16_t tmoMs = (uint16_t)(f->data[1] | ((uint16_t)f->data[2] << 8));
-            uint16_t holdMs = (uint16_t)(f->data[3] | ((uint16_t)f->data[4] << 8));
+            uint16_t irWaitMs = (uint16_t)(f->data[3] | ((uint16_t)f->data[4] << 8));
+            uint16_t holdMs  = (uint16_t)(f->data[5] | ((uint16_t)f->data[6] << 8));
             uint8_t demagCnt = 0u;
-            if ((uint16_t)(6u + f->data[5]) < f->dataLen)
-                demagCnt = f->data[6u + f->data[5]];
+            if ((uint16_t)(8u + f->data[7]) < f->dataLen)
+                demagCnt = f->data[8u + f->data[7]];
 
             LockerOneShotResult_t res;
-            App_LockerOneShot_Run(&f->data[6], f->data[5], tmoMs, holdMs, demagCnt, &res);
+            App_LockerOneShot_Run(&f->data[8], f->data[7], tmoMs, irWaitMs,
+                                  holdMs, demagCnt, &res);
             App_LockerOneShot_Finish();   /* 清 busy/abort/phase (含 CANCEL 打断路径) */
 
             uint8_t r[32];
@@ -1172,6 +1207,27 @@ void AppDispatch(ProtoFrame_t *f) {
             break;
         }
         }
+        break;
+    }
+
+    case FC_IO_DIAG: {
+        /* Round_098 优化 #8: IO/传感器直读快照 (排障缺口 — NO_IR 类问题
+         * 原只能靠业务失败码反推). 布局见 App_CustomProtocol.h FC_IO_DIAG. */
+        AppUHFStatus_t ust;
+        App_UHF_GetStatus(&ust);
+        uint8_t r[10] = {
+            0u,
+            App_NewPeriph_ReadIr(),
+            App_NewPeriph_ReadKeyUp(),
+            App_NewPeriph_ReadKeyDown(),
+            (uint8_t)App_UHF_IsPowered(),
+            ust.antennaOk,
+            (uint8_t)App_AM_GetLinkStatus(),
+            App_MotorHoming_GetStatus(),
+            (uint8_t)App_Locker_GetState(),
+            (uint8_t)App_MotorTest_GetState()
+        };
+        Proto_TxResponse(ch, FC_IO_DIAG, r, sizeof(r));
         break;
     }
 

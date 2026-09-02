@@ -163,6 +163,25 @@ pre{background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow-x:a
 </table>
 
 <h2>6. 优化建议清单 (分级, 不改码供决策)</h2>
+<div class="note">
+<b>2026-09-02 修正批 (用户裁决: #3\4\7\8\9\10\11\12\15\20\21 修正) — 已全部实现并回归</b>:
+<table>
+<tr><th>#</th><th>实现摘要</th><th>回归</th></tr>
+<tr><td>#3</td><td>MOVE/TEST 互斥: 在途 (MOVE/TEST/后台回零) 一律 <code>BUSY</code>, 不替换在途运动, 先 STOP 再改目标</td><td>P9-O3 ✓</td></tr>
+<tr><td>#4</td><td>TEST 完成语义: 单程超时 90s→10s + 停转宽限 300ms (mtReason=5 STOPPED); QUERY state 测试中如实 RUN, 结果经 testState(2=DONE/3=FAULT)+diag1 取走; 完成后可立即再 TEST (不再 0703)</td><td>P9-O3 ✓</td></tr>
+<tr><td>#7</td><td>Boot fault 复位风暴保护: RAM 计数 (0x20002A00 magic/0x20002A04 count, App _ebss=0x20002E30 之外), fault 复位 &lt;3 次正常 2.5s 窗口, ≥3 次判风暴 → 常驻升级循环 (不再复位); JumpToApp/EXEC/EXIT_BOOT 清零</td><td>P9b 9/9 ✓ (JLink RAM 注入实证)</td></tr>
+<tr><td>#8</td><td>新增 FC_IO_DIAG (0x10): 10B 一帧总览 — result/ir/keyUp/keyDown/uhfPowered/antennaOk/amLink/homing(0-3)/locker/testState</td><td>P9-O1 ✓</td></tr>
+<tr><td>#9</td><td>UHF 配置恢复先于 USB 就绪: POST 期 (~前 4~7s) 自动上电+下发持久化配置+回波检测, USB 枚举即可用时已 READY</td><td>P9-O7 ✓</td></tr>
+<tr><td>#10</td><td>AM 链路断线自动探测: 突发帧静默判掉线, 0x63 探测退避 2s/4s/8s, 恢复自动回链, link 字段如实反映</td><td>代码路径 + IO_DIAG amLink ✓</td></tr>
+<tr><td>#11</td><td>复位后回零后台化: App USB 就绪 ~7.2s, 回零后台 ~7.3~12s; 期间 MOVE/TEST/Locker START 回 BUSY; IO_DIAG homing 字段 (0-3) 可观测</td><td>P9-O7 ✓</td></tr>
+<tr><td>#12</td><td>协议文档刷新: App_Protocol (15 命令表+0x10 行+MOVE/TEST/QUERY 语义+UHF QUERY NOT_READY+SET_CONFIG 持久化+ONE_SHOT irWait/hold 拆分+§16 FC_IO_DIAG) + Boot_Protocol (7× 40KB→232KB, 启动伪码, 风暴保护节)</td><td>人工校对 ✓</td></tr>
+<tr><td>#15</td><td>UHF CLOSE 后 QUERY: LINK→NOT_READY (下电态如实报告未就绪)</td><td>P9-O2 ✓</td></tr>
+<tr><td>#20</td><td>OneShot irWait/hold 拆分: 请求 <code>[cmd, W, irWaitMs(2B), holdMs(2B)]</code>, 等待窗与保持窗独立; 响应含 demagCnt</td><td>P9-O5 ✓</td></tr>
+<tr><td>#21</td><td>Locker 扫描会话强制 S0: START 时 ScanSessionBegin 保存当前配置→切 S0→结束还原; 中途 SET_CONFIG 持久化不再丢配置 (PARAM 错不写, LINK 也持久化)</td><td>P9-O6 ✓ (session=S2 下 2/2 周期 + P8-S3 10/10)</td></tr>
+</table>
+修正批新发现并修复 2 个缺陷: (a) <b>ScanSessionBegin 无重试</b> — 0x22 中止后模块 ~700ms 忙窗内 apply 失败即整个会话 S0 切换失败 → 3 次重试×300ms; (b) <b>SET_CONFIG LINK 失败跳过持久化</b> — 配置已在 RAM 生效但不落参数区, 复位后回退旧值 → 除 PARAM 外均持久化。<br>
+未动项 (供后续决策): #1 帧序列号 · #2 钳位回显/PARAM · #5 SWD 工程恢复 · #6 下电过渡期 · #13 硬件名 · #14 空 FW_DATA · #16~#19 观察项。
+</div>
 <h3>建议尽快 (影响联调/现场)</h3>
 <table>
 <tr><th>#</th><th>建议</th><th>依据</th><th>优先级</th></tr>
@@ -204,7 +223,8 @@ pre{background:#282c34;color:#abb2bf;padding:12px;border-radius:6px;overflow-x:a
 </ul>
 
 <h2>8. 结论</h2>
-<p><b>P1~P8 全量自动化测试完成, 7 个固件缺陷全部修复闭环并回归通过, 无遗留设备级缺陷</b>。设备终态: App 层在线稳定, 自检位图干净, UHF 配置已还原固件默认 (session=S0), 升级计数与参数区自洽。测试期间的多次 "挂死/失配" 悬案均已完成取证归因并修复 (其中两处为测试框架自身缺陷: IAP 校验级别枚举反 + UHF session 污染)。设计层发现项与优化建议 21 条已分级列出, 供产品决策 — 不改码, 交用户裁决。</p>
+<p><b>P1~P8 全量自动化测试完成, 7 个固件缺陷全部修复闭环并回归通过, 无遗留设备级缺陷</b>。设备终态: App 层在线稳定, 自检位图干净, UHF 配置已还原固件默认 (session=S0), 升级计数与参数区自洽。测试期间的多次 "挂死/失配" 悬案均已完成取证归因并修复 (其中两处为测试框架自身缺陷: IAP 校验级别枚举反 + UHF session 污染)。</p>
+<p><b>2026-09-02 修正批 2 (终态)</b>: 用户裁决的 §6 优化项 #3/4/7/8/9/10/11/12/15/20/21 已全部实现并回归通过 (实现摘要见 §6 顶部状态表), 过程中新发现并修复 2 个缺陷 (ScanSessionBegin 重试缺失 / SET_CONFIG 持久化条件错误)。回归终态: P2 16/0 · P3 26/0 (+4 OBS 钳位语义) · P4 23/0 · P5 16/0 · P6 51/0 · P8-S3 10/10 (session=S2 下 2/2 周期) · P9-optfix 30/0 · P9b-storm 9/0。未动项 #1/2/5/6/13/14/16~#19 仍供后续决策。</p>
 
 <p class="meta">附: 测试执行器与用例 <code>Agent/Round_098/test/</code>; 逐用例结果 <code>results.jsonl</code>; 固件修复 diff 见 git 提交记录。</p>
 

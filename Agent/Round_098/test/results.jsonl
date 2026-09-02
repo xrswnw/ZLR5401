@@ -1720,3 +1720,853 @@
 {"phase": "P4", "id": "U3b", "name": "复位重连", "verdict": "PASS", "msg": "14.2s"}
 {"phase": "P4", "id": "U3c", "name": "复位后 UHF 配置持久 (power/session)", "verdict": "PASS", "msg": "power=30 (期望 30) sess=1 (期望 1)"}
 {"phase": "P4", "id": "U3d", "name": "还原原始 UHF 配置 (防 S2 污染后续用例)", "verdict": "PASS", "msg": "power=20 sess=0 (原 20/0)"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=0 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=0"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.3s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "旧布局帧 (无 hold 域) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "全流程分支: hold 独立生效 (总时长 <15s, rise 步数回传)", "verdict": "PASS", "msg": "err=0 end=2 rise≈4321 7.8s"}
+{"phase": "P9-OptFix", "id": "O5-ir", "name": "IR 门当前读高 — 深路径按触发分支验证", "verdict": "OBS", "msg": "fin=0800020c33553463a4000158eb7e75070811e11000"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "带 demagCnt 尾字节帧被受理 (err≠PARAM)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O6a", "name": "GET_CONFIG 基线 (存档待还原)", "verdict": "PASS", "msg": "sess=0"}
+{"phase": "P9-OptFix", "id": "O6b", "name": "SET_CONFIG session=2 生效", "verdict": "PASS", "msg": "sess=2"}
+{"phase": "P9-OptFix", "id": "O6c", "name": "S2 会话下连续 2 周期均完成匹配闭环 (ScanSession S0 生效)", "verdict": "FAIL", "msg": ""}
+{"phase": "P9-OptFix", "id": "O6d", "name": "配置还原", "verdict": "PASS", "msg": "sess=0"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=0 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=0"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.3s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "旧布局帧 (无 hold 域) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "全流程分支: hold 独立生效 (总时长 <15s, rise 步数回传)", "verdict": "PASS", "msg": "err=0 end=2 rise≈4321 7.8s"}
+{"phase": "P9-OptFix", "id": "O5-ir", "name": "IR 门当前读高 — 深路径按触发分支验证", "verdict": "OBS", "msg": "fin=0800020c33553463a4000158eb7e75070811e11000"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "带 demagCnt 尾字节帧被受理 (err≠PARAM)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O6a", "name": "GET_CONFIG 基线 (存档待还原)", "verdict": "PASS", "msg": "sess=0"}
+{"phase": "P9-OptFix", "id": "O6b", "name": "SET_CONFIG session=2 生效", "verdict": "PASS", "msg": "sess=2"}
+{"phase": "P9-OptFix", "id": "O6c", "name": "S2 会话下连续 2 周期均完成匹配闭环 (ScanSession S0 生效)", "verdict": "FAIL", "msg": ""}
+{"phase": "P9-OptFix", "id": "O6d", "name": "配置还原", "verdict": "PASS", "msg": "sess=0"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=0 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=0"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.3s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "旧布局帧 (无 hold 域) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "全流程分支: hold 独立生效 (总时长 <15s, rise 步数回传)", "verdict": "PASS", "msg": "err=0 end=2 rise≈4321 7.9s"}
+{"phase": "P9-OptFix", "id": "O5-ir", "name": "IR 门当前读高 — 深路径按触发分支验证", "verdict": "OBS", "msg": "fin=0800020c33553463a4000158eb7e7507a811e11000"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "带 demagCnt 尾字节帧被受理 (err≠PARAM)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O6a", "name": "GET_CONFIG 基线 (存档待还原)", "verdict": "PASS", "msg": "sess=0"}
+{"phase": "P9-OptFix", "id": "O6b", "name": "SET_CONFIG session=2 生效", "verdict": "PASS", "msg": "sess=2"}
+{"phase": "P9-OptFix", "id": "O6c", "name": "S2 会话下连续 2 周期均完成匹配闭环 (ScanSession S0 生效)", "verdict": "PASS", "msg": "2/2"}
+{"phase": "P9-OptFix", "id": "O6d", "name": "配置还原 (SET err=0)", "verdict": "PASS", "msg": "sess=0 setErr=0"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O1a", "name": "FC_IO_DIAG(0x10) 返回 10 字段帧", "verdict": "PASS", "msg": "ir=1 keyUp=1 keyDn=0 uhfPwr=1 ant=1 am=0 homing=2 locker=0 test=0"}
+{"phase": "P9-OptFix", "id": "O1b", "name": "IO_DIAG 上电基线 (POST 后 UHF 已上电/天线 OK/已回零)", "verdict": "PASS", "msg": "uhfPwr=1 ant=1 homing=2"}
+{"phase": "P9-OptFix", "id": "O1c", "name": "IO_DIAG 行程开关读数与状态自洽 (顶部 KeyUp=1)", "verdict": "PASS", "msg": "keyUp=1 keyDn=0"}
+{"phase": "P9-OptFix", "id": "O2a", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2b", "name": "CLOSE 后 UHF QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P9-OptFix", "id": "O2c", "name": "IO_DIAG 反映 UHF 下电 (uhfPwr=0)", "verdict": "PASS", "msg": "uhfPwr=0"}
+{"phase": "P9-OptFix", "id": "O2d", "name": "UHF OPEN 恢复", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O2e", "name": "IO_DIAG 恢复 uhfPwr=1", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O3a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3b", "name": "TEST 中 MOVE -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3c", "name": "TEST 中二次 TEST -> BUSY(3)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O3d", "name": "TEST 完成: state 回 IDLE(0), testState=DONE(2)", "verdict": "PASS", "msg": "2.3s state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O3e", "name": "完成无故障 (mtReason=0, fault=0)", "verdict": "PASS", "msg": "mtReason=0 fault=0"}
+{"phase": "P9-OptFix", "id": "O3f", "name": "完成后立即二次 TEST -> err=0 (无 0703 残留)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O3g", "name": "二次 TEST 亦完成", "verdict": "PASS", "msg": "testState=2"}
+{"phase": "P9-OptFix", "id": "O4a", "name": "TEST 进行中 QUERY: state=1(RUN) + testState=1", "verdict": "PASS", "msg": "state=1 testState=1"}
+{"phase": "P9-OptFix", "id": "O4b", "name": "TEST 结束 QUERY: state 回 IDLE, DONE 不再占位", "verdict": "PASS", "msg": "state=0 testState=2"}
+{"phase": "P9-OptFix", "id": "O4c", "name": "CLEAR 后 testState=0", "verdict": "PASS", "msg": "testState=0"}
+{"phase": "P9-OptFix", "id": "O5a", "name": "旧布局帧 (无 hold 域) -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P9-OptFix", "id": "O5b", "name": "全流程分支: hold 独立生效 (总时长 <15s, rise 步数回传)", "verdict": "PASS", "msg": "err=0 end=2 rise≈4321 7.9s"}
+{"phase": "P9-OptFix", "id": "O5-ir", "name": "IR 门当前读高 — 深路径按触发分支验证", "verdict": "OBS", "msg": "fin=0800020c33553463a4000158eb7e7507a811e11000"}
+{"phase": "P9-OptFix", "id": "O5c", "name": "带 demagCnt 尾字节帧被受理 (err≠PARAM)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9-OptFix", "id": "O6a", "name": "GET_CONFIG 基线 (存档待还原)", "verdict": "PASS", "msg": "sess=0"}
+{"phase": "P9-OptFix", "id": "O6b", "name": "SET_CONFIG session=2 生效", "verdict": "PASS", "msg": "sess=2"}
+{"phase": "P9-OptFix", "id": "O6c", "name": "S2 会话下连续 2 周期均完成匹配闭环 (ScanSession S0 生效)", "verdict": "PASS", "msg": "2/2"}
+{"phase": "P9-OptFix", "id": "O6d", "name": "配置还原 (SET err=0)", "verdict": "PASS", "msg": "sess=0 setErr=0"}
+{"phase": "P9-OptFix", "id": "O7a", "name": "复位后 App 重连 (≤12s)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9-OptFix", "id": "O7b", "name": "重连即 UHF 已上电 (#9: POST 先于 USB 就绪完成恢复)", "verdict": "PASS", "msg": "uhfPwr=1"}
+{"phase": "P9-OptFix", "id": "O7c", "name": "回零进行中 MOVE -> BUSY(3) (#3 互斥)", "verdict": "PASS", "msg": "err=3"}
+{"phase": "P9-OptFix", "id": "O7d", "name": "后台回零达 READY(2) (#11)", "verdict": "PASS", "msg": "4.7s"}
+{"phase": "P9-OptFix", "id": "O7e", "name": "READY 后 MOVE 恢复受理", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P9b-BootStorm", "id": "T1a", "name": "JLink 注入 count=3 + 复位", "verdict": "PASS", "msg": "RAM 写入+复位"}
+{"phase": "P9b-BootStorm", "id": "T1b", "name": "T+5s (正常窗口外) 仍 Layer=0 — Boot 常驻升级循环", "verdict": "PASS", "msg": "layer=0"}
+{"phase": "P9b-BootStorm", "id": "T1c", "name": "T+8s 持续 Layer=0 (锁定非瞬态)", "verdict": "PASS", "msg": "layer=0"}
+{"phase": "P9b-BootStorm", "id": "T2a", "name": "EXIT_BOOT 回 OK", "verdict": "PASS", "msg": "rsp=00"}
+{"phase": "P9b-BootStorm", "id": "T2b", "name": "EXIT_BOOT 后 App 启动 (Layer=1)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9b-BootStorm", "id": "T3", "name": "清零后普通复位 -> 正常启动 (≤12s)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9b-BootStorm", "id": "T4a", "name": "JLink 注入 count=2 + 复位", "verdict": "PASS", "msg": "RAM 写入+复位"}
+{"phase": "P9b-BootStorm", "id": "T4b", "name": "count=2 < 阈值3 -> 正常启动 (≤12s, 不锁定)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9b-BootStorm", "id": "T4c", "name": "App 启动清计数后再复位 -> 仍正常启动", "verdict": "PASS", "msg": "7.2s"}
+{"phase": "P9b-BootStorm", "id": "T1a", "name": "JLink 注入 count=3 + 复位", "verdict": "PASS", "msg": "RAM 写入+复位"}
+{"phase": "P9b-BootStorm", "id": "T1b", "name": "T+5s (正常窗口外) 仍 Layer=0 — Boot 常驻升级循环", "verdict": "PASS", "msg": "layer=0"}
+{"phase": "P9b-BootStorm", "id": "T1c", "name": "T+8s 持续 Layer=0 (锁定非瞬态)", "verdict": "PASS", "msg": "layer=0"}
+{"phase": "P9b-BootStorm", "id": "T2a", "name": "EXIT_BOOT 回 OK", "verdict": "PASS", "msg": "rsp=00"}
+{"phase": "P9b-BootStorm", "id": "T2b", "name": "EXIT_BOOT 后 App 启动 (Layer=1)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9b-BootStorm", "id": "T3", "name": "清零后普通复位 -> 正常启动 (≤12s)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9b-BootStorm", "id": "T4a", "name": "JLink 注入 count=2 + 复位", "verdict": "PASS", "msg": "RAM 写入+复位"}
+{"phase": "P9b-BootStorm", "id": "T4b", "name": "count=2 < 阈值3 -> 正常启动 (≤12s, 不锁定)", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P9b-BootStorm", "id": "T4c", "name": "App 启动清计数后再复位 -> 仍正常启动", "verdict": "PASS", "msg": "7.2s"}
+{"phase": "P2", "id": "B1", "name": "握手 x100 连发", "verdict": "PASS", "msg": "100/100 OK, 总耗时8.0s (均 80ms)"}
+{"phase": "P2", "id": "B2", "name": "设备信息字段", "verdict": "PASS", "msg": "raw=0001433854365f56312e30000000000000005a4c52353430315f56312e3000000000 硬件=C8T6_V1. 固件="}
+{"phase": "P2", "id": "B2-obs", "name": "DEVICE_INFO 硬件名与实际 MCU (GD32F303RCT6) 不一致", "verdict": "OBS", "msg": "硬件名=C8T6_V1. (疑似早期板名遗留, 建议更正)"}
+{"phase": "P2", "id": "B3a", "name": "RGB SET mask=1..7 全组合 (空闲)", "verdict": "PASS", "msg": "全部 OK+回显"}
+{"phase": "P2", "id": "B3b", "name": "RGB mask=0 撤销", "verdict": "PASS", "msg": "OK"}
+{"phase": "P2", "id": "B3c", "name": "RGB 非法 mask=0x08 (仅 G/R/B 位有效)", "verdict": "PASS", "msg": "err=0 (回显 mask=8)"}
+{"phase": "P2", "id": "B3d", "name": "RGB 短帧 (缺 reserved)", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B3e", "name": "RGB SET 于 Locker CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY (配置未激活也拒绝, 保守正确)"}
+{"phase": "P2", "id": "B4a", "name": "SELFTEST QUERY 基线", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P2", "id": "B4b", "name": "SELFTEST RERUN (空闲, 阻塞探测)", "verdict": "PASS", "msg": "err=0 errBits=0x0000 探测耗时1.6s"}
+{"phase": "P2", "id": "B4c", "name": "SELFTEST RERUN 于 CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY"}
+{"phase": "P2", "id": "B4d", "name": "SELFTEST CLEAR 文档布局 [cmd,maskL,maskH]", "verdict": "PASS", "msg": "清后 errBits=0x0000"}
+{"phase": "P2", "id": "B4e", "name": "SELFTEST 未知子命令", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B5a", "name": "FC_RESET 回帧", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P2", "id": "B5b", "name": "复位后重枚举+存活 (25s 内, 含回零阻塞)", "verdict": "PASS", "msg": "重连耗时 7.3s"}
+{"phase": "P2", "id": "B5c", "name": "复位后自检基线 (回零重建)", "verdict": "PASS", "msg": "errBits=0x0000(0) switchErr=1"}
+{"phase": "P2", "id": "B5d", "name": "复位后电机 IDLE (回零完成)", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P2", "id": "B1", "name": "握手 x100 连发", "verdict": "PASS", "msg": "100/100 OK, 总耗时8.0s (均 80ms)"}
+{"phase": "P2", "id": "B2", "name": "设备信息字段", "verdict": "PASS", "msg": "raw=0001433854365f56312e30000000000000005a4c52353430315f56312e3000000000 硬件=C8T6_V1. 固件="}
+{"phase": "P2", "id": "B2-obs", "name": "DEVICE_INFO 硬件名与实际 MCU (GD32F303RCT6) 不一致", "verdict": "OBS", "msg": "硬件名=C8T6_V1. (疑似早期板名遗留, 建议更正)"}
+{"phase": "P2", "id": "B3a", "name": "RGB SET mask=1..7 全组合 (空闲)", "verdict": "PASS", "msg": "全部 OK+回显"}
+{"phase": "P2", "id": "B3b", "name": "RGB mask=0 撤销", "verdict": "PASS", "msg": "OK"}
+{"phase": "P2", "id": "B3c", "name": "RGB 非法 mask=0x08 (仅 G/R/B 位有效)", "verdict": "PASS", "msg": "err=0 (回显 mask=8)"}
+{"phase": "P2", "id": "B3d", "name": "RGB 短帧 (缺 reserved)", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B3e", "name": "RGB SET 于 Locker CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY (配置未激活也拒绝, 保守正确)"}
+{"phase": "P2", "id": "B4a", "name": "SELFTEST QUERY 基线", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P2", "id": "B4b", "name": "SELFTEST RERUN (空闲, 阻塞探测)", "verdict": "PASS", "msg": "err=0 errBits=0x0000 探测耗时1.6s"}
+{"phase": "P2", "id": "B4c", "name": "SELFTEST RERUN 于 CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY"}
+{"phase": "P2", "id": "B4d", "name": "SELFTEST CLEAR 文档布局 [cmd,maskL,maskH]", "verdict": "PASS", "msg": "清后 errBits=0x0000"}
+{"phase": "P2", "id": "B4e", "name": "SELFTEST 未知子命令", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B5a", "name": "FC_RESET 回帧", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P2", "id": "B5b", "name": "复位后重枚举+存活 (25s 内, 含回零阻塞)", "verdict": "PASS", "msg": "重连耗时 7.3s"}
+{"phase": "P2", "id": "B5c", "name": "复位后自检基线 (回零重建)", "verdict": "PASS", "msg": "errBits=0x0000(0) switchErr=1"}
+{"phase": "P2", "id": "B5d", "name": "复位后电机 IDLE (回零完成)", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P3", "id": "M0", "name": "电机初始 IDLE", "verdict": "FAIL", "msg": "state=1"}
+{"phase": "P3", "id": "M1a SPEED=1 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1b SPEED=2000 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1c SPEED=0 (非法)", "name": "", "verdict": "FAIL", "msg": "err=0 期望 1"}
+{"phase": "P3", "id": "M1d SPEED=2001 (非法)", "name": "", "verdict": "FAIL", "msg": "err=0 期望 1"}
+{"phase": "P3", "id": "M1e TORQUE=6 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1f TORQUE=100 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1g TORQUE=5 (非法)", "name": "", "verdict": "FAIL", "msg": "err=0 期望 1"}
+{"phase": "P3", "id": "M1h TORQUE=101 (非法)", "name": "", "verdict": "FAIL", "msg": "err=0 期望 1"}
+{"phase": "P3", "id": "M2a", "name": "MOVE 100 微步 (dir=0)", "verdict": "FAIL", "msg": "resp=0103"}
+{"phase": "P3", "id": "M2b", "name": "MOVE 后自动到 IDLE (100步@2000Hz)", "verdict": "PASS", "msg": "IDLE, steps16=4276 (Δ=2395)"}
+{"phase": "P3", "id": "M2c", "name": "MOVE 200 微步 (dir=1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2d", "name": "反向 MOVE 完成", "verdict": "PASS", "msg": "steps16=200 (Δ=61460)"}
+{"phase": "P3", "id": "M3a", "name": "MOVE 进行中再 MOVE", "verdict": "FAIL", "msg": "err=0 (期望 2/3)"}
+{"phase": "P3", "id": "M3b", "name": "MOVE 进行中下发 TEST", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M2e", "name": "STOP 停止", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2f", "name": "STOP 后 IDLE", "verdict": "PASS", "msg": "OK"}
+{"phase": "P3", "id": "M4a", "name": "QUERY 字段", "verdict": "PASS", "msg": "resp=05000000000064000000"}
+{"phase": "P3", "id": "M4b", "name": "HEALTH 读", "verdict": "PASS", "msg": "resp=0800009001ff0f01"}
+{"phase": "P3", "id": "M4c", "name": "STATS 读", "verdict": "PASS", "msg": "resp=0900040000050001"}
+{"phase": "P3", "id": "M4d", "name": "STATS 数值合理性", "verdict": "PASS", "msg": "runSec=4s startCnt=5 lastReason=1"}
+{"phase": "P3", "id": "M5", "name": "CLEAR 无故障幂等", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M6a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0 受理"}
+{"phase": "P3", "id": "M6b", "name": "TEST 进行中 MOVE", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M6c", "name": "TEST 1 趟往返完成", "verdict": "PASS", "msg": "2.7s 后 IDLE (steps16=4345)"}
+{"phase": "P3", "id": "M6d", "name": "TEST 后可再次 TEST", "verdict": "PASS", "msg": "受理"}
+{"phase": "P3", "id": "M6e", "name": "第二次 TEST 完成", "verdict": "PASS", "msg": "5.4s 后 IDLE"}
+{"phase": "P3", "id": "M7a", "name": "TEST 中途 STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M7b", "name": "STOP 后状态恢复", "verdict": "PASS", "msg": "IDLE"}
+{"phase": "P3", "id": "M8", "name": "运动用例后自检位图仍干净", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P3", "id": "M0", "name": "电机初始 IDLE", "verdict": "FAIL", "msg": "state=1"}
+{"phase": "P3", "id": "M1a SPEED=1 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1b SPEED=2000 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1c SPEED=0 (非法)", "name": "", "verdict": "FAIL", "msg": "err=0 期望 1"}
+{"phase": "P3", "id": "M1d SPEED=2001 (非法)", "name": "", "verdict": "FAIL", "msg": "err=0 期望 1"}
+{"phase": "P3", "id": "M1e TORQUE=6 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1f TORQUE=100 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1g TORQUE=5 (非法)", "name": "", "verdict": "FAIL", "msg": "err=0 期望 1"}
+{"phase": "P3", "id": "M1h TORQUE=101 (非法)", "name": "", "verdict": "FAIL", "msg": "err=0 期望 1"}
+{"phase": "P3", "id": "M2a", "name": "MOVE 100 微步 (dir=0)", "verdict": "FAIL", "msg": "resp=0103"}
+{"phase": "P3", "id": "M2b", "name": "MOVE 后自动到 IDLE (100步@2000Hz)", "verdict": "PASS", "msg": "IDLE, steps16=4276 (Δ=2395)"}
+{"phase": "P3", "id": "M2c", "name": "MOVE 200 微步 (dir=1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2d", "name": "反向 MOVE 完成", "verdict": "PASS", "msg": "steps16=200 (Δ=61460)"}
+{"phase": "P3", "id": "M3a", "name": "MOVE 进行中再 MOVE", "verdict": "FAIL", "msg": "err=0 (期望 2/3)"}
+{"phase": "P3", "id": "M3b", "name": "MOVE 进行中下发 TEST", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M2e", "name": "STOP 停止", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2f", "name": "STOP 后 IDLE", "verdict": "PASS", "msg": "OK"}
+{"phase": "P3", "id": "M4a", "name": "QUERY 字段", "verdict": "PASS", "msg": "resp=05000000000064000000"}
+{"phase": "P3", "id": "M4b", "name": "HEALTH 读", "verdict": "PASS", "msg": "resp=0800009001ff0f01"}
+{"phase": "P3", "id": "M4c", "name": "STATS 读", "verdict": "PASS", "msg": "resp=0900040000050001"}
+{"phase": "P3", "id": "M4d", "name": "STATS 数值合理性", "verdict": "PASS", "msg": "runSec=4s startCnt=5 lastReason=1"}
+{"phase": "P3", "id": "M5", "name": "CLEAR 无故障幂等", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M6a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0 受理"}
+{"phase": "P3", "id": "M6b", "name": "TEST 进行中 MOVE", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M6c", "name": "TEST 1 趟往返完成", "verdict": "PASS", "msg": "2.7s 后 IDLE (steps16=4345)"}
+{"phase": "P3", "id": "M6d", "name": "TEST 后可再次 TEST", "verdict": "PASS", "msg": "受理"}
+{"phase": "P3", "id": "M6e", "name": "第二次 TEST 完成", "verdict": "PASS", "msg": "5.4s 后 IDLE"}
+{"phase": "P3", "id": "M7a", "name": "TEST 中途 STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M7b", "name": "STOP 后状态恢复", "verdict": "PASS", "msg": "IDLE"}
+{"phase": "P3", "id": "M8", "name": "运动用例后自检位图仍干净", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P4", "id": "U9a", "name": "未 OPEN 直接 INVENTORY", "verdict": "PASS", "msg": "err=3 NOT_READY"}
+{"phase": "P4", "id": "U9b", "name": "未 OPEN 直接 SCAN_STOP (幂等)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1a", "name": "UHF OPEN", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1b", "name": "OPEN 后 QUERY (链路+状态)", "verdict": "PASS", "msg": "err=0 state=1 link=0 totalTags=0"}
+{"phase": "P4", "id": "U1c", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1d", "name": "CLOSE 后 QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P4", "id": "U2a", "name": "GET_CONFIG", "verdict": "PASS", "msg": "power=20 ant=0 chk=1 sess=0 tgt=0 q=0 band=1"}
+{"phase": "P4", "id": "U2b", "name": "SET_CONFIG (改 power/session)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U2c", "name": "GET_CONFIG 读回一致", "verdict": "PASS", "msg": "power=30 (写 30) sess=1 (写 1)"}
+{"phase": "P4", "id": "U2d", "name": "SET_CONFIG 短帧", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P4", "id": "U4", "name": "INVENTORY (在场标签)", "verdict": "PASS", "msg": "count=1 epc=33553463a4000158eb7e7507 rssi=255"}
+{"phase": "P4", "id": "U6a", "name": "SCAN_START", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U6b", "name": "GET_TAGS 拉取 (扫描累积)", "verdict": "PASS", "msg": "count=2"}
+{"phase": "P4", "id": "U6c", "name": "GET_TAGS 取走清空", "verdict": "PASS", "msg": "count=0"}
+{"phase": "P4", "id": "U6d", "name": "SCAN_STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U7a", "name": "GET_STATUS", "verdict": "PASS", "msg": "resp=0b00010002010100007800a7"}
+{"phase": "P4", "id": "U7b", "name": "CHECK_ANT", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U7c", "name": "GET_DUMP", "verdict": "PASS", "msg": "len=21B"}
+{"phase": "P4", "id": "U8", "name": "READ_TAG", "verdict": "PASS", "msg": "resp=0400"}
+{"phase": "P4", "id": "U3a", "name": "FC_RESET (持久化前)", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P4", "id": "U3b", "name": "复位重连", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P4", "id": "U3c", "name": "复位后 UHF 配置持久 (power/session)", "verdict": "PASS", "msg": "power=30 (期望 30) sess=1 (期望 1)"}
+{"phase": "P4", "id": "U3d", "name": "还原原始 UHF 配置 (防 S2 污染后续用例)", "verdict": "PASS", "msg": "power=20 sess=0 (原 20/0)"}
+{"phase": "P4", "id": "U9a", "name": "未 OPEN 直接 INVENTORY", "verdict": "PASS", "msg": "err=3 NOT_READY"}
+{"phase": "P4", "id": "U9b", "name": "未 OPEN 直接 SCAN_STOP (幂等)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1a", "name": "UHF OPEN", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1b", "name": "OPEN 后 QUERY (链路+状态)", "verdict": "PASS", "msg": "err=0 state=1 link=0 totalTags=0"}
+{"phase": "P4", "id": "U1c", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1d", "name": "CLOSE 后 QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P4", "id": "U2a", "name": "GET_CONFIG", "verdict": "PASS", "msg": "power=20 ant=0 chk=1 sess=0 tgt=0 q=0 band=1"}
+{"phase": "P4", "id": "U2b", "name": "SET_CONFIG (改 power/session)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U2c", "name": "GET_CONFIG 读回一致", "verdict": "PASS", "msg": "power=30 (写 30) sess=1 (写 1)"}
+{"phase": "P4", "id": "U2d", "name": "SET_CONFIG 短帧", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P4", "id": "U4", "name": "INVENTORY (在场标签)", "verdict": "PASS", "msg": "count=1 epc=33553463a4000158eb7e7507 rssi=255"}
+{"phase": "P4", "id": "U6a", "name": "SCAN_START", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U6b", "name": "GET_TAGS 拉取 (扫描累积)", "verdict": "PASS", "msg": "count=2"}
+{"phase": "P4", "id": "U6c", "name": "GET_TAGS 取走清空", "verdict": "PASS", "msg": "count=0"}
+{"phase": "P4", "id": "U6d", "name": "SCAN_STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U7a", "name": "GET_STATUS", "verdict": "PASS", "msg": "resp=0b00010002010100007800a7"}
+{"phase": "P4", "id": "U7b", "name": "CHECK_ANT", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U7c", "name": "GET_DUMP", "verdict": "PASS", "msg": "len=21B"}
+{"phase": "P4", "id": "U8", "name": "READ_TAG", "verdict": "PASS", "msg": "resp=0400"}
+{"phase": "P4", "id": "U3a", "name": "FC_RESET (持久化前)", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P4", "id": "U3b", "name": "复位重连", "verdict": "PASS", "msg": "7.3s"}
+{"phase": "P4", "id": "U3c", "name": "复位后 UHF 配置持久 (power/session)", "verdict": "PASS", "msg": "power=30 (期望 30) sess=1 (期望 1)"}
+{"phase": "P4", "id": "U3d", "name": "还原原始 UHF 配置 (防 S2 污染后续用例)", "verdict": "PASS", "msg": "power=20 sess=0 (原 20/0)"}
+{"phase": "P5", "id": "AM1", "name": "AM QUERY 探链", "verdict": "PASS", "msg": "err=0 链路在"}
+{"phase": "P5", "id": "AM2a", "name": "AM GET_CONFIG", "verdict": "PASS", "msg": "thr=10 hit=5 freq=0 delay=0 len=0 inv=0 sync=0 volt=1 mode=2 mains=0"}
+{"phase": "P5", "id": "AM2b", "name": "AM SET_CONFIG (原样写回)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM2c", "name": "写读一致", "verdict": "PASS", "msg": "配置回读与写入完全一致"}
+{"phase": "P5", "id": "AM2d", "name": "SET_CONFIG 短帧", "verdict": "PASS", "msg": "resp=0201 (按实现记录)"}
+{"phase": "P5", "id": "AM4a", "name": "AM GET_PARAM (cmd=1)", "verdict": "PASS", "msg": "resp=0300010000"}
+{"phase": "P5", "id": "AM5a", "name": "SET_MODE=1 (仅检测)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM5b", "name": "模式已切 1", "verdict": "PASS", "msg": "mode=1"}
+{"phase": "P5", "id": "AM5c", "name": "SET_MODE 恢复 2", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM5d", "name": "SET_MODE 非法值 5", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P5", "id": "AM6a", "name": "AM GET_STATUS", "verdict": "PASS", "msg": "link=0 evt=0 deact=0 deactCnt=0 failCnt=0"}
+{"phase": "P5", "id": "AM6b", "name": "AM GET_WAVE (阻塞采集)", "verdict": "PASS", "msg": "points=400 耗时0.3s"}
+{"phase": "P5", "id": "AM6c", "name": "AM GET_WAVE_PAGE (page0)", "verdict": "PASS", "msg": "err=0 points=400 本页点数=18"}
+{"phase": "P5", "id": "AM6d", "name": "GET_WAVE_PAGE 越界页", "verdict": "PASS", "msg": "resp=090901 (按实现记录)"}
+{"phase": "P5", "id": "AM3a", "name": "复位后 App 就绪", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P5", "id": "AM3b", "name": "复位后 AM 配置持久", "verdict": "PASS", "msg": "读回一致"}
+{"phase": "P5", "id": "AM1", "name": "AM QUERY 探链", "verdict": "PASS", "msg": "err=0 链路在"}
+{"phase": "P5", "id": "AM2a", "name": "AM GET_CONFIG", "verdict": "PASS", "msg": "thr=10 hit=5 freq=0 delay=0 len=0 inv=0 sync=0 volt=1 mode=2 mains=0"}
+{"phase": "P5", "id": "AM2b", "name": "AM SET_CONFIG (原样写回)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM2c", "name": "写读一致", "verdict": "PASS", "msg": "配置回读与写入完全一致"}
+{"phase": "P5", "id": "AM2d", "name": "SET_CONFIG 短帧", "verdict": "PASS", "msg": "resp=0201 (按实现记录)"}
+{"phase": "P5", "id": "AM4a", "name": "AM GET_PARAM (cmd=1)", "verdict": "PASS", "msg": "resp=0300010000"}
+{"phase": "P5", "id": "AM5a", "name": "SET_MODE=1 (仅检测)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM5b", "name": "模式已切 1", "verdict": "PASS", "msg": "mode=1"}
+{"phase": "P5", "id": "AM5c", "name": "SET_MODE 恢复 2", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM5d", "name": "SET_MODE 非法值 5", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P5", "id": "AM6a", "name": "AM GET_STATUS", "verdict": "PASS", "msg": "link=0 evt=0 deact=0 deactCnt=0 failCnt=0"}
+{"phase": "P5", "id": "AM6b", "name": "AM GET_WAVE (阻塞采集)", "verdict": "PASS", "msg": "points=400 耗时0.3s"}
+{"phase": "P5", "id": "AM6c", "name": "AM GET_WAVE_PAGE (page0)", "verdict": "PASS", "msg": "err=0 points=400 本页点数=18"}
+{"phase": "P5", "id": "AM6d", "name": "GET_WAVE_PAGE 越界页", "verdict": "PASS", "msg": "resp=090901 (按实现记录)"}
+{"phase": "P5", "id": "AM3a", "name": "复位后 App 就绪", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P5", "id": "AM3b", "name": "复位后 AM 配置持久", "verdict": "PASS", "msg": "读回一致"}
+{"phase": "P6-Locker", "id": "L1", "name": "QUERY 空闲态", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "L2", "name": "GET_EVENT 空队列 -> NO_EVENT(3)", "verdict": "PASS", "msg": "d=0703"}
+{"phase": "P6-Locker", "id": "L3a", "name": "CONFIGURE hardCount=17 -> PARAM", "verdict": "PASS", "msg": "d=0102"}
+{"phase": "P6-Locker", "id": "L3b", "name": "CONFIGURE soft=2 -> OK, state=CONFIGURED(1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L4", "name": "CONFIGURE 忙时 -> BUSY(1)", "verdict": "PASS", "msg": "d=0101"}
+{"phase": "P6-Locker", "id": "L5a", "name": "ADD 短帧 (epcLen=8, 实2B) -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L5b", "name": "ADD epcLen=13 超上限 -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L6", "name": "ADD 合法 [epcLen=12]+12B -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L7", "name": "CANCEL (未升起直回 IDLE)", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "L8", "name": "START 空任务 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "L9a-1", "name": "假EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9a", "name": "START 假EPC任务 -> OK", "verdict": "FAIL", "msg": "d=0301"}
+{"phase": "P6-Locker", "id": "L9b", "name": "START 后 ADD -> BUSY", "verdict": "FAIL", "msg": "d=0200"}
+{"phase": "P6-Locker", "id": "L9c", "name": "重复 START -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9d", "name": "非软标态 CONSUME_SOFT -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9e", "name": "CANCEL 收尾 -> IDLE", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "B0", "name": "真EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B1", "name": "START 真EPC任务 -> OK", "verdict": "FAIL", "msg": "d=0301"}
+{"phase": "P6-Locker", "id": "B2", "name": "CONFIGURED(1)->匹配->SOFT(3)", "verdict": "FAIL", "msg": "轨迹=[1, 5] 最终=5"}
+{"phase": "P6-Locker", "id": "B3", "name": "事件 MATCH_OK(0)+HARD_DONE(2), EPC 回传正确", "verdict": "FAIL", "msg": "codes=[0, 6]"}
+{"phase": "P6-Locker", "id": "B3m", "name": "匹配后电机升起 (state=1 运行或已到顶)", "verdict": "PASS", "msg": "motor=0"}
+{"phase": "P6-Locker", "id": "B4a", "name": "CONSUME_SOFT #1 -> SOFT_USED", "verdict": "FAIL", "msg": "d=0601"}
+{"phase": "P6-Locker", "id": "B4b", "name": "CONSUME_SOFT #2 -> DONE(4)", "verdict": "FAIL", "msg": "state=5"}
+{"phase": "P6-Locker", "id": "B5", "name": "DONE(4)->LOWERING(6)->IDLE(0) 回降闭环", "verdict": "FAIL", "msg": "轨迹=[5]"}
+{"phase": "P6-Locker", "id": "B6", "name": "事件序 SOFT_USED×2 + DONE(5)", "verdict": "FAIL", "msg": "codes=[]"}
+{"phase": "P6-Locker", "id": "B6m", "name": "回降后电机 IDLE", "verdict": "PASS", "msg": "motor=0"}
+{"phase": "P6-Locker", "id": "B7", "name": "MISMATCH 事件 (外来EPC=真标签, 不升起)", "verdict": "FAIL", "msg": "mm=None"}
+{"phase": "P6-Locker", "id": "B8", "name": "失配后仍 CONFIGURED(1) 不动磁块", "verdict": "PASS", "msg": "state=1 motor=0"}
+{"phase": "P6-Locker", "id": "B9", "name": "MISMATCH 后 CANCEL -> IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "C1", "name": "GET_PROGRESS 空闲 phase=0", "verdict": "PASS", "msg": "d=09000000000000000000"}
+{"phase": "P6-Locker", "id": "C2a", "name": "ONE_SHOT 短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2b", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2c", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2d", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C3", "name": "ONE_SHOT 全流程 (PC4 触发): err=0 升降步数回传, 收尾电机 IDLE", "verdict": "PASS", "msg": "end=2 rise≈4321 motor=0"}
+{"phase": "P6-Locker", "id": "C3-ir", "name": "PC4 红外门当前读高 (无人工放标) — 深路径按 IR=触发分支验证", "verdict": "OBS", "msg": "fin=0800020c33553463a4000158eb7e7507b910e11000"}
+{"phase": "P6-Locker", "id": "C4a", "name": "流程中 GET_PROGRESS 有相位 (IR 态依从)", "verdict": "PASS", "msg": "phase=4"}
+{"phase": "P6-Locker", "id": "C4b", "name": "流程中 CANCEL -> 立即 OK", "verdict": "PASS", "msg": "d=0400"}
+{"phase": "P6-Locker", "id": "C4c", "name": "打断最终帧 err=0 endReason=6(ABORTED), 电机安全回 IDLE", "verdict": "PASS", "msg": "fin=0800060c33553463a4000158eb7e7507a000da0000 motor=0"}
+{"phase": "P6-Locker", "id": "C4d", "name": "打断后 Locker 回 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "D1a", "name": "短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1b", "name": "epcCnt=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1c", "name": "epcCnt=5 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1d", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1e", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1f", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D4a", "name": "短窗(<3s确认门限) -> PARTIAL_TIMEOUT(2), 零确认零升降", "verdict": "PASS", "msg": "fin=0a00020000010000000000000208 pushes=['0f0001d00700', '0d02000001d007'] 电机=0"}
+{"phase": "P6-Locker", "id": "D3a", "name": "流程中 ADD -> BUSY", "verdict": "PASS", "msg": "d=0201"}
+{"phase": "P6-Locker", "id": "D3b", "name": "流程中 GET_PROGRESS 多标签布局 (phase 1/2, total=1)", "verdict": "PASS", "msg": "d=09000100000100000000"}
+{"phase": "P6-Locker", "id": "D4", "name": "长窗全流程终帧 err=0 end=1(ALL_OK) 确认/位图/升降步数齐", "verdict": "PASS", "msg": "end=1 bmp=1 conf=1/1 rise=4401 pushes=[15, 11, 13] 电机=0"}
+{"phase": "P6-Locker", "id": "D5", "name": "确认推送 0x0B 含真EPC (判据耗时≈3s门限)", "verdict": "PASS", "msg": "EPC✓ 判据耗时✓"}
+{"phase": "P6-Locker", "id": "D6", "name": "流程后 Locker IDLE, 电机 IDLE", "verdict": "PASS", "msg": "state=0 motor=0"}
+{"phase": "P6-Locker", "id": "L1", "name": "QUERY 空闲态", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "L2", "name": "GET_EVENT 空队列 -> NO_EVENT(3)", "verdict": "PASS", "msg": "d=0703"}
+{"phase": "P6-Locker", "id": "L3a", "name": "CONFIGURE hardCount=17 -> PARAM", "verdict": "PASS", "msg": "d=0102"}
+{"phase": "P6-Locker", "id": "L3b", "name": "CONFIGURE soft=2 -> OK, state=CONFIGURED(1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L4", "name": "CONFIGURE 忙时 -> BUSY(1)", "verdict": "PASS", "msg": "d=0101"}
+{"phase": "P6-Locker", "id": "L5a", "name": "ADD 短帧 (epcLen=8, 实2B) -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L5b", "name": "ADD epcLen=13 超上限 -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L6", "name": "ADD 合法 [epcLen=12]+12B -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L7", "name": "CANCEL (未升起直回 IDLE)", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "L8", "name": "START 空任务 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "L9a-1", "name": "假EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9a", "name": "START 假EPC任务 -> OK", "verdict": "FAIL", "msg": "d=0301"}
+{"phase": "P6-Locker", "id": "L9b", "name": "START 后 ADD -> BUSY", "verdict": "FAIL", "msg": "d=0200"}
+{"phase": "P6-Locker", "id": "L9c", "name": "重复 START -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9d", "name": "非软标态 CONSUME_SOFT -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9e", "name": "CANCEL 收尾 -> IDLE", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "B0", "name": "真EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B1", "name": "START 真EPC任务 -> OK", "verdict": "FAIL", "msg": "d=0301"}
+{"phase": "P6-Locker", "id": "B2", "name": "CONFIGURED(1)->匹配->SOFT(3)", "verdict": "FAIL", "msg": "轨迹=[1, 5] 最终=5"}
+{"phase": "P6-Locker", "id": "B3", "name": "事件 MATCH_OK(0)+HARD_DONE(2), EPC 回传正确", "verdict": "FAIL", "msg": "codes=[0, 6]"}
+{"phase": "P6-Locker", "id": "B3m", "name": "匹配后电机升起 (state=1 运行或已到顶)", "verdict": "PASS", "msg": "motor=0"}
+{"phase": "P6-Locker", "id": "B4a", "name": "CONSUME_SOFT #1 -> SOFT_USED", "verdict": "FAIL", "msg": "d=0601"}
+{"phase": "P6-Locker", "id": "B4b", "name": "CONSUME_SOFT #2 -> DONE(4)", "verdict": "FAIL", "msg": "state=5"}
+{"phase": "P6-Locker", "id": "B5", "name": "DONE(4)->LOWERING(6)->IDLE(0) 回降闭环", "verdict": "FAIL", "msg": "轨迹=[5]"}
+{"phase": "P6-Locker", "id": "B6", "name": "事件序 SOFT_USED×2 + DONE(5)", "verdict": "FAIL", "msg": "codes=[]"}
+{"phase": "P6-Locker", "id": "B6m", "name": "回降后电机 IDLE", "verdict": "PASS", "msg": "motor=0"}
+{"phase": "P6-Locker", "id": "B7", "name": "MISMATCH 事件 (外来EPC=真标签, 不升起)", "verdict": "FAIL", "msg": "mm=None"}
+{"phase": "P6-Locker", "id": "B8", "name": "失配后仍 CONFIGURED(1) 不动磁块", "verdict": "PASS", "msg": "state=1 motor=0"}
+{"phase": "P6-Locker", "id": "B9", "name": "MISMATCH 后 CANCEL -> IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "C1", "name": "GET_PROGRESS 空闲 phase=0", "verdict": "PASS", "msg": "d=09000000000000000000"}
+{"phase": "P6-Locker", "id": "C2a", "name": "ONE_SHOT 短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2b", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2c", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2d", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C3", "name": "ONE_SHOT 全流程 (PC4 触发): err=0 升降步数回传, 收尾电机 IDLE", "verdict": "PASS", "msg": "end=2 rise≈4321 motor=0"}
+{"phase": "P6-Locker", "id": "C3-ir", "name": "PC4 红外门当前读高 (无人工放标) — 深路径按 IR=触发分支验证", "verdict": "OBS", "msg": "fin=0800020c33553463a4000158eb7e7507b910e11000"}
+{"phase": "P6-Locker", "id": "C4a", "name": "流程中 GET_PROGRESS 有相位 (IR 态依从)", "verdict": "PASS", "msg": "phase=4"}
+{"phase": "P6-Locker", "id": "C4b", "name": "流程中 CANCEL -> 立即 OK", "verdict": "PASS", "msg": "d=0400"}
+{"phase": "P6-Locker", "id": "C4c", "name": "打断最终帧 err=0 endReason=6(ABORTED), 电机安全回 IDLE", "verdict": "PASS", "msg": "fin=0800060c33553463a4000158eb7e7507a000da0000 motor=0"}
+{"phase": "P6-Locker", "id": "C4d", "name": "打断后 Locker 回 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "D1a", "name": "短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1b", "name": "epcCnt=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1c", "name": "epcCnt=5 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1d", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1e", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1f", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D4a", "name": "短窗(<3s确认门限) -> PARTIAL_TIMEOUT(2), 零确认零升降", "verdict": "PASS", "msg": "fin=0a00020000010000000000000208 pushes=['0f0001d00700', '0d02000001d007'] 电机=0"}
+{"phase": "P6-Locker", "id": "D3a", "name": "流程中 ADD -> BUSY", "verdict": "PASS", "msg": "d=0201"}
+{"phase": "P6-Locker", "id": "D3b", "name": "流程中 GET_PROGRESS 多标签布局 (phase 1/2, total=1)", "verdict": "PASS", "msg": "d=09000100000100000000"}
+{"phase": "P6-Locker", "id": "D4", "name": "长窗全流程终帧 err=0 end=1(ALL_OK) 确认/位图/升降步数齐", "verdict": "PASS", "msg": "end=1 bmp=1 conf=1/1 rise=4401 pushes=[15, 11, 13] 电机=0"}
+{"phase": "P6-Locker", "id": "D5", "name": "确认推送 0x0B 含真EPC (判据耗时≈3s门限)", "verdict": "PASS", "msg": "EPC✓ 判据耗时✓"}
+{"phase": "P6-Locker", "id": "D6", "name": "流程后 Locker IDLE, 电机 IDLE", "verdict": "PASS", "msg": "state=0 motor=0"}
+{"phase": "P3", "id": "M0", "name": "电机初始 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P3", "id": "M1a SPEED=1 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1b SPEED=2000 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1c SPEED=0 (非法)", "name": "M1c SPEED=0 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[0, 0]"}
+{"phase": "P3", "id": "M1d SPEED=2001 (非法)", "name": "M1d SPEED=2001 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[209, 7]"}
+{"phase": "P3", "id": "M1e TORQUE=6 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1f TORQUE=100 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1g TORQUE=5 (非法)", "name": "M1g TORQUE=5 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[5]"}
+{"phase": "P3", "id": "M1h TORQUE=101 (非法)", "name": "M1h TORQUE=101 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[101]"}
+{"phase": "P3", "id": "M2a", "name": "MOVE 100 微步 (dir=0)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2b", "name": "MOVE 后自动到 IDLE (100步@2000Hz)", "verdict": "PASS", "msg": "IDLE, steps16=100 (Δ=61315)"}
+{"phase": "P3", "id": "M2c", "name": "MOVE 200 微步 (dir=1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2d", "name": "反向 MOVE 完成", "verdict": "PASS", "msg": "steps16=200 (Δ=100)"}
+{"phase": "P3", "id": "M3a", "name": "MOVE 进行中再 MOVE", "verdict": "FAIL", "msg": "err=0 (期望 2/3)"}
+{"phase": "P3", "id": "M3b", "name": "MOVE 进行中下发 TEST", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M2e", "name": "STOP 停止", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2f", "name": "STOP 后 IDLE", "verdict": "PASS", "msg": "OK"}
+{"phase": "P3", "id": "M4a", "name": "QUERY 字段", "verdict": "PASS", "msg": "resp=05000000000064000000"}
+{"phase": "P3", "id": "M4b", "name": "HEALTH 读", "verdict": "PASS", "msg": "resp=0800009001ff0f01"}
+{"phase": "P3", "id": "M4c", "name": "STATS 读", "verdict": "PASS", "msg": "resp=09000f00000e0001"}
+{"phase": "P3", "id": "M4d", "name": "STATS 数值合理性", "verdict": "PASS", "msg": "runSec=15s startCnt=14 lastReason=1"}
+{"phase": "P3", "id": "M5", "name": "CLEAR 无故障幂等", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M6a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0 受理"}
+{"phase": "P3", "id": "M6b", "name": "TEST 进行中 MOVE", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M6c", "name": "TEST 1 趟往返完成", "verdict": "PASS", "msg": "2.7s 后 IDLE (steps16=4425)"}
+{"phase": "P3", "id": "M6d", "name": "TEST 后可再次 TEST", "verdict": "PASS", "msg": "受理"}
+{"phase": "P3", "id": "M6e", "name": "第二次 TEST 完成", "verdict": "PASS", "msg": "5.4s 后 IDLE"}
+{"phase": "P3", "id": "M7a", "name": "TEST 中途 STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M7b", "name": "STOP 后状态恢复", "verdict": "PASS", "msg": "IDLE"}
+{"phase": "P3", "id": "M8", "name": "运动用例后自检位图仍干净", "verdict": "FAIL", "msg": "st={'err': 0, 'errBits': 32, 'motorCommOk': 1, 'drvFault': 0, 'uhfLink': 0, 'amLink': 0, 'paramCrc': 0, 'switchErr': 0}"}
+{"phase": "P3", "id": "M0", "name": "电机初始 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P3", "id": "M1a SPEED=1 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1b SPEED=2000 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1c SPEED=0 (非法)", "name": "M1c SPEED=0 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[0, 0]"}
+{"phase": "P3", "id": "M1d SPEED=2001 (非法)", "name": "M1d SPEED=2001 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[209, 7]"}
+{"phase": "P3", "id": "M1e TORQUE=6 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1f TORQUE=100 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1g TORQUE=5 (非法)", "name": "M1g TORQUE=5 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[5]"}
+{"phase": "P3", "id": "M1h TORQUE=101 (非法)", "name": "M1h TORQUE=101 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[101]"}
+{"phase": "P3", "id": "M2a", "name": "MOVE 100 微步 (dir=0)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2b", "name": "MOVE 后自动到 IDLE (100步@2000Hz)", "verdict": "PASS", "msg": "IDLE, steps16=100 (Δ=61315)"}
+{"phase": "P3", "id": "M2c", "name": "MOVE 200 微步 (dir=1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2d", "name": "反向 MOVE 完成", "verdict": "PASS", "msg": "steps16=200 (Δ=100)"}
+{"phase": "P3", "id": "M3a", "name": "MOVE 进行中再 MOVE", "verdict": "FAIL", "msg": "err=0 (期望 2/3)"}
+{"phase": "P3", "id": "M3b", "name": "MOVE 进行中下发 TEST", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M2e", "name": "STOP 停止", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2f", "name": "STOP 后 IDLE", "verdict": "PASS", "msg": "OK"}
+{"phase": "P3", "id": "M4a", "name": "QUERY 字段", "verdict": "PASS", "msg": "resp=05000000000064000000"}
+{"phase": "P3", "id": "M4b", "name": "HEALTH 读", "verdict": "PASS", "msg": "resp=0800009001ff0f01"}
+{"phase": "P3", "id": "M4c", "name": "STATS 读", "verdict": "PASS", "msg": "resp=09000f00000e0001"}
+{"phase": "P3", "id": "M4d", "name": "STATS 数值合理性", "verdict": "PASS", "msg": "runSec=15s startCnt=14 lastReason=1"}
+{"phase": "P3", "id": "M5", "name": "CLEAR 无故障幂等", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M6a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0 受理"}
+{"phase": "P3", "id": "M6b", "name": "TEST 进行中 MOVE", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M6c", "name": "TEST 1 趟往返完成", "verdict": "PASS", "msg": "2.7s 后 IDLE (steps16=4425)"}
+{"phase": "P3", "id": "M6d", "name": "TEST 后可再次 TEST", "verdict": "PASS", "msg": "受理"}
+{"phase": "P3", "id": "M6e", "name": "第二次 TEST 完成", "verdict": "PASS", "msg": "5.4s 后 IDLE"}
+{"phase": "P3", "id": "M7a", "name": "TEST 中途 STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M7b", "name": "STOP 后状态恢复", "verdict": "PASS", "msg": "IDLE"}
+{"phase": "P3", "id": "M8", "name": "运动用例后自检位图仍干净", "verdict": "FAIL", "msg": "st={'err': 0, 'errBits': 32, 'motorCommOk': 1, 'drvFault': 0, 'uhfLink': 0, 'amLink': 0, 'paramCrc': 0, 'switchErr': 0}"}
+{"phase": "P2", "id": "B1", "name": "握手 x100 连发", "verdict": "PASS", "msg": "100/100 OK, 总耗时8.0s (均 80ms)"}
+{"phase": "P2", "id": "B2", "name": "设备信息字段", "verdict": "PASS", "msg": "raw=0001433854365f56312e30000000000000005a4c52353430315f56312e3000000000 硬件=C8T6_V1. 固件="}
+{"phase": "P2", "id": "B2-obs", "name": "DEVICE_INFO 硬件名与实际 MCU (GD32F303RCT6) 不一致", "verdict": "OBS", "msg": "硬件名=C8T6_V1. (疑似早期板名遗留, 建议更正)"}
+{"phase": "P2", "id": "B3a", "name": "RGB SET mask=1..7 全组合 (空闲)", "verdict": "PASS", "msg": "全部 OK+回显"}
+{"phase": "P2", "id": "B3b", "name": "RGB mask=0 撤销", "verdict": "PASS", "msg": "OK"}
+{"phase": "P2", "id": "B3c", "name": "RGB 非法 mask=0x08 (仅 G/R/B 位有效)", "verdict": "PASS", "msg": "err=0 (回显 mask=8)"}
+{"phase": "P2", "id": "B3d", "name": "RGB 短帧 (缺 reserved)", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B3e", "name": "RGB SET 于 Locker CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY (配置未激活也拒绝, 保守正确)"}
+{"phase": "P2", "id": "B4a", "name": "SELFTEST QUERY 基线", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P2", "id": "B4b", "name": "SELFTEST RERUN (空闲, 阻塞探测)", "verdict": "PASS", "msg": "err=0 errBits=0x0020 探测耗时1.6s"}
+{"phase": "P2", "id": "B4c", "name": "SELFTEST RERUN 于 CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY"}
+{"phase": "P2", "id": "B4d", "name": "SELFTEST CLEAR 文档布局 [cmd,maskL,maskH]", "verdict": "PASS", "msg": "清后 errBits=0x0000"}
+{"phase": "P2", "id": "B4e", "name": "SELFTEST 未知子命令", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B5a", "name": "FC_RESET 回帧", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P2", "id": "B5b", "name": "复位后重枚举+存活 (25s 内, 含回零阻塞)", "verdict": "PASS", "msg": "重连耗时 9.1s"}
+{"phase": "P2", "id": "B5c", "name": "复位后自检基线 (回零重建)", "verdict": "PASS", "msg": "errBits=0x0000(0) switchErr=2"}
+{"phase": "P2", "id": "B5d", "name": "复位后电机 IDLE (回零完成)", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P2", "id": "B1", "name": "握手 x100 连发", "verdict": "PASS", "msg": "100/100 OK, 总耗时8.0s (均 80ms)"}
+{"phase": "P2", "id": "B2", "name": "设备信息字段", "verdict": "PASS", "msg": "raw=0001433854365f56312e30000000000000005a4c52353430315f56312e3000000000 硬件=C8T6_V1. 固件="}
+{"phase": "P2", "id": "B2-obs", "name": "DEVICE_INFO 硬件名与实际 MCU (GD32F303RCT6) 不一致", "verdict": "OBS", "msg": "硬件名=C8T6_V1. (疑似早期板名遗留, 建议更正)"}
+{"phase": "P2", "id": "B3a", "name": "RGB SET mask=1..7 全组合 (空闲)", "verdict": "PASS", "msg": "全部 OK+回显"}
+{"phase": "P2", "id": "B3b", "name": "RGB mask=0 撤销", "verdict": "PASS", "msg": "OK"}
+{"phase": "P2", "id": "B3c", "name": "RGB 非法 mask=0x08 (仅 G/R/B 位有效)", "verdict": "PASS", "msg": "err=0 (回显 mask=8)"}
+{"phase": "P2", "id": "B3d", "name": "RGB 短帧 (缺 reserved)", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B3e", "name": "RGB SET 于 Locker CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY (配置未激活也拒绝, 保守正确)"}
+{"phase": "P2", "id": "B4a", "name": "SELFTEST QUERY 基线", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P2", "id": "B4b", "name": "SELFTEST RERUN (空闲, 阻塞探测)", "verdict": "PASS", "msg": "err=0 errBits=0x0020 探测耗时1.6s"}
+{"phase": "P2", "id": "B4c", "name": "SELFTEST RERUN 于 CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY"}
+{"phase": "P2", "id": "B4d", "name": "SELFTEST CLEAR 文档布局 [cmd,maskL,maskH]", "verdict": "PASS", "msg": "清后 errBits=0x0000"}
+{"phase": "P2", "id": "B4e", "name": "SELFTEST 未知子命令", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B5a", "name": "FC_RESET 回帧", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P2", "id": "B5b", "name": "复位后重枚举+存活 (25s 内, 含回零阻塞)", "verdict": "PASS", "msg": "重连耗时 9.1s"}
+{"phase": "P2", "id": "B5c", "name": "复位后自检基线 (回零重建)", "verdict": "PASS", "msg": "errBits=0x0000(0) switchErr=2"}
+{"phase": "P2", "id": "B5d", "name": "复位后电机 IDLE (回零完成)", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P3", "id": "M0", "name": "电机初始 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P3", "id": "M1a SPEED=1 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1b SPEED=2000 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1c SPEED=0 (非法)", "name": "M1c SPEED=0 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[0, 0]"}
+{"phase": "P3", "id": "M1d SPEED=2001 (非法)", "name": "M1d SPEED=2001 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[209, 7]"}
+{"phase": "P3", "id": "M1e TORQUE=6 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1f TORQUE=100 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1g TORQUE=5 (非法)", "name": "M1g TORQUE=5 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[5]"}
+{"phase": "P3", "id": "M1h TORQUE=101 (非法)", "name": "M1h TORQUE=101 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[101]"}
+{"phase": "P3", "id": "M2a", "name": "MOVE 100 微步 (dir=0)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2b", "name": "MOVE 后自动到 IDLE (100步@2000Hz)", "verdict": "PASS", "msg": "IDLE, steps16=100 (Δ=61110)"}
+{"phase": "P3", "id": "M2c", "name": "MOVE 200 微步 (dir=1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2d", "name": "反向 MOVE 完成", "verdict": "PASS", "msg": "steps16=200 (Δ=100)"}
+{"phase": "P3", "id": "M3a", "name": "MOVE 进行中再 MOVE", "verdict": "FAIL", "msg": "err=0 (期望 2/3)"}
+{"phase": "P3", "id": "M3b", "name": "MOVE 进行中下发 TEST", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M2e", "name": "STOP 停止", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2f", "name": "STOP 后 IDLE", "verdict": "PASS", "msg": "OK"}
+{"phase": "P3", "id": "M4a", "name": "QUERY 字段", "verdict": "PASS", "msg": "resp=05000000000064000000"}
+{"phase": "P3", "id": "M4b", "name": "HEALTH 读", "verdict": "PASS", "msg": "resp=0800009001ff0f01"}
+{"phase": "P3", "id": "M4c", "name": "STATS 读", "verdict": "PASS", "msg": "resp=0900020000050001"}
+{"phase": "P3", "id": "M4d", "name": "STATS 数值合理性", "verdict": "PASS", "msg": "runSec=2s startCnt=5 lastReason=1"}
+{"phase": "P3", "id": "M5", "name": "CLEAR 无故障幂等", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M6a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0 受理"}
+{"phase": "P3", "id": "M6b", "name": "TEST 进行中 MOVE", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M6c", "name": "TEST 1 趟往返完成", "verdict": "PASS", "msg": "2.4s 后 IDLE (steps16=4221)"}
+{"phase": "P3", "id": "M6d", "name": "TEST 后可再次 TEST", "verdict": "PASS", "msg": "受理"}
+{"phase": "P3", "id": "M6e", "name": "第二次 TEST 完成", "verdict": "PASS", "msg": "5.1s 后 IDLE"}
+{"phase": "P3", "id": "M7a", "name": "TEST 中途 STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M7b", "name": "STOP 后状态恢复", "verdict": "PASS", "msg": "IDLE"}
+{"phase": "P3", "id": "M8", "name": "运动用例后自检位图仍干净", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P3", "id": "M0", "name": "电机初始 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P3", "id": "M1a SPEED=1 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1b SPEED=2000 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1c SPEED=0 (非法)", "name": "M1c SPEED=0 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[0, 0]"}
+{"phase": "P3", "id": "M1d SPEED=2001 (非法)", "name": "M1d SPEED=2001 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[209, 7]"}
+{"phase": "P3", "id": "M1e TORQUE=6 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1f TORQUE=100 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1g TORQUE=5 (非法)", "name": "M1g TORQUE=5 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[5]"}
+{"phase": "P3", "id": "M1h TORQUE=101 (非法)", "name": "M1h TORQUE=101 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[101]"}
+{"phase": "P3", "id": "M2a", "name": "MOVE 100 微步 (dir=0)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2b", "name": "MOVE 后自动到 IDLE (100步@2000Hz)", "verdict": "PASS", "msg": "IDLE, steps16=100 (Δ=61110)"}
+{"phase": "P3", "id": "M2c", "name": "MOVE 200 微步 (dir=1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2d", "name": "反向 MOVE 完成", "verdict": "PASS", "msg": "steps16=200 (Δ=100)"}
+{"phase": "P3", "id": "M3a", "name": "MOVE 进行中再 MOVE", "verdict": "FAIL", "msg": "err=0 (期望 2/3)"}
+{"phase": "P3", "id": "M3b", "name": "MOVE 进行中下发 TEST", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M2e", "name": "STOP 停止", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2f", "name": "STOP 后 IDLE", "verdict": "PASS", "msg": "OK"}
+{"phase": "P3", "id": "M4a", "name": "QUERY 字段", "verdict": "PASS", "msg": "resp=05000000000064000000"}
+{"phase": "P3", "id": "M4b", "name": "HEALTH 读", "verdict": "PASS", "msg": "resp=0800009001ff0f01"}
+{"phase": "P3", "id": "M4c", "name": "STATS 读", "verdict": "PASS", "msg": "resp=0900020000050001"}
+{"phase": "P3", "id": "M4d", "name": "STATS 数值合理性", "verdict": "PASS", "msg": "runSec=2s startCnt=5 lastReason=1"}
+{"phase": "P3", "id": "M5", "name": "CLEAR 无故障幂等", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M6a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0 受理"}
+{"phase": "P3", "id": "M6b", "name": "TEST 进行中 MOVE", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M6c", "name": "TEST 1 趟往返完成", "verdict": "PASS", "msg": "2.4s 后 IDLE (steps16=4221)"}
+{"phase": "P3", "id": "M6d", "name": "TEST 后可再次 TEST", "verdict": "PASS", "msg": "受理"}
+{"phase": "P3", "id": "M6e", "name": "第二次 TEST 完成", "verdict": "PASS", "msg": "5.1s 后 IDLE"}
+{"phase": "P3", "id": "M7a", "name": "TEST 中途 STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M7b", "name": "STOP 后状态恢复", "verdict": "PASS", "msg": "IDLE"}
+{"phase": "P3", "id": "M8", "name": "运动用例后自检位图仍干净", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P2", "id": "B1", "name": "握手 x100 连发", "verdict": "PASS", "msg": "100/100 OK, 总耗时8.0s (均 80ms)"}
+{"phase": "P2", "id": "B2", "name": "设备信息字段", "verdict": "PASS", "msg": "raw=0001433854365f56312e30000000000000005a4c52353430315f56312e3000000000 硬件=C8T6_V1. 固件="}
+{"phase": "P2", "id": "B2-obs", "name": "DEVICE_INFO 硬件名与实际 MCU (GD32F303RCT6) 不一致", "verdict": "OBS", "msg": "硬件名=C8T6_V1. (疑似早期板名遗留, 建议更正)"}
+{"phase": "P2", "id": "B3a", "name": "RGB SET mask=1..7 全组合 (空闲)", "verdict": "PASS", "msg": "全部 OK+回显"}
+{"phase": "P2", "id": "B3b", "name": "RGB mask=0 撤销", "verdict": "PASS", "msg": "OK"}
+{"phase": "P2", "id": "B3c", "name": "RGB 非法 mask=0x08 (仅 G/R/B 位有效)", "verdict": "PASS", "msg": "err=0 (回显 mask=8)"}
+{"phase": "P2", "id": "B3d", "name": "RGB 短帧 (缺 reserved)", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B3e", "name": "RGB SET 于 Locker CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY (配置未激活也拒绝, 保守正确)"}
+{"phase": "P2", "id": "B4a", "name": "SELFTEST QUERY 基线", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P2", "id": "B4b", "name": "SELFTEST RERUN (空闲, 阻塞探测)", "verdict": "PASS", "msg": "err=0 errBits=0x0000 探测耗时1.6s"}
+{"phase": "P2", "id": "B4c", "name": "SELFTEST RERUN 于 CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY"}
+{"phase": "P2", "id": "B4d", "name": "SELFTEST CLEAR 文档布局 [cmd,maskL,maskH]", "verdict": "PASS", "msg": "清后 errBits=0x0000"}
+{"phase": "P2", "id": "B4e", "name": "SELFTEST 未知子命令", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B5a", "name": "FC_RESET 回帧", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P2", "id": "B5b", "name": "复位后重枚举+存活 (25s 内, 含回零阻塞)", "verdict": "PASS", "msg": "重连耗时 9.1s"}
+{"phase": "P2", "id": "B5c", "name": "复位后自检基线 (回零重建)", "verdict": "PASS", "msg": "errBits=0x0000(0) switchErr=1"}
+{"phase": "P2", "id": "B5d", "name": "复位后电机 IDLE (回零完成)", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P2", "id": "B1", "name": "握手 x100 连发", "verdict": "PASS", "msg": "100/100 OK, 总耗时8.0s (均 80ms)"}
+{"phase": "P2", "id": "B2", "name": "设备信息字段", "verdict": "PASS", "msg": "raw=0001433854365f56312e30000000000000005a4c52353430315f56312e3000000000 硬件=C8T6_V1. 固件="}
+{"phase": "P2", "id": "B2-obs", "name": "DEVICE_INFO 硬件名与实际 MCU (GD32F303RCT6) 不一致", "verdict": "OBS", "msg": "硬件名=C8T6_V1. (疑似早期板名遗留, 建议更正)"}
+{"phase": "P2", "id": "B3a", "name": "RGB SET mask=1..7 全组合 (空闲)", "verdict": "PASS", "msg": "全部 OK+回显"}
+{"phase": "P2", "id": "B3b", "name": "RGB mask=0 撤销", "verdict": "PASS", "msg": "OK"}
+{"phase": "P2", "id": "B3c", "name": "RGB 非法 mask=0x08 (仅 G/R/B 位有效)", "verdict": "PASS", "msg": "err=0 (回显 mask=8)"}
+{"phase": "P2", "id": "B3d", "name": "RGB 短帧 (缺 reserved)", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B3e", "name": "RGB SET 于 Locker CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY (配置未激活也拒绝, 保守正确)"}
+{"phase": "P2", "id": "B4a", "name": "SELFTEST QUERY 基线", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P2", "id": "B4b", "name": "SELFTEST RERUN (空闲, 阻塞探测)", "verdict": "PASS", "msg": "err=0 errBits=0x0000 探测耗时1.6s"}
+{"phase": "P2", "id": "B4c", "name": "SELFTEST RERUN 于 CONFIGURED 态", "verdict": "PASS", "msg": "err=2 BUSY"}
+{"phase": "P2", "id": "B4d", "name": "SELFTEST CLEAR 文档布局 [cmd,maskL,maskH]", "verdict": "PASS", "msg": "清后 errBits=0x0000"}
+{"phase": "P2", "id": "B4e", "name": "SELFTEST 未知子命令", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P2", "id": "B5a", "name": "FC_RESET 回帧", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P2", "id": "B5b", "name": "复位后重枚举+存活 (25s 内, 含回零阻塞)", "verdict": "PASS", "msg": "重连耗时 9.1s"}
+{"phase": "P2", "id": "B5c", "name": "复位后自检基线 (回零重建)", "verdict": "PASS", "msg": "errBits=0x0000(0) switchErr=1"}
+{"phase": "P2", "id": "B5d", "name": "复位后电机 IDLE (回零完成)", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P3", "id": "M0", "name": "电机初始 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P3", "id": "M1a SPEED=1 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1b SPEED=2000 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1c SPEED=0 (非法)", "name": "M1c SPEED=0 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[0, 0]"}
+{"phase": "P3", "id": "M1d SPEED=2001 (非法)", "name": "M1d SPEED=2001 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[209, 7]"}
+{"phase": "P3", "id": "M1e TORQUE=6 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1f TORQUE=100 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1g TORQUE=5 (非法)", "name": "M1g TORQUE=5 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[5]"}
+{"phase": "P3", "id": "M1h TORQUE=101 (非法)", "name": "M1h TORQUE=101 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[101]"}
+{"phase": "P3", "id": "M2a", "name": "MOVE 100 微步 (dir=0)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2b", "name": "MOVE 后自动到 IDLE (100步@2000Hz)", "verdict": "PASS", "msg": "IDLE, steps16=100 (Δ=61397)"}
+{"phase": "P3", "id": "M2c", "name": "MOVE 200 微步 (dir=1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2d", "name": "反向 MOVE 完成", "verdict": "PASS", "msg": "steps16=200 (Δ=100)"}
+{"phase": "P3", "id": "M3a", "name": "MOVE 进行中再 MOVE", "verdict": "PASS", "msg": "err=3 (BUSY)"}
+{"phase": "P3", "id": "M3b", "name": "MOVE 进行中下发 TEST", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M2e", "name": "STOP 停止", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2f", "name": "STOP 后 IDLE", "verdict": "PASS", "msg": "OK"}
+{"phase": "P3", "id": "M4a", "name": "QUERY 字段", "verdict": "PASS", "msg": "resp=050000000000a1030000"}
+{"phase": "P3", "id": "M4b", "name": "HEALTH 读", "verdict": "PASS", "msg": "resp=0800009001ff0f01"}
+{"phase": "P3", "id": "M4c", "name": "STATS 读", "verdict": "PASS", "msg": "resp=0900030000060001"}
+{"phase": "P3", "id": "M4d", "name": "STATS 数值合理性", "verdict": "PASS", "msg": "runSec=3s startCnt=6 lastReason=1"}
+{"phase": "P3", "id": "M5", "name": "CLEAR 无故障幂等", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M6a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0 受理"}
+{"phase": "P3", "id": "M6b", "name": "TEST 进行中 MOVE", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M6c", "name": "TEST 1 趟往返完成", "verdict": "PASS", "msg": "2.4s 后 IDLE (steps16=4269)"}
+{"phase": "P3", "id": "M6d", "name": "TEST 后可再次 TEST", "verdict": "PASS", "msg": "受理"}
+{"phase": "P3", "id": "M6e", "name": "第二次 TEST 完成", "verdict": "PASS", "msg": "5.1s 后 IDLE"}
+{"phase": "P3", "id": "M7a", "name": "TEST 中途 STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M7b", "name": "STOP 后状态恢复", "verdict": "PASS", "msg": "IDLE"}
+{"phase": "P3", "id": "M8", "name": "运动用例后自检位图仍干净", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P3", "id": "M0", "name": "电机初始 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P3", "id": "M1a SPEED=1 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1b SPEED=2000 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1c SPEED=0 (非法)", "name": "M1c SPEED=0 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[0, 0]"}
+{"phase": "P3", "id": "M1d SPEED=2001 (非法)", "name": "M1d SPEED=2001 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[209, 7]"}
+{"phase": "P3", "id": "M1e TORQUE=6 (下界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1f TORQUE=100 (上界)", "name": "", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M1g TORQUE=5 (非法)", "name": "M1g TORQUE=5 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[5]"}
+{"phase": "P3", "id": "M1h TORQUE=101 (非法)", "name": "M1h TORQUE=101 (非法) 越界 -> 钳制 (err=0, 既有语义)", "verdict": "OBS", "msg": "err=0 param=[101]"}
+{"phase": "P3", "id": "M2a", "name": "MOVE 100 微步 (dir=0)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2b", "name": "MOVE 后自动到 IDLE (100步@2000Hz)", "verdict": "PASS", "msg": "IDLE, steps16=100 (Δ=61397)"}
+{"phase": "P3", "id": "M2c", "name": "MOVE 200 微步 (dir=1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2d", "name": "反向 MOVE 完成", "verdict": "PASS", "msg": "steps16=200 (Δ=100)"}
+{"phase": "P3", "id": "M3a", "name": "MOVE 进行中再 MOVE", "verdict": "PASS", "msg": "err=3 (BUSY)"}
+{"phase": "P3", "id": "M3b", "name": "MOVE 进行中下发 TEST", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M2e", "name": "STOP 停止", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M2f", "name": "STOP 后 IDLE", "verdict": "PASS", "msg": "OK"}
+{"phase": "P3", "id": "M4a", "name": "QUERY 字段", "verdict": "PASS", "msg": "resp=050000000000a1030000"}
+{"phase": "P3", "id": "M4b", "name": "HEALTH 读", "verdict": "PASS", "msg": "resp=0800009001ff0f01"}
+{"phase": "P3", "id": "M4c", "name": "STATS 读", "verdict": "PASS", "msg": "resp=0900030000060001"}
+{"phase": "P3", "id": "M4d", "name": "STATS 数值合理性", "verdict": "PASS", "msg": "runSec=3s startCnt=6 lastReason=1"}
+{"phase": "P3", "id": "M5", "name": "CLEAR 无故障幂等", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M6a", "name": "TEST 受理", "verdict": "PASS", "msg": "err=0 受理"}
+{"phase": "P3", "id": "M6b", "name": "TEST 进行中 MOVE", "verdict": "PASS", "msg": "err=3 BUSY"}
+{"phase": "P3", "id": "M6c", "name": "TEST 1 趟往返完成", "verdict": "PASS", "msg": "2.4s 后 IDLE (steps16=4269)"}
+{"phase": "P3", "id": "M6d", "name": "TEST 后可再次 TEST", "verdict": "PASS", "msg": "受理"}
+{"phase": "P3", "id": "M6e", "name": "第二次 TEST 完成", "verdict": "PASS", "msg": "5.1s 后 IDLE"}
+{"phase": "P3", "id": "M7a", "name": "TEST 中途 STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P3", "id": "M7b", "name": "STOP 后状态恢复", "verdict": "PASS", "msg": "IDLE"}
+{"phase": "P3", "id": "M8", "name": "运动用例后自检位图仍干净", "verdict": "PASS", "msg": "errBits=0x0000(0)"}
+{"phase": "P4", "id": "U9a", "name": "未 OPEN 直接 INVENTORY", "verdict": "PASS", "msg": "err=3 NOT_READY"}
+{"phase": "P4", "id": "U9b", "name": "未 OPEN 直接 SCAN_STOP (幂等)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1a", "name": "UHF OPEN", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1b", "name": "OPEN 后 QUERY (链路+状态)", "verdict": "PASS", "msg": "err=0 state=1 link=0 totalTags=0"}
+{"phase": "P4", "id": "U1c", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1d", "name": "CLOSE 后 QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P4", "id": "U2a", "name": "GET_CONFIG", "verdict": "PASS", "msg": "power=20 ant=0 chk=1 sess=0 tgt=0 q=0 band=1"}
+{"phase": "P4", "id": "U2b", "name": "SET_CONFIG (改 power/session)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U2c", "name": "GET_CONFIG 读回一致", "verdict": "PASS", "msg": "power=30 (写 30) sess=1 (写 1)"}
+{"phase": "P4", "id": "U2d", "name": "SET_CONFIG 短帧", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P4", "id": "U4", "name": "INVENTORY (在场标签)", "verdict": "PASS", "msg": "count=1 epc=33553463a4000158eb7e7507 rssi=255"}
+{"phase": "P4", "id": "U6a", "name": "SCAN_START", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U6b", "name": "GET_TAGS 拉取 (扫描累积)", "verdict": "PASS", "msg": "count=1"}
+{"phase": "P4", "id": "U6c", "name": "GET_TAGS 取走清空", "verdict": "PASS", "msg": "count=0"}
+{"phase": "P4", "id": "U6d", "name": "SCAN_STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U7a", "name": "GET_STATUS", "verdict": "PASS", "msg": "resp=0b00010001010100007800a7"}
+{"phase": "P4", "id": "U7b", "name": "CHECK_ANT", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U7c", "name": "GET_DUMP", "verdict": "PASS", "msg": "len=21B"}
+{"phase": "P4", "id": "U8", "name": "READ_TAG", "verdict": "PASS", "msg": "resp=0400"}
+{"phase": "P4", "id": "U3a", "name": "FC_RESET (持久化前)", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P4", "id": "U3b", "name": "复位重连", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P4", "id": "U3c", "name": "复位后 UHF 配置持久 (power/session)", "verdict": "PASS", "msg": "power=30 (期望 30) sess=1 (期望 1)"}
+{"phase": "P4", "id": "U3d", "name": "还原原始 UHF 配置 (防 S2 污染后续用例)", "verdict": "PASS", "msg": "power=20 sess=0 (原 20/0)"}
+{"phase": "P4", "id": "U9a", "name": "未 OPEN 直接 INVENTORY", "verdict": "PASS", "msg": "err=3 NOT_READY"}
+{"phase": "P4", "id": "U9b", "name": "未 OPEN 直接 SCAN_STOP (幂等)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1a", "name": "UHF OPEN", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1b", "name": "OPEN 后 QUERY (链路+状态)", "verdict": "PASS", "msg": "err=0 state=1 link=0 totalTags=0"}
+{"phase": "P4", "id": "U1c", "name": "UHF CLOSE", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U1d", "name": "CLOSE 后 QUERY -> NOT_READY(3)", "verdict": "PASS", "msg": "err=3 state=0"}
+{"phase": "P4", "id": "U2a", "name": "GET_CONFIG", "verdict": "PASS", "msg": "power=20 ant=0 chk=1 sess=0 tgt=0 q=0 band=1"}
+{"phase": "P4", "id": "U2b", "name": "SET_CONFIG (改 power/session)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U2c", "name": "GET_CONFIG 读回一致", "verdict": "PASS", "msg": "power=30 (写 30) sess=1 (写 1)"}
+{"phase": "P4", "id": "U2d", "name": "SET_CONFIG 短帧", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P4", "id": "U4", "name": "INVENTORY (在场标签)", "verdict": "PASS", "msg": "count=1 epc=33553463a4000158eb7e7507 rssi=255"}
+{"phase": "P4", "id": "U6a", "name": "SCAN_START", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U6b", "name": "GET_TAGS 拉取 (扫描累积)", "verdict": "PASS", "msg": "count=1"}
+{"phase": "P4", "id": "U6c", "name": "GET_TAGS 取走清空", "verdict": "PASS", "msg": "count=0"}
+{"phase": "P4", "id": "U6d", "name": "SCAN_STOP", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U7a", "name": "GET_STATUS", "verdict": "PASS", "msg": "resp=0b00010001010100007800a7"}
+{"phase": "P4", "id": "U7b", "name": "CHECK_ANT", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P4", "id": "U7c", "name": "GET_DUMP", "verdict": "PASS", "msg": "len=21B"}
+{"phase": "P4", "id": "U8", "name": "READ_TAG", "verdict": "PASS", "msg": "resp=0400"}
+{"phase": "P4", "id": "U3a", "name": "FC_RESET (持久化前)", "verdict": "PASS", "msg": "resp=00"}
+{"phase": "P4", "id": "U3b", "name": "复位重连", "verdict": "PASS", "msg": "9.1s"}
+{"phase": "P4", "id": "U3c", "name": "复位后 UHF 配置持久 (power/session)", "verdict": "PASS", "msg": "power=30 (期望 30) sess=1 (期望 1)"}
+{"phase": "P4", "id": "U3d", "name": "还原原始 UHF 配置 (防 S2 污染后续用例)", "verdict": "PASS", "msg": "power=20 sess=0 (原 20/0)"}
+{"phase": "P5", "id": "AM1", "name": "AM QUERY 探链", "verdict": "PASS", "msg": "err=0 链路在"}
+{"phase": "P5", "id": "AM2a", "name": "AM GET_CONFIG", "verdict": "PASS", "msg": "thr=10 hit=5 freq=0 delay=0 len=0 inv=0 sync=0 volt=1 mode=2 mains=0"}
+{"phase": "P5", "id": "AM2b", "name": "AM SET_CONFIG (原样写回)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM2c", "name": "写读一致", "verdict": "PASS", "msg": "配置回读与写入完全一致"}
+{"phase": "P5", "id": "AM2d", "name": "SET_CONFIG 短帧", "verdict": "PASS", "msg": "resp=0201 (按实现记录)"}
+{"phase": "P5", "id": "AM4a", "name": "AM GET_PARAM (cmd=1)", "verdict": "PASS", "msg": "resp=0300010000"}
+{"phase": "P5", "id": "AM5a", "name": "SET_MODE=1 (仅检测)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM5b", "name": "模式已切 1", "verdict": "PASS", "msg": "mode=1"}
+{"phase": "P5", "id": "AM5c", "name": "SET_MODE 恢复 2", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM5d", "name": "SET_MODE 非法值 5", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P5", "id": "AM6a", "name": "AM GET_STATUS", "verdict": "PASS", "msg": "link=0 evt=0 deact=0 deactCnt=0 failCnt=0"}
+{"phase": "P5", "id": "AM6b", "name": "AM GET_WAVE (阻塞采集)", "verdict": "PASS", "msg": "points=400 耗时0.3s"}
+{"phase": "P5", "id": "AM6c", "name": "AM GET_WAVE_PAGE (page0)", "verdict": "PASS", "msg": "err=0 points=400 本页点数=8"}
+{"phase": "P5", "id": "AM6d", "name": "GET_WAVE_PAGE 越界页", "verdict": "PASS", "msg": "resp=090901 (按实现记录)"}
+{"phase": "P5", "id": "AM3a", "name": "复位后 App 就绪", "verdict": "PASS", "msg": "9.0s"}
+{"phase": "P5", "id": "AM3b", "name": "复位后 AM 配置持久", "verdict": "PASS", "msg": "读回一致"}
+{"phase": "P5", "id": "AM1", "name": "AM QUERY 探链", "verdict": "PASS", "msg": "err=0 链路在"}
+{"phase": "P5", "id": "AM2a", "name": "AM GET_CONFIG", "verdict": "PASS", "msg": "thr=10 hit=5 freq=0 delay=0 len=0 inv=0 sync=0 volt=1 mode=2 mains=0"}
+{"phase": "P5", "id": "AM2b", "name": "AM SET_CONFIG (原样写回)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM2c", "name": "写读一致", "verdict": "PASS", "msg": "配置回读与写入完全一致"}
+{"phase": "P5", "id": "AM2d", "name": "SET_CONFIG 短帧", "verdict": "PASS", "msg": "resp=0201 (按实现记录)"}
+{"phase": "P5", "id": "AM4a", "name": "AM GET_PARAM (cmd=1)", "verdict": "PASS", "msg": "resp=0300010000"}
+{"phase": "P5", "id": "AM5a", "name": "SET_MODE=1 (仅检测)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM5b", "name": "模式已切 1", "verdict": "PASS", "msg": "mode=1"}
+{"phase": "P5", "id": "AM5c", "name": "SET_MODE 恢复 2", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P5", "id": "AM5d", "name": "SET_MODE 非法值 5", "verdict": "PASS", "msg": "err=1 PARAM"}
+{"phase": "P5", "id": "AM6a", "name": "AM GET_STATUS", "verdict": "PASS", "msg": "link=0 evt=0 deact=0 deactCnt=0 failCnt=0"}
+{"phase": "P5", "id": "AM6b", "name": "AM GET_WAVE (阻塞采集)", "verdict": "PASS", "msg": "points=400 耗时0.3s"}
+{"phase": "P5", "id": "AM6c", "name": "AM GET_WAVE_PAGE (page0)", "verdict": "PASS", "msg": "err=0 points=400 本页点数=8"}
+{"phase": "P5", "id": "AM6d", "name": "GET_WAVE_PAGE 越界页", "verdict": "PASS", "msg": "resp=090901 (按实现记录)"}
+{"phase": "P5", "id": "AM3a", "name": "复位后 App 就绪", "verdict": "PASS", "msg": "9.0s"}
+{"phase": "P5", "id": "AM3b", "name": "复位后 AM 配置持久", "verdict": "PASS", "msg": "读回一致"}
+{"phase": "P6-Locker", "id": "L1", "name": "QUERY 空闲态", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "L2", "name": "GET_EVENT 空队列 -> NO_EVENT(3)", "verdict": "PASS", "msg": "d=0703"}
+{"phase": "P6-Locker", "id": "L3a", "name": "CONFIGURE hardCount=17 -> PARAM", "verdict": "PASS", "msg": "d=0102"}
+{"phase": "P6-Locker", "id": "L3b", "name": "CONFIGURE soft=2 -> OK, state=CONFIGURED(1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L4", "name": "CONFIGURE 忙时 -> BUSY(1)", "verdict": "PASS", "msg": "d=0101"}
+{"phase": "P6-Locker", "id": "L5a", "name": "ADD 短帧 (epcLen=8, 实2B) -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L5b", "name": "ADD epcLen=13 超上限 -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L6", "name": "ADD 合法 [epcLen=12]+12B -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L7", "name": "CANCEL (未升起直回 IDLE)", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "L8", "name": "START 空任务 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "L9a-1", "name": "假EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9a", "name": "START 假EPC任务 -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9b", "name": "START 后 ADD -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9c", "name": "重复 START -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9d", "name": "非软标态 CONSUME_SOFT -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9e", "name": "CANCEL 收尾 -> IDLE", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "B0", "name": "真EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B1", "name": "START 真EPC任务 -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B2", "name": "CONFIGURED(1)->匹配->SOFT(3)", "verdict": "PASS", "msg": "轨迹=[1, 3]"}
+{"phase": "P6-Locker", "id": "B3", "name": "事件 MATCH_OK(0)+HARD_DONE(2), EPC 回传正确", "verdict": "PASS", "msg": "codes=[0, 2] EPC✓"}
+{"phase": "P6-Locker", "id": "B3m", "name": "匹配后电机升起 (state=1 运行或已到顶)", "verdict": "PASS", "msg": "motor=1"}
+{"phase": "P6-Locker", "id": "B4a", "name": "CONSUME_SOFT #1 -> SOFT_USED", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B4b", "name": "CONSUME_SOFT #2 -> DONE(4)", "verdict": "PASS", "msg": "err=0 state=4"}
+{"phase": "P6-Locker", "id": "B5", "name": "DONE(4)->LOWERING(6)->IDLE(0) 回降闭环", "verdict": "PASS", "msg": "轨迹=[4, 6, 0]"}
+{"phase": "P6-Locker", "id": "B6", "name": "事件序 SOFT_USED×2 + DONE(5)", "verdict": "PASS", "msg": "codes=[3, 3, 5]"}
+{"phase": "P6-Locker", "id": "B6m", "name": "回降后电机 IDLE", "verdict": "PASS", "msg": "motor=0"}
+{"phase": "P6-Locker", "id": "B7", "name": "MISMATCH 事件 (外来EPC=真标签, 不升起)", "verdict": "PASS", "msg": "EPC=33553463a4000158eb7e7507"}
+{"phase": "P6-Locker", "id": "B8", "name": "失配后仍 CONFIGURED(1) 不动磁块", "verdict": "PASS", "msg": "state=1 motor=0"}
+{"phase": "P6-Locker", "id": "B9", "name": "MISMATCH 后 CANCEL -> IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "C1", "name": "GET_PROGRESS 空闲 phase=0", "verdict": "PASS", "msg": "d=09000000000000000000"}
+{"phase": "P6-Locker", "id": "C2a", "name": "ONE_SHOT 短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2b", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2c", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2d", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C3", "name": "ONE_SHOT 全流程 (PC4 触发): err=0 升降步数回传, 收尾电机 IDLE", "verdict": "PASS", "msg": "end=2 rise≈4321 motor=0"}
+{"phase": "P6-Locker", "id": "C3-ir", "name": "PC4 红外门当前读高 (无人工放标) — 深路径按 IR=触发分支验证", "verdict": "OBS", "msg": "fin=0800020c33553463a4000158eb7e75070811e11000"}
+{"phase": "P6-Locker", "id": "C4a", "name": "流程中 GET_PROGRESS 有相位 (IR 态依从)", "verdict": "PASS", "msg": "phase=4"}
+{"phase": "P6-Locker", "id": "C4b", "name": "流程中 CANCEL -> 立即 OK", "verdict": "PASS", "msg": "d=0400"}
+{"phase": "P6-Locker", "id": "C4c", "name": "打断最终帧 err=0 endReason=6(ABORTED), 电机安全回 IDLE", "verdict": "PASS", "msg": "fin=0800060c33553463a4000158eb7e7507bc00bc0000 motor=0"}
+{"phase": "P6-Locker", "id": "C4d", "name": "打断后 Locker 回 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "D1a", "name": "短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1b", "name": "epcCnt=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1c", "name": "epcCnt=5 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1d", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1e", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1f", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D4a", "name": "短窗(<3s确认门限) -> PARTIAL_TIMEOUT(2), 零确认零升降", "verdict": "PASS", "msg": "fin=0a00020000010000000000000208 pushes=['0f0001d00700', '0d02000001d007'] 电机=0"}
+{"phase": "P6-Locker", "id": "D3a", "name": "流程中 ADD -> BUSY", "verdict": "PASS", "msg": "d=0201"}
+{"phase": "P6-Locker", "id": "D3b", "name": "流程中 GET_PROGRESS 多标签布局 (phase 1/2, total=1)", "verdict": "PASS", "msg": "d=09000100000100000000"}
+{"phase": "P6-Locker", "id": "D4", "name": "长窗全流程终帧 err=0 end=1(ALL_OK) 确认/位图/升降步数齐", "verdict": "PASS", "msg": "end=1 bmp=1 conf=1/1 rise=4321 pushes=[15, 11, 13] 电机=0"}
+{"phase": "P6-Locker", "id": "D5", "name": "确认推送 0x0B 含真EPC (判据耗时≈3s门限)", "verdict": "PASS", "msg": "EPC✓ 判据耗时✓"}
+{"phase": "P6-Locker", "id": "D6", "name": "流程后 Locker IDLE, 电机 IDLE", "verdict": "PASS", "msg": "state=0 motor=0"}
+{"phase": "P6-Locker", "id": "L1", "name": "QUERY 空闲态", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "L2", "name": "GET_EVENT 空队列 -> NO_EVENT(3)", "verdict": "PASS", "msg": "d=0703"}
+{"phase": "P6-Locker", "id": "L3a", "name": "CONFIGURE hardCount=17 -> PARAM", "verdict": "PASS", "msg": "d=0102"}
+{"phase": "P6-Locker", "id": "L3b", "name": "CONFIGURE soft=2 -> OK, state=CONFIGURED(1)", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L4", "name": "CONFIGURE 忙时 -> BUSY(1)", "verdict": "PASS", "msg": "d=0101"}
+{"phase": "P6-Locker", "id": "L5a", "name": "ADD 短帧 (epcLen=8, 实2B) -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L5b", "name": "ADD epcLen=13 超上限 -> PARAM (BUG#3 修复回归)", "verdict": "PASS", "msg": "err=2 PARAM"}
+{"phase": "P6-Locker", "id": "L6", "name": "ADD 合法 [epcLen=12]+12B -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L7", "name": "CANCEL (未升起直回 IDLE)", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "L8", "name": "START 空任务 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "L9a-1", "name": "假EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9a", "name": "START 假EPC任务 -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "L9b", "name": "START 后 ADD -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9c", "name": "重复 START -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9d", "name": "非软标态 CONSUME_SOFT -> BUSY", "verdict": "PASS", "msg": "err=1"}
+{"phase": "P6-Locker", "id": "L9e", "name": "CANCEL 收尾 -> IDLE", "verdict": "PASS", "msg": "err=0 state=0"}
+{"phase": "P6-Locker", "id": "B0", "name": "真EPC清单 ADD -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B1", "name": "START 真EPC任务 -> OK", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B2", "name": "CONFIGURED(1)->匹配->SOFT(3)", "verdict": "PASS", "msg": "轨迹=[1, 3]"}
+{"phase": "P6-Locker", "id": "B3", "name": "事件 MATCH_OK(0)+HARD_DONE(2), EPC 回传正确", "verdict": "PASS", "msg": "codes=[0, 2] EPC✓"}
+{"phase": "P6-Locker", "id": "B3m", "name": "匹配后电机升起 (state=1 运行或已到顶)", "verdict": "PASS", "msg": "motor=1"}
+{"phase": "P6-Locker", "id": "B4a", "name": "CONSUME_SOFT #1 -> SOFT_USED", "verdict": "PASS", "msg": "err=0"}
+{"phase": "P6-Locker", "id": "B4b", "name": "CONSUME_SOFT #2 -> DONE(4)", "verdict": "PASS", "msg": "err=0 state=4"}
+{"phase": "P6-Locker", "id": "B5", "name": "DONE(4)->LOWERING(6)->IDLE(0) 回降闭环", "verdict": "PASS", "msg": "轨迹=[4, 6, 0]"}
+{"phase": "P6-Locker", "id": "B6", "name": "事件序 SOFT_USED×2 + DONE(5)", "verdict": "PASS", "msg": "codes=[3, 3, 5]"}
+{"phase": "P6-Locker", "id": "B6m", "name": "回降后电机 IDLE", "verdict": "PASS", "msg": "motor=0"}
+{"phase": "P6-Locker", "id": "B7", "name": "MISMATCH 事件 (外来EPC=真标签, 不升起)", "verdict": "PASS", "msg": "EPC=33553463a4000158eb7e7507"}
+{"phase": "P6-Locker", "id": "B8", "name": "失配后仍 CONFIGURED(1) 不动磁块", "verdict": "PASS", "msg": "state=1 motor=0"}
+{"phase": "P6-Locker", "id": "B9", "name": "MISMATCH 后 CANCEL -> IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "C1", "name": "GET_PROGRESS 空闲 phase=0", "verdict": "PASS", "msg": "d=09000000000000000000"}
+{"phase": "P6-Locker", "id": "C2a", "name": "ONE_SHOT 短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2b", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2c", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C2d", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "C3", "name": "ONE_SHOT 全流程 (PC4 触发): err=0 升降步数回传, 收尾电机 IDLE", "verdict": "PASS", "msg": "end=2 rise≈4321 motor=0"}
+{"phase": "P6-Locker", "id": "C3-ir", "name": "PC4 红外门当前读高 (无人工放标) — 深路径按 IR=触发分支验证", "verdict": "OBS", "msg": "fin=0800020c33553463a4000158eb7e75070811e11000"}
+{"phase": "P6-Locker", "id": "C4a", "name": "流程中 GET_PROGRESS 有相位 (IR 态依从)", "verdict": "PASS", "msg": "phase=4"}
+{"phase": "P6-Locker", "id": "C4b", "name": "流程中 CANCEL -> 立即 OK", "verdict": "PASS", "msg": "d=0400"}
+{"phase": "P6-Locker", "id": "C4c", "name": "打断最终帧 err=0 endReason=6(ABORTED), 电机安全回 IDLE", "verdict": "PASS", "msg": "fin=0800060c33553463a4000158eb7e7507bc00bc0000 motor=0"}
+{"phase": "P6-Locker", "id": "C4d", "name": "打断后 Locker 回 IDLE", "verdict": "PASS", "msg": "state=0"}
+{"phase": "P6-Locker", "id": "D1a", "name": "短帧 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1b", "name": "epcCnt=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1c", "name": "epcCnt=5 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1d", "name": "epcLen=0 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1e", "name": "epcLen=13 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D1f", "name": "帧长不足 -> PARAM", "verdict": "PASS", "msg": "err=2"}
+{"phase": "P6-Locker", "id": "D4a", "name": "短窗(<3s确认门限) -> PARTIAL_TIMEOUT(2), 零确认零升降", "verdict": "PASS", "msg": "fin=0a00020000010000000000000208 pushes=['0f0001d00700', '0d02000001d007'] 电机=0"}
+{"phase": "P6-Locker", "id": "D3a", "name": "流程中 ADD -> BUSY", "verdict": "PASS", "msg": "d=0201"}
+{"phase": "P6-Locker", "id": "D3b", "name": "流程中 GET_PROGRESS 多标签布局 (phase 1/2, total=1)", "verdict": "PASS", "msg": "d=09000100000100000000"}
+{"phase": "P6-Locker", "id": "D4", "name": "长窗全流程终帧 err=0 end=1(ALL_OK) 确认/位图/升降步数齐", "verdict": "PASS", "msg": "end=1 bmp=1 conf=1/1 rise=4321 pushes=[15, 11, 13] 电机=0"}
+{"phase": "P6-Locker", "id": "D5", "name": "确认推送 0x0B 含真EPC (判据耗时≈3s门限)", "verdict": "PASS", "msg": "EPC✓ 判据耗时✓"}
+{"phase": "P6-Locker", "id": "D6", "name": "流程后 Locker IDLE, 电机 IDLE", "verdict": "PASS", "msg": "state=0 motor=0"}
+{"phase": "P8-Soak", "id": "S3", "name": "Locker 全周期×10 (真标签+电机)", "verdict": "PASS", "msg": "10/10 完整闭环"}
+{"phase": "P8-Soak", "id": "S3", "name": "Locker 全周期×10 (真标签+电机)", "verdict": "PASS", "msg": "10/10 完整闭环"}

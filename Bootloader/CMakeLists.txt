@@ -33,6 +33,7 @@ set(SOURCES
   src/Boot_Param.c
   src/Boot_Led.c
   src/Boot_Iwdg_HL.c
+  src/Boot_FaultStorm.c
   src/System_PeriphClk.c
   src/Boot_Led_HL.c
   src/Boot_Param_HL.c

@@ -100,8 +100,8 @@ li { margin: 3px 0; }
 <!-- 命令总览 -->
 <h2>3. 命令总览</h2>
 <div class="phase">
-<p>App 实现 14 个命令。其余命令（FC=0x03/0x04/0x05/0x06/0x09）由 Bootloader 处理（详见 Boot_Protocol.html）。</p>
-<p class="box">命令总览：<b>0x0F</b> 为本轮新增（设备级自检/锁存错误位）。<b>灯控（LED 呼吸灯）无 USB 命令</b>，由本地硬件 PWM（TIM3_CH1）自走，不对外暴露。</p>
+<p>App 实现 15 个命令。其余命令（FC=0x03/0x04/0x05/0x06/0x09）由 Bootloader 处理（详见 Boot_Protocol.html）。</p>
+<p class="box">命令总览：<b>0x10</b> 为本轮新增（IO 状态一帧总览：红外/行程开关/UHF/AM/回零/Locker/测试态）。<b>灯控（LED 呼吸灯）无 USB 命令</b>，由本地硬件 PWM（TIM3_CH1）自走，不对外暴露。</p>
 <table>
 <tr><th>FC</th><th>名称</th><th>Host → Device</th><th>Device → Host</th><th>用途</th></tr>
 <tr><td><code>0x01</code></td><td>FC_HANDSHAKE</td><td>—</td><td>28B: result/protoVer/status/UID/uidHash/layer/upgradeCount/baudRate</td><td>发现/存活探测</td></tr>
@@ -115,6 +115,7 @@ li { margin: 3px 0; }
 <tr><td><code>0x0D</code></td><td>FC_LOCKER_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §13 (subCmd 0x01~0x09)</td><td>开锁器业务编排 + ONE_SHOT 同步开锁</td></tr>
 <tr><td><code>0x0E</code></td><td>FC_RGB_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §14 (subCmd 0x01)</td><td>RGB 三色灯 G=PA4/R=PA5/B=PA6 控制</td></tr>
 <tr><td><code>0x0F</code></td><td>FC_SELFTEST_CTRL</td><td>data 首字节为子命令码</td><td>同步响应, 见 §15 (subCmd 0x01~0x03)</td><td>设备级自检错误位 (锁存位图, App 专属)</td></tr>
+<tr><td><code>0x10</code></td><td>FC_IO_DIAG</td><td>— (空参数)</td><td>10B: 见 §16</td><td>IO/外设状态一帧总览 (红外/行程/UHF/AM/回零/Locker/测试)</td></tr>
 </table>
 <p>响应帧的 <code>func</code> = 请求 <code>func ^ 0xFF</code>（例如 <code>0x01 → 0xFE</code>，<code>0x0A → 0xF5</code>）。</p>
 </div>
@@ -290,13 +291,13 @@ if (n >= 64 && report[0] == 0x02) {
 <h3>10.1 子命令总览</h3>
 <table>
 <tr><th>cmd</th><th>名称</th><th>Host → Device (data)</th><th>Device → Host (data)</th><th>说明</th></tr>
-<tr><td><code>0x01</code></td><td>MOVE</td><td><code>[cmd, dir, stepsL, stepsM, stepsH]</code></td><td><code>[cmd, err]</code></td><td>启动运动: <code>dir</code>=0(CW)/1(CCW), <code>steps</code>=24bit 微步数, <code>0</code>=持续运行. MOVE 不受行程自检门控, 电机完全开放给上位机控制; 行程开关错误位(<code>switchErr</code>)仅作报警/诊断, 由上位机自行决策. 设定步数走满自动停脉冲并回 IDLE (QUERY 可见)</td></tr>
+<tr><td><code>0x01</code></td><td>MOVE</td><td><code>[cmd, dir, stepsL, stepsM, stepsH]</code></td><td><code>[cmd, err]</code></td><td>启动运动: <code>dir</code>=0(CW)/1(CCW), <code>steps</code>=24bit 微步数, <code>0</code>=持续运行. MOVE 不受行程自检门控, 电机完全开放给上位机控制; 行程开关错误位(<code>switchErr</code>)仅作报警/诊断, 由上位机自行决策. 设定步数走满自动停脉冲并回 IDLE (QUERY 可见). <strong>互斥语义</strong>: 电机在途 (MOVE 运行中 / 行程测试进行中 / 后台回零进行中) 再下发 MOVE 一律回 <code>err=3 BUSY</code>, <strong>不替换在途运动</strong> — 需改目标请先 STOP. 复位后 ~12s 内为后台回零窗口, 期间 MOVE/TEST 回 BUSY</td></tr>
 <tr><td><code>0x02</code></td><td>STOP</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>停止并关断输出</td></tr>
 <tr><td><code>0x03</code></td><td>SPEED</td><td><code>[cmd, hzL, hzH]</code></td><td><code>[cmd, err]</code></td><td>设定微步/秒 (1~2000)</td></tr>
 <tr><td><code>0x04</code></td><td>TORQUE</td><td><code>[cmd, pct]</code></td><td><code>[cmd, err]</code></td><td>转矩百分比 (6~100)</td></tr>
 <tr><td><code>0x05</code></td><td>QUERY</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, fault, diag1, diag2, stepsDoneL, stepsDoneH, switchErr, testState]</code></td><td>查询状态/故障/已走微步数/行程开关错误位/行程测试态</td></tr>
 <tr><td><code>0x06</code></td><td>CLEAR</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>清除故障并回到 IDLE</td></tr>
-<tr><td><code>0x07</code></td><td>TEST</td><td><code>[cmd, passes]</code></td><td><code>[cmd, err]</code></td><td>电机行程测试: 最高速正转→触碰行程开关→立即反转→触碰(完成1次往返), 共 <code>passes</code> 次后自动停转. 进行中再下发回 <code>MOTOR_ERR_BUSY</code>; 上电回零未成功回 <code>MOTOR_ERR_FAULT</code></td></tr>
+<tr><td><code>0x07</code></td><td>TEST</td><td><code>[cmd, passes]</code></td><td><code>[cmd, err]</code></td><td>电机行程测试: 最高速正转→触碰行程开关→立即反转→触碰(完成1次往返), 共 <code>passes</code> 次后自动停转, 单程超时 10s. 进行中再下发 (含 MOVE/TEST) 回 <code>MOTOR_ERR_BUSY</code>; 上电回零未成功回 <code>MOTOR_ERR_FAULT</code>; 后台回零进行中回 BUSY. <strong>完成语义</strong>: 结果经 QUERY 的 <code>testState</code>(2=DONE/3=FAULT)+<code>diag1</code> 取走, 保持至下次 TEST/STOP/CLEAR (完成后可立即再次 TEST)</td></tr>
 <tr><td><code>0x08</code></td><td>HEALTH</td><td><code>[cmd]</code></td><td><code>[cmd, err, olovState, threshL, threshH, trqL, trqH, reason]</code></td><td>读健康/堵转监测: 高负载状态 / 高负载阈值 / 实时转矩计数 / 最近停机原因</td></tr>
 <tr><td><code>0x09</code></td><td>STATS</td><td><code>[cmd]</code></td><td><code>[cmd, err, runSeconds(3B), startCount(2B), lastReason]</code></td><td>读运行统计: 累计运行秒数 / 启动次数 / 最近停止原因</td></tr>
 </table>
@@ -305,13 +306,13 @@ if (n >= 64 && report[0] == 0x02) {
 <table>
 <tr><th>字段</th><th>说明</th></tr>
 <tr><td><code>err</code></td><td>0=OK</td></tr>
-<tr><td><code>state</code></td><td><strong>语义由 <code>testState</code> 决定</strong>: testState≠0 时为行程测试态 (1=RUN / 2=DONE / 3=测试FAULT, DONE/FAULT 保持至 CLEAR); testState=0 时为步进态 (0=IDLE / 1=RUN / 2=FAULT)。<em>注意: state=2 不一定是故障, 先看 testState</em></td></tr>
+<tr><td><code>state</code></td><td>步进电机态: <code>0</code>=IDLE / <code>1</code>=RUN / <code>2</code>=FAULT. <strong>行程测试进行中 (testState=1) 时 state 恒为 1(RUN)</strong>; 测试结束 (DONE/FAULT) 后 state <strong>回落为步进态 (通常 IDLE=0)</strong>, 结果由 <code>testState</code>+<code>diag1</code> 表达, 不再占用 state — 上位机 "等 IDLE" 不会因 DONE 卡住</td></tr>
 <tr><td><code>fault</code></td><td>DRV8434S FAULT 寄存器原始值 (bit7=FAULT, bit6=SPI_ERROR, bit5=UVLO, bit4=CPUV, bit3=OCP, bit2=STALL, bit1=过温, bit0=开路)。<strong>state=FAULT 时为停机瞬间快照</strong>（DRV 状态寄存器读后自清，固件在 FAULT 态冻结轮询以防证据被抹掉，归因靠此快照）；IDLE/RUN 时为实时轮询值</td></tr>
-<tr><td><code>diag1</code></td><td>行程测试故障原因 (非测试时为 0): 1=步进故障 / 2=挣脱超时 / 3=方向极性错触 / 4=期望触点超时</td></tr>
+<tr><td><code>diag1</code></td><td>行程测试故障原因 (非测试时为 0): 1=步进故障 / 2=挣脱超时 / 3=方向极性错触 / 4=期望触点超时 / 5=RUN中电机停转(外部 STOP/被劫持, 300ms 宽限后判)</td></tr>
 <tr><td><code>diag2</code></td><td>诊断寄存器2 (OTW/OTS/STALL/OL)。state=FAULT 时同为停机瞬间快照</td></tr>
 <tr><td><code>stepsDone</code></td><td>本次运动已完成的微步数 (16bit, 溢出截断; 持续运行意会)</td></tr>
 <tr><td><code>switchErr</code></td><td>行程开关错误位: bit0=上行程错(缺失/超腿长未触发), bit1=下行程错. 由上电回零/运行中开关监控置位; CLEAR 清 0. 置位时 TEST 被禁(冲挡块保护), MOVE 不受门控(上位机自行决策)但运行中开关监控仍会在超腿长未触发时置位并停机.</td></tr>
-<tr><td><code>testState</code></td><td>行程测试状态机当前态: 0=非测试(state 为步进态), 1=RUN, 2=DONE, 3=测试FAULT. 用于消解 state 字段的测试态/步进态歧义 (测试结束后 MT 态保持到 CLEAR, 期间 state 上报测试态).</td></tr>
+<tr><td><code>testState</code></td><td>行程测试状态机当前态: 0=非测试, 1=RUN, 2=DONE, 3=测试FAULT. 测试结束后 MT 态保持到下次 TEST/STOP/CLEAR, 供上位机可靠取走结果; state 已回落步进态, 二者不再歧义</td></tr>
 </table>
 
 <h3>10.3 HEALTH / STATS 响应字段</h3>
@@ -370,7 +371,7 @@ if (n >= 64 && report[0] == 0x02) {
 <tr><td><code>0x04</code></td><td>READ_TAG</td><td><code>[cmd, epcLen, epc.., bank, addr, cnt]</code></td><td><code>[cmd, err]</code></td><td>读标签：按 EPC 定位，读 <code>bank</code>/<code>addr</code> 起 <code>cnt</code> 个字</td></tr>
 <tr><td><code>0x05</code></td><td>WRITE_TAG</td><td><code>[cmd, epcLen, epc.., bank, addr, len, data..]</code></td><td><code>[cmd, err]</code></td><td>写标签：按 EPC 定位，写 <code>len</code> 字节到 <code>bank</code>/<code>addr</code></td></tr>
 <tr><td><code>0x06</code></td><td>STOP</td><td><code>[cmd]</code></td><td><code>[cmd, err]</code></td><td>停止当前操作</td></tr>
-<tr><td><code>0x07</code></td><td>QUERY</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, link, totalTags]</code></td><td>查询状态/链路/累计标签数</td></tr>
+<tr><td><code>0x07</code></td><td>QUERY</td><td><code>[cmd]</code></td><td><code>[cmd, err, state, link, totalTags]</code></td><td>查询状态/链路/累计标签数。<strong>未上电 (CLOSE 后) 直接回 <code>err=3 NOT_READY</code> + 当前 state，不再做必然超时的链路探测</strong> — 与 "链路坏" (err=4 LINK) 语义区分</td></tr>
 <tr><td><code>0x08</code></td><td>GET_CONFIG</td><td><code>[cmd]</code></td><td><code>[cmd, err, power, ant, checksum, session, target, q, band]</code></td><td>读取当前配置</td></tr>
 <tr><td><code>0x09</code></td><td>SET_CONFIG</td><td><code>[cmd, power, ant, checksum, session, target, q, (band)]</code></td><td><code>[cmd, err]</code></td><td>设置配置并持久化（重启保留）</td></tr>
 <tr><td><code>0x0A</code></td><td>GET_TAGS</td><td><code>[cmd, count]</code></td><td><code>[cmd, err, total L, total H, (epcLen, rssi, epc..)...]</code></td><td>取标签缓冲；<code>count</code>=0 取全部，>0 取前 <code>count</code> 条</td></tr>
@@ -406,7 +407,8 @@ if (n >= 64 && report[0] == 0x02) {
 <tr><td><code>q</code></td><td>0~15</td><td>Gen2 Q 值; 0=动态 Q(模块默认)，1~15=静态 Q</td></tr>
 <tr><td><code>band</code></td><td>0x01/06/08/FF</td><td>工作频段 Region 码: 0x01=北美(默认) / 0x06=中国1 / 0x08=CE_LOW / 0xFF=全频段</td></tr>
 </table>
-<div class="note">SET_CONFIG 中 <code>band</code> 为可选项：设备收到 <code>dataLen&gt;=8</code> 时取 <code>data[7]</code>，否则保持默认 0x01（北美），兼容旧主机。</div>
+<div class="note">SET_CONFIG 中 <code>band</code> 为可选项：设备收到 <code>dataLen&gt;=8</code> 时取 <code>data[7]</code>，否则保持默认 0x01（北美），兼容旧主机。<strong>持久化语义</strong>：值域校验通过即写参数区（重启保留），即使模块忙导致本次未同步下发（err 仍回 LINK 以提示）——配置已在 RAM 生效并落盘，GET_CONFIG 即时可读，下轮下发/下次 OPEN 时生效。</div>
+<div class="note"><u>业务扫描会话 S0 强制</u>：Locker/ONE_SHOT/UNLOCK_MULTI 扫描窗内，设备<strong>临时</strong>把 Gen2 session 切为 S0（只改运行配置，不落参数区），窗结束自动还原用户配置。原因：S2/S3 下标签盘存标志在连续场脉冲间不复位，首读后连续重扫永无匹配且无错误码。用户设置 S2 做多标签防重读的场景不受影响（仅扫描窗内临时切换）。</div>
 
 <h3>11.3 QUERY 响应字段</h3>
 <table>
@@ -437,7 +439,7 @@ if (n >= 64 && report[0] == 0x02) {
 
 <div class="note">
 <div class="note-title">存储与持久化</div>
-SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0），断电重启自动加载最后配置（magic <code>0x5548</code>）。上位机可用 GET_CONFIG 校验。
+SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0），断电重启自动加载最后配置（magic <code>0x5548</code>）。上位机可用 GET_CONFIG 校验。<u>开机自动恢复 (Round_098 优化 #9)</u>：复位后设备在 POST 阶段（USB 尚未就绪，约前 4~7s）即自动 UHF 上电并把持久化配置下发到模块（含回波检测天线判定）——上位机拿到 USB 枚举、可发首条命令时 UHF 已配置完毕、<code>state=READY</code>，<b>无需先发 OPEN/SET_CONFIG</b>；GET_CONFIG 直接读到生效值。SET_CONFIG 仅在参数合法时持久化（PARAM 错不写），链路瞬断也不丢配置（恢复后按原值下发）。
 </div>
 </div>
 
@@ -461,6 +463,7 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <tr><td><code>0x08</code></td><td>GET_WAVE</td><td>[cmd]</td><td>[cmd, err, pointsH, pointsL]</td><td>触发一次同步波形采集（0x64，阻塞约 1s），points=有效点数（400 或部分）</td></tr>
 <tr><td><code>0x09</code></td><td>GET_WAVE_PAGE</td><td>[cmd, page]</td><td>[cmd, page, err, pointsH, pointsL, w(≤48)]</td><td>取一页波形（48 点/页），400 点=9 页（末页 16 点）；points 为该次采集总有效点</td></tr>
 </table>
+<div class="note"><u>链路断线自动探测恢复 (Round_098 优化 #10)</u>：AM 链路状态由解码器突发帧 (cmd17 上报) 静默检测。检测模式运行中若链路已断 (无突发帧且 link≠0)，设备按 2s/4s/8s 指数退避自动发 0x63 探测，恢复成功即自动回到正常检测（上位机无需人工干预；期间 GET_STATUS 的 link 字段如实反映）。链路恢复后消磁/检测业务无感续跑。</div>
 <div class="note">
 <b>波形语义（cmd 0x64）</b>：发 <code>2A A2 64 01 01 02 00 00 68</code> 请求，解码器分 <b>4 包</b>背靠背返回一周期：<code>2A A2 64 04 包次 66 &lt;100点&gt; EF FE</code>（108B，<b>无常规校验，EF FE 收尾</b>）。50Hz 市电 400 点 / 20ms / 每点 50us；RX 窗首点附近即标签回波位置。USB 单帧 ≤52B（63−头11），故分页上传：48 点/页。经 <code>GET_WAVE</code> 触发同步采集（阻塞约 1s）后，用 <code>GET_WAVE_PAGE</code> 逐页拉取；有效点数可能 &lt;400（实时背靠背丢包场景），以各响应 <code>points</code> 为准。</div>
 <div class="note">
@@ -499,7 +502,7 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 <tr><td><code>0x05</code></td><td>QUERY</td><td>[cmd]</td><td>[cmd, err, state, hmL,hmH, scL,scH, suL,suH, faultReason]</td><td>查询状态/计数</td></tr>
 <tr><td><code>0x06</code></td><td>CONSUME_SOFT</td><td>[cmd]</td><td>[cmd, err]</td><td>v1 软标：上位机上报已解码一次</td></tr>
 <tr><td><code>0x07</code></td><td>GET_EVENT</td><td>[cmd]</td><td>[cmd, err, code, epcLen, epc.., hmL,hmH, suL,suH, scL,scH, hcL,hcH]</td><td>取一条上报事件</td></tr>
-<tr><td><code>0x08</code></td><td>ONE_SHOT</td><td>[cmd, tmoL,tmoH, holdL,holdH, epcLen, epc.., (demagCnt)]</td><td>见 13.2（随 err 变体）</td><td>单标签同步开锁：<strong>阻塞执行全流程后回一帧</strong>（见 13.1）</td></tr>
+<tr><td><code>0x08</code></td><td>ONE_SHOT</td><td>[cmd, tmoL,tmoH, irWaitL,irWaitH, holdL,holdH, epcLen, epc.., (demagCnt)]</td><td>见 13.2（随 err 变体）</td><td>单标签同步开锁：<strong>阻塞执行全流程后回一帧</strong>（见 13.1）。irWait/hold 双窗口拆分见 13.1</td></tr>
 <tr><td><code>0x09</code></td><td>GET_PROGRESS</td><td>[cmd]</td><td>[cmd, err, phase, holdMs(2), steps(2), tagPresent, demagDone, epcLen, epc..]</td><td>0x08 阻塞期间随时可查的进度快照；<strong>0x0A 流程进行中为多标签布局</strong>：[cmd, err, phase, holdMs(2), total, confirmed, bitmap, softCnt, softDone]（0x08/0x0A 白名单互斥，其余命令回 BUSY）</td></tr>
 <tr><td><code>0x0A</code></td><td>UNLOCK_MULTI</td><td>[cmd, tmoL,tmoH, holdL,holdH, softCnt, epcCnt, epcLen, epcCnt*epcLen 字节]</td><td>见 13.4（随 err 变体）</td><td>多标签同步解锁：<strong>单帧下发 m≤4 张期望 EPC + 软标数，阻塞自治执行</strong>，期间推 0x0B~0x0F 事件帧，流程结束回 0x0A 终帧（见 13.3）</td></tr>
 </table>
@@ -517,20 +520,21 @@ SET_CONFIG 设置后写入设备参数区 <code>userParam</code>（偏移 0）�
 </div>
 
 <h3>13.1 ONE_SHOT (0x08) 单标签同步开锁流程</h3>
-<p><strong>请求</strong>：<code>[cmd, tmoL,tmoH, holdL,holdH, epcLen, epc.., (demagCnt)]</code> — <code>tmoMs</code> 单轮盘点超时（0→1000，上限 10000）；<code>holdMs</code> 保持窗（0→30000，上限 60000）；<code>epcLen</code> 1~12；<code>demagCnt</code> 软标消磁数（<strong>可省略，缺省 0=跳过消磁流程</strong>，不触碰 AM）。参数钳位后<strong>同步阻塞执行</strong>，期间仅 QUERY/GET_PROGRESS/CANCEL（及各 FC 只读命令）被放行，其余回 BUSY。</p>
+<p><strong>请求</strong>：<code>[cmd, tmoL,tmoH, irWaitL,irWaitH, holdL,holdH, epcLen, epc.., (demagCnt)]</code> — <code>tmoMs</code> 单轮盘点超时（0→1000，上限 10000）；<code>irWaitMs</code> 光电门控+标签出现窗（0→10000 缺省，上限 60000）；<code>holdMs</code> 升起后保持窗（0→30000 缺省，上限 60000）；<code>epcLen</code> 1~12；<code>demagCnt</code> 软标消磁数（<strong>可省略，缺省 0=跳过消磁流程</strong>，不触碰 AM）。<em>帧长 &lt;8 / epcLen=0 或 &gt;12 / 8+epcLen &gt; 帧长 均 err=2 PARAM。</em>参数钳位后<strong>同步阻塞执行</strong>，期间仅 QUERY/GET_PROGRESS/CANCEL（及各 FC 只读命令）被放行，其余回 BUSY。<em>原 maxHold 单窗已拆为 irWait（放标等待）与 hold（升起保持）两个独立参数 — 原布局 [cmd,tmoL,tmoH,holdL,holdH,epcLen,..] 帧因缺 irWait 域回 PARAM，主机须按新布局下发。</em></p>
 <p><strong>流程</strong>（固件 App_LockerOneShot.c）：</p>
 <pre>⑴   前置检查 (Locker/UHF/电机空闲 + 已回零)
-⑴.5 <b>光电门控</b>: 等客户放标 (PC4 高=检测到, 200ms 去抖), 窗=holdMs
+⑴.5 <b>光电门控</b>: 等客户放标 (PC4 高=检测到, 200ms 去抖), 窗=irWaitMs
      窗满未触发 -> err=11 NO_IR (不动磁块)
 ⑴.6 消磁准备 (demagCnt>0: AM 探链 + 强制检测模式 — <b>校验期仅检测
      不消磁</b>; =0 跳过, 不触碰 AM)
-⑵   UHF 上电/配置
-⑶   <b>持续校对</b>: 反复盘点比对期望 EPC (单轮 ~1/4 漏读属正常)
+⑵   UHF 上电/配置 (扫描窗内强制 session S0, 结束还原)
+⑶   <b>持续校对</b>: 反复盘点比对期望 EPC (单轮 ~1/4 漏读属正常),
+     预算=irWaitMs (自光电触发起)
      命中 -> 升起; 连续 3 轮读到标签但无期望 -> MISMATCH (不升起);
-     整窗无任何标签 -> NO_TAG
+     窗内无任何标签 -> NO_TAG
 ⑷   命中 -> (demagCnt>0 先切 AM <b>消磁模式</b> — EPC 校验通过才消磁)
      上行至 KEY_UP 触点停住 (绿常亮)
-⑸   保持期监控 (先到先回降):
+⑸   保持期监控 (窗=holdMs, 先到先回降):
      消磁数达标(demagCnt>0) /
      <b>EPC 稳定确认(demagCnt=0: 连续在场 3s -> 结账成功 end=7)</b> /
      保持窗超时 / 期望标签稳定移除 / 移除后读到其他 EPC / UHF 失联
@@ -688,6 +692,31 @@ FC_MOTOR_CTRL QUERY/HEALTH 已提供电机细粒度诊断（switchErr、堵转�
 <div class="note">
 <div class="note-title">错误码 (data[1])</div>
 <code>0</code>=OK, <code>1</code>=参数错误（长度不足/未知子命令）, <code>2</code>=BUSY（RERUN 时开锁流程运行中）。
+</div>
+</div>
+
+<!-- FC_IO_DIAG -->
+<h2>16. FC_IO_DIAG (0x10) — IO/外设状态一帧总览</h2>
+<div class="phase">
+<h4>请求</h4>
+<pre>53 77 01 00 05 00 10  [CRC32 4B]      // data 为空</pre>
+<h4>响应 data（10 字节）</h4>
+<table>
+<tr><th>偏移</th><th>字段</th><th>说明</th></tr>
+<tr><td>0</td><td><code>result</code></td><td>0=OK</td></tr>
+<tr><td>1</td><td><code>ir</code></td><td>红外光电门 PC4 原始读数 (1=触发/有遮挡)</td></tr>
+<tr><td>2</td><td><code>keyUp</code></td><td>上行程开关 (1=释放 / 0=按下, 低有效)</td></tr>
+<tr><td>3</td><td><code>keyDown</code></td><td>下行程开关 (1=释放 / 0=按下)</td></tr>
+<tr><td>4</td><td><code>uhfPowered</code></td><td>UHF 模块电源 (1=上电)</td></tr>
+<tr><td>5</td><td><code>antennaOk</code></td><td>UHF 天线回波检测 OK (最近一次 OPEN/CHECK_ANT 结果)</td></tr>
+<tr><td>6</td><td><code>amLink</code></td><td>AM 解码器链路 (0=正常 / 非0=掉线, 自动探测恢复中)</td></tr>
+<tr><td>7</td><td><code>homing</code></td><td>后台回零状态: 0=未运行 1=RUNNING 2=READY 3=FAILED</td></tr>
+<tr><td>8</td><td><code>locker</code></td><td>Locker 状态机态 (同 §13 QUERY state)</td></tr>
+<tr><td>9</td><td><code>testState</code></td><td>行程测试态 (同 §10.2 testState)</td></tr>
+</table>
+<div class="note">
+<div class="note-title">用途</div>
+上位机在复位后无需逐个外设轮询: 一帧即可判断 (a) 后台回零是否完成 (homing=2 才可 MOVE/TEST/开锁业务), (b) UHF 是否上电+天线正常, (c) 行程开关实际电平 (现场装调), (d) Locker/测试是否占用。复位后 ~12s 内 homing=1 属正常 (后台回零窗口)。
 </div>
 </div>
 
@@ -874,7 +903,7 @@ ONE_PH_LOWER              = 6
 ONE_PH_IR_WAIT            = 7     // 光电门控, 等客户放标</pre>
 </div>
 
-<div class="foot">App USB Protocol · 版本 2 · Round 018 蓝白改版 + 协议一致性修正 · 2026-07-26 · Round 102 补 ONE_SHOT 0x08/GET_PROGRESS 0x09（光电门控/持续校对/EPC 稳定判定语义 + 全错误码表）· 2026-09-02 · Round 105 补 UNLOCK_MULTI 0x0A 多标签解锁（0x0B~0x0F 推送事件帧/终帧/双门限确认语义）· 2026-09-02 · Round 106 AM 模式时序收紧（EPC 校验通过才切消磁模式 / 软标结束或超时切回检测模式，0x08/0x0A 同步）· 2026-09-02</div>
+<div class="foot">App USB Protocol · 版本 2 · Round 018 蓝白改版 + 协议一致性修正 · 2026-07-26 · Round 102 补 ONE_SHOT 0x08/GET_PROGRESS 0x09（光电门控/持续校对/EPC 稳定判定语义 + 全错误码表）· 2026-09-02 · Round 105 补 UNLOCK_MULTI 0x0A 多标签解锁（0x0B~0x0F 推送事件帧/终帧/双门限确认语义）· 2026-09-02 · Round 106 AM 模式时序收紧（EPC 校验通过才切消磁模式 / 软标结束或超时切回检测模式，0x08/0x0A 同步）· 2026-09-02 · Round 098 修正批（优化 #3~#4 MOVE/TEST 互斥与 TEST 完成语义 · #9 开机 UHF 配置自动恢复 · #10 AM 断线自动探测 · #11 后台回零窗口 BUSY · #12 协议同步 · #15 UHF QUERY NOT_READY · #20 ONE_SHOT irWait/hold 拆分 · #21 Locker 扫描会话 S0 · 新增 §16 FC_IO_DIAG）· 2026-09-02</div>
 
 </div>
 </body>

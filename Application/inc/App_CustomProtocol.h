@@ -42,6 +42,17 @@
 #define FC_LOCKER_CTRL      0x0D   /* 开锁器业务编排 (子命令编码, 见下)*/
 #define FC_RGB_CTRL         0x0E   /* RGB 三色灯控制 (见下)*/
 #define FC_SELFTEST_CTRL    0x0F   /* 设备级自检/错误位 (子命令编码, 见下; App 专属, Boot 忽略)*/
+#define FC_IO_DIAG          0x10   /* IO/传感器直读快照 (Round_098 优化 #8; App 专属, Boot 忽略)*/
+
+/* ---- FC_IO_DIAG (0x10) — IO/传感器直读快照 (排障用, 不锁存) ----
+ * 请求 data 空. 响应 data: [err, ir, keyUp, keyDown, uhfPowered, uhfAntennaOk,
+ *   amLink, homingStat, lockerState, motorTestState]
+ *   ir:      PC4 光电门 1=检测到 (原始电平, 无去抖)
+ *   keyUp/keyDown: 行程开关 1=触发 (按下)
+ *   uhfPowered: UHF 模块上电; uhfAntennaOk: 天线回波检测通过 (未上电/未检为 0)
+ *   amLink:   0=AM 链路正常 (与 AM GET_STATUS 同源)
+ *   homingStat: 0=未启动 1=回零中 2=已就绪 3=失败
+ *   lockerState/motorTestState: 业务状态机快照 (各子命令 QUERY 同源) */
 
 /* ---- FC_SELFTEST_CTRL (0x0F) — 设备级自检/锁存错误位 ----
  * 错误位 16bit 锁存位图 (errBits, bit=1 故障, 高字节在前回传时 L 在前):

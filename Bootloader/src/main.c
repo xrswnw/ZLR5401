@@ -9,6 +9,7 @@
 #include "Boot_Usb_HL.h"   /* Boot_Usb_HL_DeInit (0: JumpToApp USB 软断开)*/
 #include "Boot_Dispatch.h"
 #include "Boot_Iwdg_HL.h"
+#include "Boot_FaultStorm.h"
 #include "System_PeriphClk.h"
 
 static void JumpToApp(void) {
@@ -54,6 +55,7 @@ static void JumpToApp(void) {
     pFnApp appEntry = (pFnApp)resetVec;
     __asm volatile ("msr msp, %0" : : "r"(*(volatile uint32_t *)APP_FLASH_ORIGIN) : );
     __asm volatile ("dsb; isb");
+    BootStorm_Clear();     /* 跳转在即: App 启动会清零计数, 此处先行清 (双重保险) */
     appEntry();
 }
 
@@ -170,7 +172,12 @@ int main(void) {
 
     IwdgHl_Init();
 
+    /* Round_098 优化 #7: Boot fault 复位风暴保护. 连续 >=3 次 fault
+     * (期间无 App 成功启动 / 无升级提交) -> 强制常驻升级循环,
+     * 主机可稳定 IAP 救援; 计数在 App 成功启动时被其 .bss 清零
+     * 天然复位, 详见 Boot_FaultStorm.c. */
     int stayInUpdate = (g_sParam.deviceStatus == PARAM_STATUS_UPG);
+    if (BootStorm_Check() != 0) stayInUpdate = 1;
 
     /* 所有初始化完成, 开全局中断*/
     __asm volatile ("cpsie i");

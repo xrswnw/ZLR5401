@@ -107,14 +107,18 @@ static uint8_t one_epc_eq(const uint8_t *want, uint8_t wantLen,
 }
 
 static void one_run(const uint8_t *epc, uint8_t epcLen,
-                    uint16_t tmoMs, uint16_t maxHoldMs, uint8_t demagCnt,
-                    LockerOneShotResult_t *out);
+                    uint16_t tmoMs, uint16_t irWaitMs, uint16_t holdMs,
+                    uint8_t demagCnt, LockerOneShotResult_t *out);
 
 void App_LockerOneShot_Run(const uint8_t *epc, uint8_t epcLen,
-                           uint16_t tmoMs, uint16_t maxHoldMs, uint8_t demagCnt,
-                           LockerOneShotResult_t *out)
+                           uint16_t tmoMs, uint16_t irWaitMs, uint16_t holdMs,
+                           uint8_t demagCnt, LockerOneShotResult_t *out)
 {
-    one_run(epc, epcLen, tmoMs, maxHoldMs, demagCnt, out);
+    /* Round_098 #21: 流程窗内强制会话 S0 (保持期持续盘点监控对 S2/S3
+     * 同样敏感), 含全部提前失败出口统一还原. */
+    (void)App_UHF_ScanSessionBegin();
+    one_run(epc, epcLen, tmoMs, irWaitMs, holdMs, demagCnt, out);
+    App_UHF_ScanSessionEnd();
     /* 流程结束 (含全部提前失败/打断出口): AM 切回检测模式, 不再消磁 */
     if (s_amDemagOn) {
         s_amDemagOn = 0u;
@@ -125,8 +129,8 @@ void App_LockerOneShot_Run(const uint8_t *epc, uint8_t epcLen,
 }
 
 static void one_run(const uint8_t *epc, uint8_t epcLen,
-                    uint16_t tmoMs, uint16_t maxHoldMs, uint8_t demagCnt,
-                    LockerOneShotResult_t *out)
+                    uint16_t tmoMs, uint16_t irWaitMs, uint16_t holdMs,
+                    uint8_t demagCnt, LockerOneShotResult_t *out)
 {
     if (!out || !epc) return;
     Memset8((void*)out, 0, sizeof(*out));
@@ -145,8 +149,12 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
     if (epcLen == 0u || epcLen > 12u) { out->err = ONE_ERR_PARAM; return; }
     if (tmoMs == 0u) tmoMs = 1000u;
     if (tmoMs > 10000u) tmoMs = 10000u;
-    if (maxHoldMs == 0u) maxHoldMs = ONE_HOLD_DEFAULT_MS;
-    if (maxHoldMs > ONE_HOLD_MAX_MS) maxHoldMs = ONE_HOLD_MAX_MS;
+    /* Round_098 #20: 原 maxHoldMs 身兼 IR 等待窗/校对预算/保持窗三职,
+     * 拆为 irWaitMs (等待放标+标签出现窗) 与 holdMs (升起后保持窗). */
+    if (irWaitMs == 0u) irWaitMs = ONE_IRWAIT_DEFAULT_MS;
+    if (irWaitMs > ONE_IRWAIT_MAX_MS) irWaitMs = ONE_IRWAIT_MAX_MS;
+    if (holdMs == 0u) holdMs = ONE_HOLD_DEFAULT_MS;
+    if (holdMs > ONE_HOLD_MAX_MS) holdMs = ONE_HOLD_MAX_MS;
 
     /* ---- ⑴ 前置检查 ---- */
     if (App_LockerUnlock_IsBusy() != 0u)          { one_fill_busy(out); return; }
@@ -154,6 +162,10 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
     if (App_UHF_GetState() == APP_UHF_SCAN)       { one_fill_busy(out); return; }
     if (App_UHF_IsBusy())                        { one_fill_busy(out); return; }
     if (App_Stepper_GetState() != APP_STEPPER_IDLE) { one_fill_busy(out); return; }
+    if (App_MotorHoming_GetStatus() == HOMING_STAT_RUNNING) {
+        one_fill_busy(out);            /* Round_098 #11: 后台回零进行中 -> BUSY */
+        return;
+    }
     if (App_MotorHoming_IsReady() == 0) {
         out->err = ONE_ERR_HOMING;
         out->switchErr = App_Stepper_GetSwitchErr();
@@ -161,7 +173,8 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
     }
 
     /* ---- ⑴.5 光电门控: 等待客户放置标签 (PC4 高=检测到) ----
-     * 连续 ONE_IR_CONFIRM_MS 高电平才算触发 (去抖); 等待窗 = maxHoldMs,
+     * 连续 ONE_IR_CONFIRM_MS 高电平才算触发 (去抖); 等待窗 = irWaitMs
+     * (Round_098 #20 拆分: 原 maxHoldMs 双语义之一),
      * 窗满未触发 -> NO_IR 失败 (不动磁块, 不碰 UHF/AM)。 */
     s_phase = ONE_PH_IR_WAIT;
     App_RgbLedPat_Set(RGBSRC_ONESHOT, RGBPAT_SCAN_WAIT);   /* 等待放标: 青慢闪 */
@@ -178,7 +191,7 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
             } else {
                 irHighSince = 0u;
             }
-            if ((now - t0) >= maxHoldMs) { out->err = ONE_ERR_NO_IR; return; }
+            if ((now - t0) >= irWaitMs) { out->err = ONE_ERR_NO_IR; return; }
         }
     }
 
@@ -250,7 +263,7 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
             }
             LockerSeek_Pump();
             if (s_abort) { out->err = ONE_ERR_OK; out->endReason = ONE_END_ABORTED; return; }
-            if ((SysTickHl_GetMs() - invT0) >= maxHoldMs) {
+            if ((SysTickHl_GetMs() - invT0) >= irWaitMs) {
                 out->err = ONE_ERR_NO_TAG;
                 out->uhfRawErr = APP_UHF_ERR_NO_TAG;
                 return;
@@ -358,8 +371,8 @@ static void one_run(const uint8_t *epc, uint8_t epcLen,
                 }
             }
 
-            /* 保持窗超时 (上位机给的最坏期限) */
-            if ((now - holdStart) >= maxHoldMs) { out->endReason = ONE_END_HOLD_TIMEOUT; break; }
+            /* 保持窗超时 (Round_098 #20: 独立 holdMs, 原与 IR 等待窗共用) */
+            if ((now - holdStart) >= holdMs) { out->endReason = ONE_END_HOLD_TIMEOUT; break; }
 
             /* 期望标签稳定移除: 防抖确认窗内再未读到 */
             if ((now - lastSeen) >= ONE_REMOVED_CONFIRM_MS) {

@@ -188,6 +188,7 @@ static void locker_enter_fault(uint8_t reason)
     (void)App_Stepper_Stop();
     s_motor = M_NONE;
     (void)App_UHF_Stop();
+    App_UHF_ScanSessionEnd();     /* Round_098 #21: 任务终止, 还原用户 session */
     evr_push(LOCKER_EVT_FAULT, (const uint8_t *)0, 0u);
     LedHl_EOn();
     set_state(LOCKER_FAULT);
@@ -197,6 +198,7 @@ static void locker_enter_fault(uint8_t reason)
 static void teardown_to_idle(void)
 {
     (void)App_UHF_Stop();
+    App_UHF_ScanSessionEnd();     /* Round_098 #21: 扫描窗结束, 还原用户 session */
     s_started = 0u;
     if (s_motor != M_NONE || s_ctx.lockRisen) {
         if (seek_start(1u) == 0) {
@@ -264,8 +266,11 @@ int App_Locker_AddTag(const AppLockerItem_t *item)
 
 int App_Locker_Start(void)
 {
-    if (s_started) return -1;                 /* 已激活, 需先 CANCEL */
+    if (s_started) return -1;                 /* 已激活, 需先取消 */
     if (s_ctx.hardCount == 0u && s_ctx.softCount == 0u) return -2;
+    if (App_MotorHoming_GetStatus() == HOMING_STAT_RUNNING) return -1;
+                                             /* Round_098 #11: 后台回零中 -> BUSY
+                                              * (避免扫描期 fault=2 硬故障) */
     s_started = 1u;
     if (s_ctx.hardCount == 0u) {
         /* 纯软标任务: 无硬标签可比对, 直入软标阶段 */
@@ -276,6 +281,10 @@ int App_Locker_Start(void)
         set_state(LOCKER_SOFT_DECODE);
         return 0;
     }
+    /* Round_098 #21: 扫描窗内强制会话 S0 (S2/S3 下硬标签盘点标志在连续
+     * 场脉冲间不复位, 首读后连续重扫永无匹配且无错误码), 窗结束还原.
+     * 先于 Open: 模块未上电时仅改 RAM, Open 内的配置下发即为 S0. */
+    (void)App_UHF_ScanSessionBegin();
     if (App_UHF_GetState() != APP_UHF_READY) {
         (void)App_UHF_Open();
     }

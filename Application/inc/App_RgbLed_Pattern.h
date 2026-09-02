@@ -43,6 +43,7 @@ typedef enum {
     RGBSRC_LOCKER = 0,          /* App_Locker 结账编排 */
     RGBSRC_ONESHOT,              /* App_LockerOneShot 单标签同步 */
     RGBSRC_MOTORTEST,            /* App_MotorTest 行程测试 */
+    RGBSRC_HOMING,               /* App_MotorHoming 后台回零 (Round_098 #11) */
     RGBSRC_COUNT
 } AppRgbSrc_t;
 
