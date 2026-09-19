@@ -19,8 +19,13 @@
  *   间隔), 全败 -> switchErr(bit0=上 bit1=下) + 自检锁存位, 禁止 MOVE/TEST。
  * ===================================================================== */
 
-#define HOMING_SPEED_HZ     2000u      /* 回零转速 (较慢, 防冲击) */
-#define HOMING_TORQUE_PCT   40u        /* 回零转矩 (较低, 硬顶冲击小) */
+#define HOMING_SPEED_HZ     1000u      /* 回零转速 — 2026-09-19 用户统一裁决:
+                                         * 上电自测/行程测试/解锁腿全 1000 微步/s
+                                         * (≈150RPM, 腿全程 ~4.2s; 1000=斜坡下限,
+                                         * 起步即恒速无斜坡) */
+#define HOMING_TORQUE_PCT   90u        /* 回零转矩 — 2026-09-19 现场堵转排查定稿值 90%
+                                         * (阶梯标定: 20% 原地顶死/40% 中途顶住/60%、80%、90% 通过;
+                                         * TRQ_COUNT 各档恒 4095, 过载监测失明, 兜底=步数上限) */
 #define HOMING_DIR_DOWN     1u         /* dir=1 = 反转向下 (奔 KEY_DOWN) */
 #define HOMING_DIR_UP       0u         /* dir=0 = 正转向上 (奔 KEY_UP) */
 #define HOMING_DOWN_MAX     (4324u * 2u + 800u)   /* 下腿实测×2 + 裕量, 防无限冲底 */
@@ -29,7 +34,12 @@
 #define HOMING_STALL_MS     400u       /* 步数停滞 (丢步兜底) */
 #define HOMING_ATTEMPTS     3u         /* 整体重试次数 (上电首驱瞬态 nFAULT ~1/3) */
 #define HOMING_RETRY_GAP_MS 200u       /* 重试间隔 */
-#define HOMING_TRANSIENT_STEPS 50u     /* 瞬态误报判定: 走步少且故障寄存器非零 */
+#define HOMING_TRANSIENT_STEPS 200u     /* 瞬态误报判定: 走步少且故障寄存器非零。
+                                         * 2026-09-19 黑匣子实测首驱瞬态死于 ~110 步
+                                         * (runMs=100ms, fault=0xC0 FAULT|SPI_ERROR);
+                                         * 死点随时基走步, 200 覆盖斜坡速率抖动。
+                                         * 判线内走"立即同腿重试"(免 200ms 间隔),
+                                         * 上电观感=一次连续上升, 消除"下坠-停住"抖动。 */
 
 typedef enum {
     LG_NONE = 0,   /* 未启动 */

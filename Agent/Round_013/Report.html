@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Round_013 — 报告: FC 重映射 0x20 起 + 协议 v3 重写 + CRC/示例帧</title>
+<style>
+  :root{
+    --navy:#0b2a4a; --blue:#1a5fb4; --sky:#4a9be8; --ice:#eaf3fc; --line:#c9dff4;
+    --ink:#17324d; --muted:#5b7a9a; --gold:#b8860b; --red:#c0392b; --green:#1e8e5a;
+  }
+  *{box-sizing:border-box;}
+  body{font-family:-apple-system,"PingFang SC","Microsoft YaHei",sans-serif;
+       margin:0; color:var(--ink); line-height:1.7; background:#f7fafd;}
+  .topbar{background:linear-gradient(120deg,var(--navy),var(--blue)); color:#fff;
+          padding:26px 28px; border-bottom:4px solid var(--sky);}
+  .topbar h1{margin:0; font-size:24px; letter-spacing:.5px; font-weight:600;}
+  .topbar .sub{margin-top:6px; font-size:13px; color:#cfe4f7; opacity:.92;}
+  .wrap{max-width:1040px; margin:0 auto; padding:24px 28px 60px;}
+  h2{color:var(--navy); border-left:6px solid var(--sky); padding-left:12px;
+     margin:38px 0 14px; font-size:20px;}
+  h3{color:var(--blue); margin:24px 0 10px; font-size:16px;}
+  p{font-size:14.5px;}
+  table{border-collapse:collapse; width:100%; margin:12px 0; background:#fff;
+        border-radius:8px; overflow:hidden; box-shadow:0 1px 3px rgba(11,42,74,.07);}
+  th,td{border:1px solid var(--line); padding:7px 11px; text-align:left; font-size:13.5px;}
+  th{background:linear-gradient(180deg,var(--ice),#dcebfa); color:var(--navy); font-weight:600;}
+  tr:nth-child(even) td{background:#f6fafe;}
+  code{background:#eef4fb; color:#144a8a; padding:1px 6px; border-radius:4px;
+       font-family:Consolas,Menlo,monospace; font-size:13px;}
+  pre{background:#0b1e33; color:#cfe4f7; padding:14px 16px; border-radius:8px;
+      overflow:auto; font-size:13px; line-height:1.5;}
+  pre code{background:none; color:inherit; padding:0;}
+  .card{background:#fff; border:1px solid var(--line); border-radius:8px; padding:12px 16px; margin:12px 0;}
+  .card .tt{font-weight:600; color:var(--navy);}
+  .ok{background:#f2faf6; border-left:5px solid var(--green);}
+  .warn{background:#fdf8ec; border-left:5px solid var(--gold);}
+  .danger{background:#fdf2f0; border-left:5px solid var(--red);}
+  ul,ol{font-size:14.5px;}
+  li{margin:4px 0;}
+  .foot{margin-top:48px; padding-top:16px; border-top:1px solid var(--line);
+        color:var(--muted); font-size:12px; text-align:center;}
+</style>
+</head>
+<body>
+<div class="topbar">
+  <h1>ZLR5401 协议重构 Round_013 · Report.html</h1>
+  <div class="sub">Agent/Round_013 &nbsp;·&nbsp; 2026-09-03 &nbsp;·&nbsp; FC 重映射 0x20~0x26 · PROTO_VERSION 3 · App_Protocol.html 全量重写 · 示例帧实机回验 &nbsp;·&nbsp; 已执行完毕</div>
+</div>
+
+<div class="wrap">
+
+<h2>1. 执行概要</h2>
+<p>本轮完成 <b>协议破坏性重构</b>：固件 FC 码位迁移（仅 7 个 define + PROTO_VERSION，业务逻辑零改动）+ <b>App_Protocol.html 全量重写</b>（新码 + 清除历史叙事 + 三个新章节：解锁框图 / RGB 灯语表 / CRC 算法与示例帧）+ 旧文档归档。全部测试实机通过：冒烟 <b>PASS 22 / FAIL 0</b>。</p>
+<div class="card ok"><div class="tt">结果一览</div>
+<ul>
+<li>固件改动：<code>App_CustomProtocol.h</code> 7 个 FC define + <code>PROTO_VERSION 3</code>；<code>Boot_CustomProtocol.h</code> 仅 <code>PROTO_VERSION 3</code>（Boot 无 App 级 FC）。dispatch/业务 .c/CMake 全部零改动（全走符号常量）。</li>
+<li>App 与 Boot 均重编译、烧录、实机验证（握手 protoVer=3 双层一致）。</li>
+<li>新码 0x20~0x26 全通道冒烟通过；旧码 0x0A/0x0D/0x10 静默（与未知 FC 一致，不再进业务）。</li>
+<li>示例帧（握手/盘点/解锁 1/2/3 标签）逐字节实机回验受理，坏 CRC 变体静默丢弃。</li>
+<li>Protocol/ 下 App 域仅剩一份 <code>App_Protocol.html</code>（Boot_Protocol.html 属 Boot 域保留）。</li>
+</ul></div>
+
+<h2>2. 固件变更</h2>
+<h3>2.1 FC 重映射（Application/inc/App_CustomProtocol.h）</h3>
+<table>
+<tr><th>FC 宏</th><th>旧值</th><th>新值</th><th>响应 func</th></tr>
+<tr><td><code>FC_MOTOR_CTRL</code></td><td>0x0A</td><td><b>0x20</b></td><td>0xDF</td></tr>
+<tr><td><code>FC_UHF_CTRL</code></td><td>0x0B</td><td><b>0x21</b></td><td>0xDE</td></tr>
+<tr><td><code>FC_AM_CTRL</code></td><td>0x0C</td><td><b>0x22</b></td><td>0xDD</td></tr>
+<tr><td><code>FC_LOCKER_CTRL</code></td><td>0x0D</td><td><b>0x23</b></td><td>0xDC</td></tr>
+<tr><td><code>FC_RGB_CTRL</code></td><td>0x0E</td><td><b>0x24</b></td><td>0xDB</td></tr>
+<tr><td><code>FC_SELFTEST_CTRL</code></td><td>0x0F</td><td><b>0x25</b></td><td>0xDA</td></tr>
+<tr><td><code>FC_IO_DIAG</code></td><td>0x10</td><td><b>0x26</b></td><td>0xD9</td></tr>
+</table>
+<ul>
+<li>系统级 0x01~0x09 原值不动（需求第 1 条）；Boot 域 0x02~0x06/0x09 不涉及。</li>
+<li>段头注释 7 处同步换码（"FC=0x20 子命令编码" 等）；阶段推送帧注释更新为 <code>0x23^0xFF</code>。</li>
+<li>旧码位 0x0A~0x10 成为未定义 FC → dispatch default 静默，无兼容垫层（需求指定的破坏性变更）。</li>
+</ul>
+
+<h3>2.2 PROTO_VERSION 2 → 3（拍板采纳）</h3>
+<ul>
+<li><code>App_CustomProtocol.h</code> 与 <code>Boot_CustomProtocol.h</code> 均改为 3；两层握手响应 protoVer 字段一致，上位机可凭此分辨新旧协议。</li>
+<li>Boot 固件同步重编译烧录（JLink 直烧，与 App 同机制，无 IAP 风险）。</li>
+</ul>
+
+<h3>2.3 编译结果</h3>
+<table>
+<tr><th>构建</th><th>结果</th><th>说明</th></tr>
+<tr><td>build_app.sh</td><td>0 error / 0 warning</td><td>纯常量变更，FLASH/RAM 不变</td></tr>
+<tr><td>build_boot.sh</td><td>0 error</td><td>仅 protoVer 一行</td></tr>
+</table>
+
+<h2>3. 协议文档重写（Protocol/App_Protocol.html）</h2>
+<h3>3.1 结构</h3>
+<table>
+<tr><th>章节</th><th>动作</th></tr>
+<tr><td>1 帧格式 / 2 USB HID / 4~7 系统命令 / 8 错误码 / 9 主机样板</td><td>保留换码（系统级 0x01~0x09 原值；protoVer=3）</td></tr>
+<tr><td>3 命令总览</td><td>重写为两层总表（系统级 + App 级 0x20~0x26）</td></tr>
+<tr><td>10 MOTOR(0x20) / 11 UHF(0x21) / 12 AM(0x22) / 14 RGB(0x24) / 15 SELFTEST(0x25) / 16 IO_DIAG(0x26)</td><td>内容保留，换码，清除叙事（见 3.2）</td></tr>
+<tr><td>13 LOCKER(0x23)</td><td>换码；<b>0x08 单标签条目按拍板彻底移除</b>（子命令表不保留任何注记）</td></tr>
+<tr><td>13.3 解锁命令框图（新增）</td><td>图A 主机/设备双列交互序列 + 图B 内部阶段链与出口，等宽字符方正框线</td></tr>
+<tr><td>17 RGB 灯语状态表（新增，尾部）</td><td>常亮态 / 闪态事件 / 自检黄系 三张子表（状态→颜色节拍→触发场景）</td></tr>
+<tr><td>18 CRC 算法与示例帧（新增，尾部）</td><td>参数表 + C/Python 参考实现 + 实机回验的示例帧（见 §4）</td></tr>
+</table>
+
+<h3>3.2 清除清单执行情况（Demand 3/4 条）</h3>
+<table>
+<tr><th>清除对象</th><th>结果</th></tr>
+<tr><td>"持久化/存储"字眼（UHF/AM SET、魔数叙事）</td><td>已清除 → "写配置"</td></tr>
+<tr><td>AM 设备语义实测段（cmd17 突发/FF×5/0x63 真读回叙事）</td><td>已删除，仅保留 GET_STATUS 字段口径</td></tr>
+<tr><td>波形语义实测段（4 包背靠背/50us 点距）</td><td>已删除，保留 "阻塞约 1s / 点数以响应为准 / 48 点/页"</td></tr>
+<tr><td>0x08 废除段 + 一切 0x08 痕迹（LOCKER 子命令域）</td><td>按拍板彻底移除，全文仅剩 MOTOR/UHF/AM 子命令的 0x08 与系统 FC_RESET=0x08（合法）</td></tr>
+<tr><td>Round_0xx 引用 / 页脚历史</td><td>全文 grep 无残留</td></tr>
+<tr><td>RGB 灯语内嵌段 / SELFTEST 关系段 / 附录 A 常量表</td><td>已删除（灯语并入 §17 专门章节）</td></tr>
+</table>
+
+<h3>3.3 旧文档归档（TrashCan/，可恢复）</h3>
+<table>
+<tr><th>文件</th><th>去向</th></tr>
+<tr><td>App_Protocol_V1.0.docx</td><td>mv → TrashCan/</td></tr>
+<tr><td>App_Locker_Report.html</td><td>mv → TrashCan/</td></tr>
+<tr><td>App_Unlock_Flow.html</td><td>mv → TrashCan/</td></tr>
+<tr><td>Protocol/Files/（灯控设计/电机行程测试报告）</td><td>随目录 mv → TrashCan/Files/</td></tr>
+<tr><td>Boot_Protocol.html</td><td><b>保留</b>（Boot 域规格）</td></tr>
+</table>
+<p>归档后 Protocol/ 仅剩 <code>App_Protocol.html</code> + <code>Boot_Protocol.html</code>，满足"仅一份干净 App 协议文档"。</p>
+
+<h2>4. 示例帧与实机回验（§18 章）</h2>
+<table>
+<tr><th>示例帧</th><th>请求字节（Host→Device）</th><th>回验</th></tr>
+<tr><td>握手</td><td><code>53 77 01 00 05 00 01 C5 69 2F 26</code></td><td>受理 ✓（protoVer=3）</td></tr>
+<tr><td>UHF OPEN</td><td><code>53 77 01 00 06 00 21 01 ...crc</code></td><td>受理 ✓ err=0</td></tr>
+<tr><td>UHF 盘点 (tmo=1000ms)</td><td><code>53 77 01 00 08 00 21 03 E8 03 ...crc</code></td><td>受理 ✓ 实机含真标 EPC 响应已捕获回填</td></tr>
+<tr><td>解锁 1 标签 (W=120s)</td><td>epcCnt=1, epcLen=6, EPC=<code>AA×6</code></td><td>受理帧 0x0F ✓ → CANCEL → ABORTED ✓</td></tr>
+<tr><td>解锁 2 标签 (W=150s)</td><td>epcCnt=2, EPC=<code>AA×6 BB×6</code></td><td>同上 ✓</td></tr>
+<tr><td>解锁 3 标签 (W=180s)</td><td>epcCnt=3, EPC=<code>AA×6 BB×6 55×6</code></td><td>同上 ✓（单帧 8+18=26B data）</td></tr>
+</table>
+<ul>
+<li>全部示例帧字节由 python（与固件 Crc32Calc 同参数）现算，再<b>原样字节直发设备</b>回验——设备正常回帧即证明 CRC/字节序零手误。</li>
+<li>坏 CRC 变体（握手帧尾字节取反）：<b>静默丢弃</b>，无任何响应 ✓。</li>
+<li>示例 EPC 统一 6 字节（拍板：台架 P1/M5 用 6B 假标与实机验证一致）；章末留扩展小节位（写标签/软标解锁等后续按需追加）。</li>
+<li>盘点响应示例取实机捕获（真标 12B EPC 原样入文档）；解锁流程示例含实机受理帧与终帧。</li>
+</ul>
+
+<h2>5. 测试（Agent/Round_013/test/proto_smoke.py，实机）</h2>
+<table>
+<tr><th>步骤</th><th>内容</th><th>结果</th></tr>
+<tr><td>T1</td><td>build_app / build_boot</td><td>0 error</td></tr>
+<tr><td>T2</td><td>握手 protoVer=3</td><td>PASS</td></tr>
+<tr><td>T3a~h</td><td>MOTOR QUERY(0x20) / UHF OPEN+INVENTORY(0x21) / AM GET_STATUS(0x22) / LOCKER QUERY(0x23) / RGB SET(0x24) / SELFTEST QUERY(0x25) / IO_DIAG(0x26)</td><td>全 PASS（AM 掉线为台架常态，链路字段如实反映）</td></tr>
+<tr><td>T4</td><td>旧码 0x0A/0x0D/0x10</td><td>全部静默无响应 PASS</td></tr>
+<tr><td>T5a</td><td>解锁短帧 → PARAM(2)</td><td>PASS</td></tr>
+<tr><td>T5b</td><td>假 EPC + W=3s 短窗收尾</td><td>PASS：endReason=PARTIAL_TIMEOUT(2)，confirmed=0，rise=0，磁块未动（感应区有真标→光电触发→校对窗满，行为正确）</td></tr>
+<tr><td>T6</td><td>示例帧字节回验 ×6 + 坏 CRC</td><td>全 PASS</td></tr>
+<tr><td>R1</td><td>事后 LOCKER QUERY 恢复 IDLE</td><td>PASS</td></tr>
+</table>
+<p>汇总：<b>PASS 22 / FAIL 0</b>。测试过程修正两处脚本问题（drain_terminal 调用参数、握手 layer 偏移 17→19）与一处判据（T5b 接受 PARTIAL/NO_IR 双出口——真标在场时窗满是正确行为）。</p>
+
+<h2>6. 备份与安全</h2>
+<ul>
+<li>变更前快照：<code>./backup.sh "Round_013: FC重映射0x20起+协议文档重构(计划审后)"</code> → Round_108 + Changelog。</li>
+<li>旧文档全部 <code>mv</code> → TrashCan/（零不可恢复删除）。</li>
+<li>旧轮次测试脚本（Round_008~012 zlr/const.py）按计划保持历史原样未动。</li>
+</ul>
+
+<h2>7. 上位机注意事项</h2>
+<div class="card warn"><div class="tt">⚠️ 破坏性变更 — 上位机须同步升级</div>
+<ul>
+<li>FC 码全部迁移：MOTOR 0x20 / UHF 0x21 / AM 0x22 / LOCKER 0x23 / RGB 0x24 / SELFTEST 0x25 / IO_DIAG 0x26；旧 0x0A~0x10 已无响应（与设备离线表现相同，请以 <b>握手 protoVer=3</b> 判别协议版本）。</li>
+<li>LOCKER 0x08 单标签码位不再出现在文档——上位机不得下发（回 PARAM）。</li>
+<li>文档任一示例帧字节可原样发设备验证（§18 全部实机回验）。</li>
+</ul></div>
+
+<h2>8. 拍板项执行记录</h2>
+<table>
+<tr><th>#</th><th>计划建议</th><th>拍板</th><th>执行</th></tr>
+<tr><td>1</td><td>PROTO_VERSION 2→3</td><td>直接改，用户同步更新</td><td>App+Boot 双层改 3，握手回验 ✓</td></tr>
+<tr><td>2</td><td>0x08 保留一行注记</td><td>移除（彻底不提）</td><td>子命令表无 0x08 任何条目 ✓</td></tr>
+<tr><td>3</td><td>旧文档去留</td><td>移除</td><td>3 文档 + Files 目录 mv → TrashCan/ ✓</td></tr>
+<tr><td>4</td><td>示例 EPC 长度</td><td>6 字节</td><td>AA/BB/55×6 与实机回验一致 ✓</td></tr>
+<tr><td>5</td><td>示例帧可扩展</td><td>可扩展</td><td>§18 按场景小节化，留追加位 ✓</td></tr>
+</table>
+
+<h2>9. 复审修订（2026-09-03 追加）</h2>
+<p>文档定稿后按复审意见追加一轮修订（仅 App_Protocol.html，零固件改动）：</p>
+<table>
+<tr><th>修订</th><th>内容</th></tr>
+<tr><td>系统命令实现叙事移除</td><td>ENTER_BOOT "后续" 叙事框（参数区写入/50ms/NVIC）、RESET "时序" 叙事框（20ms/枚举时序）、§8 Boot 结果码三行 — 全部删去；App 端仅留行为语义 + 指向 Boot_Protocol.html。§3 总表同步去掉 "延时 50ms / 延时 20ms" 字样</td></tr>
+<tr><td>控制描述精简</td><td>§10 MOVE/TEST 单元格、上电自检注记（删 "蜂鸣移至/已不在回零处" 历史措辞与 <50 步瞬态重试实现细节，保留两阶段回零/switchErr/POST 蜂鸣判据）、§11 UHF 控制面介绍与 SCAN 两条注记、§13 LOCKER 介绍段 — 全部精简，行为规格（BUSY 语义/判据/蜂鸣）保留</td></tr>
+<tr><td>解锁系统流程框图重绘</td><td>§13.3 更名 "解锁系统流程框图"，图 B 重绘为方正框线细节版：(1)受理~(7)DONE 七阶段竖链 + 全部出口终帧 err 变体（BUSY/UHF_OPEN/NO_IR/UHF_LINK/HOMING/MOTOR_FAULT/TIMEOUT/AM_LINK）+ softCnt=0 旁路 + CANCEL 出口；框线宽度经 python 按 CJK 双宽对齐生成</td></tr>
+<tr><td>样式修正</td><td>§3 LED/RGB 说明（板载呼吸灯不对外暴露 + RGB 自动驱动）改用 note 样式（原 box 类未定义）</td></tr>
+</table>
+<p>grep 复验：全文无 Round_0xx / 持久化 / NVIC / 延时叙事残留；剩余 "50ms" 为扫描蜂鸣行为规格、"参数区 CRC" 为 SELFTEST bit4 定义，均属合法规格表述。</p>
+
+<h3>第二轮修订（同日追加）</h3>
+<p>按复审清单逐条移除以下内容（不新增替代文本，零固件改动）：</p>
+<ul>
+<li>§2 "需要更大帧时必须实现 USB 分片协议（本工程不实现）" 句</li>
+<li>§3 "命令分两层" 段 + 板载 LED 呼吸灯/RGB 说明 note</li>
+<li>§5/§8 "详见 Boot_Protocol.html" 句（全文现无该交叉引用）</li>
+<li>§10.3 HEALTH 表尾 TRQ 采样/堵转保护注记行</li>
+<li>§11 头 "控制面/数据面解耦" 段 + SCAN_START 自动扫描注记 + 扫描中可改配置注记</li>
+<li>§11.3 band 可选项注记 + 业务扫描 S0 强制注记</li>
+<li>§18.1 CRC Python 参考实现（保留 C 实现）</li>
+<li>§18.4 尾 "可扩展" note</li>
+</ul>
+
+<div class="foot">ZLR5401 · Agent/Round_013 · Report.html v1.1 · 2026-09-03 · 固件=7 FC define + PROTO_VERSION 3 (App/Boot) · 文档=App_Protocol.html 全量重写 + 3 新章节 + 复审修订一轮 · 归档=4 项 mv TrashCan · 测试=PASS 22 / FAIL 0 (实机)</div>
+</div>
+</body>
+</html>

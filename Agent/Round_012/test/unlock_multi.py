@@ -22,7 +22,8 @@ SUB = 0x0A
 
 ERR_NAME = {0: "OK", 1: "BUSY", 2: "PARAM", 3: "UHF_OPEN", 4: "UHF_LINK",
             7: "HOMING", 8: "MOTOR_FAULT", 9: "MOTOR_TIMEOUT", 10: "AM_LINK", 11: "NO_IR"}
-END_NAME = {1: "ALL_OK", 2: "PARTIAL_TIMEOUT", 4: "UHF_LOST", 6: "ABORTED"}
+END_NAME = {1: "ALL_OK", 2: "PARTIAL_TIMEOUT", 4: "UHF_LOST", 6: "ABORTED",
+            7: "SOFT_TIMEOUT"}
 PH_NAME = {1: "WAIT_TAG", 2: "VERIFY", 3: "RISE", 4: "LOWER", 5: "SOFT", 6: "DONE"}
 
 results = []
@@ -130,6 +131,8 @@ def build_cmd(tmo_ms, hold_ms, soft_cnt, epcs):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--skip-motion", action="store_true", help="跳过升降用例")
+    ap.add_argument("--soft-timeout", action="store_true",
+                    help="M9b 软标超时失败用例 (裁决4+5, 全程约 5.5min)")
     args = ap.parse_args()
 
     link = HidLink()
@@ -139,7 +142,7 @@ def main():
 
     # ---- P1 参数非法 (不动磁块, 立即回) ----
     for name, payload in [
-        ("P1a epcCnt=0", [SUB, 0xE8, 0x03, 0x00, 0x00, 0, 0, 6] + [0xAA] * 6),
+        ("P1a epcCnt=0且softCnt=0", [SUB, 0xE8, 0x03, 0x00, 0x00, 0, 0, 6] + [0xAA] * 6),
         ("P1b epcCnt=5", [SUB, 0xE8, 0x03, 0x00, 0x00, 0, 5, 6] + [0xAA] * 30),
         ("P1c epcLen=0", [SUB, 0xE8, 0x03, 0x00, 0x00, 0, 1, 0]),
         ("P1d epcLen=13", [SUB, 0xE8, 0x03, 0x00, 0x00, 0, 1, 13] + [0xAA] * 13),
@@ -199,8 +202,8 @@ def main():
                         el = cl[2]
                         j1 = cl[5 + el] | (cl[6 + el] << 8) if len(cl) > 6 + el else 0
                         j2 = cl[7 + el] | (cl[8 + el] << 8) if len(cl) > 8 + el else 0
-                        record("M1-细节 确认帧字段", 3000 <= j1 <= 30000,
-                               f"seq=1 判据耗时={j1}ms (双门限A=3000ms起) 流程耗时={j2}ms")
+                        record("M1-细节 确认帧字段", 1500 <= j1 <= 30000,
+                               f"seq=1 判据耗时={j1}ms (双门限A=1500ms起, 裁决2) 流程耗时={j2}ms")
                     record("M8 蜂鸣听感", None,
                            "人工确认: 确认短鸣 200ms 自动停 + 完成长鸣 300ms (无长鸣粘连)")
             time.sleep(1)
@@ -220,11 +223,14 @@ def main():
                     p = parse_terminal(t)
                     confs = expect_push(events, 0x0B)
                     hards = expect_push(events, 0x0D)
+                    # 全确认门控: PARTIAL 出口磁块全程不动 (任一 EPC 未过不升不降)
                     ok = (p["end"] == 2 and p["confirmed"] == 1 and p["total"] == 2
-                          and p["bitmap"] == 0x01 and len(confs) == 1 and len(hards) == 1)
+                          and p["bitmap"] == 0x01 and p["rise"] == 0 and p["lower"] == 0
+                          and len(confs) == 1 and len(hards) == 1)
                     record("M4 部分超时", ok,
                            f"end={END_NAME.get(p['end'])} confirmed={p['confirmed']}/{p['total']} "
                            f"bitmap={p['bitmap']:02X} (bit0=真标已确认, bit1=假标未确认) "
+                           f"rise/lower={p['rise']}/{p['lower']}(全确认门控:未全过不动磁块) "
                            f"硬标帧={len(hards)} 耗时{dt:.1f}s")
                 else:
                     extra = " ".join(f"{b:02X}" for b in t[2:])
@@ -319,20 +325,20 @@ def main():
         record("M6d UHF->BUSY", (not to) and ru["data"][1] != 0,
                f"err={ru['data'][1] if ru else '超时'} (UHF 错误码)")
 
-        # GET_PROGRESS -> 多标签布局 (phase=WAIT_TAG)
+        # GET_PROGRESS -> 多标签布局 (phase=WAIT_TAG); holdMs 3 字节 (Round_011 起)
         rp, to, _ = tx_sub(link, 0x09, [0x09], t=3)
         if to or not rp:
             record("M6e GET_PROGRESS 多标签布局", False, "无响应")
         else:
             d = rp["data"]
-            ok = (d[1] == 0 and len(d) == 10 and d[2] in (1, 2) and d[5] == 1
-                  and d[6] == 0 and d[7] == 0)
+            ok = (d[1] == 0 and len(d) == 11 and d[2] in (1, 2) and d[6] == 1
+                  and d[7] == 0 and d[8] == 0)
             record("M6e GET_PROGRESS 多标签布局", ok,
                    f"err={d[1]} phase={PH_NAME.get(d[2], d[2]) if len(d)>2 else '?'} "
                    f"(W=1或2: 标签在场时光电即时触发)"
-                   f"holdMs={d[3]|(d[4]<<8) if len(d)>4 else '?'} "
-                   f"total={d[5] if len(d)>5 else '?'} confirmed={d[6] if len(d)>6 else '?'} "
-                   f"len={len(d)} (应为 10B 多标签布局)")
+                   f"holdMs={d[3]|(d[4]<<8)|(d[5]<<16) if len(d)>5 else '?'} "
+                   f"total={d[6] if len(d)>6 else '?'} confirmed={d[7] if len(d)>7 else '?'} "
+                   f"len={len(d)} (应为 11B 多标签布局, holdMs 3 字节)")
 
         # QUERY -> 正常放行
         rq, to, _ = tx_sub(link, const.LOCKER_QUERY, [const.LOCKER_QUERY], t=3)
@@ -364,6 +370,179 @@ def main():
     # ---- M9 软标 ----
     record("M9 软标计数", None,
            "SKIP: 需 AM 消磁器接回设备侧 (softCnt>0: 0x0E 解码帧+softDone 结账)")
+
+    # ---- M9b 软标超时失败 (裁决4+5, --soft-timeout 启用, 全程 ~5.5min) ----
+    # m=1 真标 + softCnt=1, 感应区无软标: 升起同时开消磁 -> 软标窗 5min 满
+    # 未校验完成 -> endReason=7 SOFT_TIMEOUT; 磁块保持升起至流程结束才回降。
+    if args.soft_timeout and tags:
+        epc9 = tags[0]
+        print("\n-- M9b 软标超时失败 (m=1 真标, softCnt=1, 软标窗 5min) --")
+        t0 = time.time()
+        start_unlock(link, build_cmd(1000, 30000, 1, [epc9]))
+        # 轮询 GET_PROGRESS 至软标段 (phase=5), 途中暂存推送帧
+        stash9 = []
+        ph = None
+        dl = time.time() + 45
+        while time.time() < dl:
+            link.send_frame(const.DEV_ADDR, FC, bytes([0x09]))
+            de = time.time() + 2
+            while time.time() < de:
+                f = link.recv_frame(timeout_s=0.3)
+                if f is None or f["func"] != RSP or not f["data"]:
+                    continue
+                d = f["data"]
+                if d[0] == 0x09:
+                    ph = d[2]
+                    break
+                if d[0] in (0x0B, 0x0C, 0x0D, 0x0E, 0x0F):
+                    stash9.append(bytes(d))
+            if ph == 5:
+                break
+            time.sleep(0.4)
+        # 裁决4 直接证据: 软标段中途磁块仍压上行程开关 (IO_DIAG keyUp 直读,
+        # 行程开关低有效: 0=压到/触发, 1=释放 — 与 LockerSeek 判据一致)
+        ku = None
+        link.send_frame(const.DEV_ADDR, const.FC_IO_DIAG, b"")
+        kde = time.time() + 3
+        while time.time() < kde:
+            f = link.recv_frame(timeout_s=0.3)
+            if f is not None and f["func"] == (const.FC_IO_DIAG ^ 0xFF):
+                ku = f["data"][2]
+                break
+        record("M9b-a 软标段中磁块保持升起 (keyUp=0 压上行程开关)", ph == 5 and ku == 0,
+               f"phase={ph} keyUp={ku} (低有效, 0=压到, IO_DIAG 直读, 裁决4)")
+        events, term = drain_terminal(link, 400)
+        dt = time.time() - t0
+        allevents = stash9 + [e for e in events]
+        if term is None:
+            record("M9b 软标超时失败", False, f"终帧超时 ({dt:.1f}s)")
+        else:
+            t = term["data"]
+            if t[1] != 0:
+                record("M9b 软标超时失败", False, f"err={t[1]}({ERR_NAME.get(t[1])}) 耗时{dt:.1f}s")
+            else:
+                p = parse_terminal(t)
+                softs = expect_push(allevents, 0x0E)
+                ok = (p["end"] == 7 and p["softCnt"] == 1 and p["softDone"] == 0
+                      and p["confirmed"] == 1 and p["bitmap"] == 1
+                      and p["rise"] > 0 and p["lower"] > 0 and len(softs) == 0)
+                record("M9b 软标超时失败", ok,
+                       f"end={END_NAME.get(p['end'])} softDone={p['softDone']}/{p['softCnt']} "
+                       f"confirmed={p['confirmed']} rise/lower={p['rise']}/{p['lower']} "
+                       f"0x0E帧={len(softs)}(应为0) 总耗时{dt:.1f}s")
+        # 裁决1: 流程结束 AM 切回仅检测 (GET_PARAM 0x50 真读回)
+        amr, _ = link.transaction(const.FC_AM_CTRL, bytes([0x03, 0x50]), timeout_s=4)
+        am_mode = amr["data"][4] if (amr and amr["data"][1] == 0) else None
+        record("M9b-b 流程后 AM 模式=仅检测(1)", am_mode == 1,
+               f"mode={am_mode} (AM GET_PARAM 0x50 真读回, 裁决1)")
+    elif args.soft_timeout:
+        record("M9b 软标超时失败", None, "SKIP: 感应区无真标")
+
+    # ---- M10 纯软标通道 (epcCnt=0 跳过 EPC 校验直接软解码) ----
+    # 裁决 2026-09-03: epcCnt=0 且 softCnt>0 合法 — 受理即升+消磁直通软标段
+    print("\n-- M10 纯软标 (epcCnt=0, softCnt=1): 受理即升+消磁, CANCEL 收尾 --")
+    t0 = time.time()
+    link.send_frame(const.DEV_ADDR, FC, bytes([SUB, 0xE8, 0x03, 0, 0, 1, 0, 0]))
+    ack = None
+    dl = time.time() + 5
+    while time.time() < dl:
+        f = link.recv_frame(timeout_s=0.5)
+        if f is not None and f["func"] == RSP and f["data"] and f["data"][0] == 0x0F:
+            ack = bytes(f["data"])
+            break
+    if ack is None:
+        record("M10a 纯软标受理 (phase=SOFT)", False, "受理帧超时")
+    else:
+        win = ack[3] | (ack[4] << 8) | (ack[5] << 16)
+        record("M10a 纯软标受理 (phase=5 SOFT, win=软标窗)",
+               ack[2] == 5 and win == 300000,
+               f"phase={ack[2]}({PH_NAME.get(ack[2], ack[2])}) win={win}ms "
+               f"(无硬标窗, 直通软解码)")
+
+    # 轮询至软标段 (phase=5); 途中暂存推送帧 (0x0D 应在升起后即达)
+    ph = None
+    stash10 = []
+    dl = time.time() + 30
+    while time.time() < dl:
+        link.send_frame(const.DEV_ADDR, FC, bytes([0x09]))
+        de = time.time() + 2
+        while time.time() < de:
+            f = link.recv_frame(timeout_s=0.3)
+            if f is None or f["func"] != RSP or not f["data"]:
+                continue
+            d = f["data"]
+            if d[0] == 0x09:
+                ph = d[2]
+                break
+            if d[0] in (0x0B, 0x0C, 0x0D, 0x0E, 0x0F):
+                stash10.append(bytes(d))
+        if ph == 5:
+            break
+        time.sleep(0.4)
+    # 磁块已升: IO_DIAG keyUp 直读 (低有效 0=压到)
+    ku = None
+    link.send_frame(const.DEV_ADDR, const.FC_IO_DIAG, b"")
+    kde = time.time() + 3
+    while time.time() < kde:
+        f = link.recv_frame(timeout_s=0.3)
+        if f is not None and f["func"] == (const.FC_IO_DIAG ^ 0xFF):
+            ku = f["data"][2]
+            break
+    record("M10b 纯软标段磁块升起 (keyUp=0)", ph == 5 and ku == 0,
+           f"phase={ph} keyUp={ku} (无 EPC 校对, 直通软标段)")
+
+    # CANCEL -> ABORTED, 回降后结账
+    rc, to, _ = tx_sub(link, const.LOCKER_CANCEL, [const.LOCKER_CANCEL], t=3)
+    events, term = drain_terminal(link, 20)
+    dt = time.time() - t0
+    hard10 = [h for h in stash10 if h[0] == 0x0D] + [e[1] for e in events if e[0] == 0x0D]
+    if term is None:
+        record("M10c CANCEL->ABORTED 升降齐", False, f"终帧超时 ({dt:.1f}s)")
+    else:
+        t = term["data"]
+        if t[1] != 0:
+            record("M10c CANCEL->ABORTED 升降齐", False, f"err={t[1]}({ERR_NAME.get(t[1])})")
+        else:
+            p = parse_terminal(t)
+            h0 = hard10[0] if hard10 else b""
+            h_ok = (len(hard10) == 1 and h0[1] == 1 and h0[2] == 0
+                    and h0[3] == 0 and h0[4] == 0)
+            ok = (p["end"] == 6 and p["total"] == 0 and p["confirmed"] == 0
+                  and p["bitmap"] == 0 and p["rise"] > 0 and p["lower"] > 0
+                  and p["softCnt"] == 1 and p["softDone"] == 0 and h_ok)
+            record("M10c CANCEL->ABORTED 升降齐", ok,
+                   f"end={END_NAME.get(p['end'])} total/confirmed={p['total']}/{p['confirmed']} "
+                   f"rise/lower={p['rise']}/{p['lower']} 0x0D帧={len(hard10)}"
+                   f"[end={h0[1] if h0 else '?'}] 耗时{dt:.1f}s")
+    # 裁决1: 流程后 AM 切回仅检测
+    amr, _ = link.transaction(const.FC_AM_CTRL, bytes([0x03, 0x50]), timeout_s=4)
+    amm = amr["data"][4] if (amr and amr["data"][1] == 0) else None
+    record("M10d 流程后 AM 模式=仅检测(1)", amm == 1, f"mode={amm}")
+
+    # ---- M10e 纯软标 5min 窗满 (--soft-timeout, 全程 ~5.5min) ----
+    if args.soft_timeout:
+        print("\n-- M10e 纯软标窗满 SOFT_TIMEOUT (无软标在 AM, 5min) --")
+        t0 = time.time()
+        link.send_frame(const.DEV_ADDR, FC, bytes([SUB, 0xE8, 0x03, 0, 0, 1, 0, 0]))
+        events, term = drain_terminal(link, 400)
+        dt = time.time() - t0
+        if term is None:
+            record("M10e 纯软标窗满 SOFT_TIMEOUT", False, f"终帧超时 ({dt:.1f}s)")
+        else:
+            t = term["data"]
+            if t[1] != 0:
+                record("M10e 纯软标窗满 SOFT_TIMEOUT", False,
+                       f"err={t[1]}({ERR_NAME.get(t[1])}) 耗时{dt:.1f}s")
+            else:
+                p = parse_terminal(t)
+                ok = (p["end"] == 7 and p["total"] == 0 and p["confirmed"] == 0
+                      and p["softDone"] == 0 and p["softCnt"] == 1
+                      and p["rise"] > 0 and p["lower"] > 0)
+                record("M10e 纯软标窗满 SOFT_TIMEOUT", ok,
+                       f"end={END_NAME.get(p['end'])} softDone={p['softDone']}/{p['softCnt']} "
+                       f"rise/lower={p['rise']}/{p['lower']} elapsed={p['elapsed']}ms "
+                       f"总耗时{dt:.1f}s (裁决5)")
+
 
     # ---- R1 事后恢复 ----
     time.sleep(1)

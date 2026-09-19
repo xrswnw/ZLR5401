@@ -44,7 +44,7 @@ typedef enum {
 /* 稳态声明来源槽位 (各流程互斥, 占槽声明, 仲裁取最高优先级) */
 typedef enum {
     RGBSRC_LOCKER = 0,          /* App_Locker 结账编排 */
-    RGBSRC_UNLOCK,               /* App_LockerUnlock 0x0A 解锁流程 */
+    RGBSRC_UNLOCK,               /* App_LockerUnlock 解锁流程 (Round_013 起 0x10 EPC 解锁; 0x0A 关闭备恢复) */
     RGBSRC_MOTORTEST,            /* App_MotorTest 行程测试 */
     RGBSRC_HOMING,               /* App_MotorHoming 后台回零 (Round_098 #11) */
     RGBSRC_COUNT

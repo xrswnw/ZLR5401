@@ -159,14 +159,14 @@ typedef unsigned char BOOL;
 #define AM_RX_GPIO_PIN          GPIO_Pin_10
 
 /* ===================== 新增外设 (见原理图, 驱动骨架) =====================
- * 光电接口 (TLP181): MCU_IR1_DET=PC4 (输入, 检测红外/光电)
+ * 光电接口 (TLP181): MCU_IR1_DET=PC11 (输入, 检测红外/光电; 2026-09-12 由 PC4 迁入, 原 PC4 释放)
  * 行程开关: MCU_KEY_UP=PC8 (输入), 下行程 KEY_DOWN=PC9 已改作 USB_EN (见 USB_EN_GPIO_*)
  * 蜂鸣器:   MCU_BEEP5V0_CTL=PC12 (输出, 高电平响)
- * 调试串口: DEBUG_TX=PC10 (UART4_TX), DEBUG_RX=PC11 (UART4_RX)
- * 注: UHF 已回归 USART3(PB10/11), PC10/PC11 释放可作调试串口; 默认关闭 (APP_DEBUG_SERIAL_EN=0)。*/
-#define APP_DEBUG_SERIAL_EN     0   /* 1=使能调试串口(UART4/PC10,11), 0=关闭(保留代码)*/
+ * 调试串口: DEBUG_TX=PC10 (UART4_TX), DEBUG_RX=PC11 (UART4_RX) —— 注意 PC11 现已改作光电 IR 输入
+ * 注: UHF 已回归 USART3(PB10/11), PC10/PC11 释放; 2026-09-12 起 PC11 让位给 IR_DET, UART4 调试串口不可再启用 (APP_DEBUG_SERIAL_EN 强制 0)。*/
+#define APP_DEBUG_SERIAL_EN     0   /* 1=使能调试串口(UART4/PC10,11), 0=关闭(保留代码); PC11 已被 IR 占用, 禁止置 1 */
 #define IR_DET_GPIO_PORT        GPIOC
-#define IR_DET_GPIO_PIN         GPIO_Pin_4
+#define IR_DET_GPIO_PIN         GPIO_Pin_11
 #define KEY_UP_GPIO_PORT        GPIOC
 #define KEY_UP_GPIO_PIN         GPIO_Pin_8
 /* 下行程 KEY_DOWN=PC9 已恢复 (USB_EN 已迁 PA8, PC9 释放, 恢复为输入) */
@@ -212,7 +212,7 @@ typedef unsigned char BOOL;
 #define IWDG_RELOAD_DIV       64U
 
 /* ===================== Device Version Info =====================*/
-#define DEV_HW_VERSION      "C8T6_V1.0"
+#define DEV_HW_VERSION      "GD5401_V1.0"
 #define DEV_SW_VERSION      "ZLR5401_V1.0"
 #define DEV_BOOT_VERSION    "BOOT_V1.0"
 #define VER_STR_LEN         16U

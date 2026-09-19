@@ -1,5 +1,6 @@
 #include "App_Stepper.h"
 #include "App_Motor_HL.h"
+#include "App_NewPeriph_HL.h"   /* 黑匣子采样需读行程开关原始电平 */
 #include "App_SysTick_HL.h"
 #include "App_Stepper_Tim4.h"
 #include "drv8434s.h"
@@ -68,6 +69,90 @@ static uint32_t  s_runStartMs = 0;
 static uint32_t  s_runMsAcc   = 0;     /* 运行 ms 累计 (用于 runSeconds) */
 static AppStepperStats_t s_stats = {0,0,STEPPER_RSN_NONE};
 
+/* =====================================================================
+ * 电机黑匣子 (现场堵转排查; RAM 记录, 断电清零, 上位机 MOTOR_CMD_TRACE 导出).
+ *  每腿(每次 Move)复位采样环; RUN 中随 TRQ 采样(100ms)记录
+ *  {TRQ, 相对起点ms, 累计步数, 行程开关/降速标志}; 每次真实停机(各停机
+ *  路径, 仅在本腿确在 RUN 时)把终态快照入历史环(8条, 自然覆盖回零
+ *  重试序列: 首驱瞬态/3次重试/换腿)。
+ *  判读法 (根因定位):
+ *   - 末条历史 reason=3(高负载) 且末段样本步数仍按速度推进:
+ *     脉冲在走、TRQ 低于阈值 -> 看 TRQ 绝对值: 接近 0=转子失步真堵转
+ *     (机构卡/转矩不足, 开环计数照走), 仅略低于阈值=监测误判;
+ *   - reason=4 且 fault 位非零: 器件级 (UVLO=供电跌, OCP=过流,
+ *     TF=过温, OL=开路) -> 朝硬件/供电方向查;
+ *   - 样本 flags 中 KEY 位中途置位但机构未到触点 -> 行程开关误触发
+ *     (回零 hit 判定无防抖, 一次误读即停+换向);
+ *   - 历史环各次停机 steps 相近 -> 同一位置机械卡点; 位置随机 -> 转矩不足。
+ * ===================================================================== */
+#define MTRACE_SAMPLES     48u    /* 48×100ms = 4.8s, 覆盖单腿全程 */
+#define MTRACE_HIST        8u    /* 停机历史环 (含回零重试序列) */
+#define MTRACE_INTERVAL_MS 100u  /* 采样周期 (与 TRQ 过载采样同拍) */
+
+typedef struct {
+    uint16_t trq;       /* 本拍 TRQ_COUNT */
+    uint16_t ms;        /* 自本腿起点 ms (低16位截断, 腿长<65s 足够) */
+    uint32_t steps;     /* TIM4 累计微步 (开环指令步数) */
+    uint8_t  flags;     /* bit0=KEY_UP按下 bit1=KEY_DOWN按下 bit2=降速中 */
+} MTraceSmp_t;
+
+typedef struct {
+    uint32_t startCnt;  /* 全局启动序号 (对应 STATS startCount) */
+    uint32_t steps;     /* 停机时累计步数 */
+    uint32_t runMs;     /* 本腿运行时长 */
+    uint16_t trqFinal;  /* 停机前最后一次 TRQ_COUNT */
+    uint8_t  reason;    /* STEPPER_RSN_* */
+    uint8_t  fault;     /* FAULT 寄存器 (FAULT 态冻结快照) */
+    uint8_t  diag2;
+    uint8_t  olov;      /* 停机时过载监测状态 */
+    uint8_t  rsv;
+} MTraceStop_t;
+
+static MTraceSmp_t s_mtSmp[MTRACE_SAMPLES];
+static MTraceStop_t s_mtHist[MTRACE_HIST];
+static uint8_t  s_mtN;         /* 本腿已记样本数 (环满后覆盖最旧) */
+static uint8_t  s_mtHead;      /* 采样环写指针 */
+static uint8_t  s_mtHistN;     /* 历史环有效条数 */
+static uint8_t  s_mtHistHead;  /* 历史环写指针 */
+static uint8_t  s_trqPct;      /* 当前转矩档 (%), 终态上报 */
+
+static void mtrace_reset(void)
+{
+    s_mtN = 0u; s_mtHead = 0u;
+}
+
+static void mtrace_sample(uint32_t now)
+{
+    MTraceSmp_t *s = &s_mtSmp[s_mtHead];
+    s->trq   = s_trqCount;
+    s->ms    = (uint16_t)(now - s_runStartMs);
+    s->steps = s_legSteps;
+    s->flags = (uint8_t)(((App_NewPeriph_ReadKeyUp()   == 0u) ? 1u : 0u) |
+                          ((App_NewPeriph_ReadKeyDown() == 0u) ? 2u : 0u) |
+                          ((s_olov != STEPPER_OL_NONE)         ? 4u : 0u));
+    s_mtHead = (uint8_t)((s_mtHead + 1u) % MTRACE_SAMPLES);
+    if (s_mtN < MTRACE_SAMPLES) s_mtN++;
+}
+
+/* 各停机路径调用; 上层腿失败重试里对已停电机的重复 Stop 不会走到这
+ * (调用点均带 s_state==RUN 守卫), 历史环不混入空停机记录。 */
+static void mtrace_stop(uint8_t reason)
+{
+    MTraceStop_t *h = &s_mtHist[s_mtHistHead];
+    h->startCnt = s_stats.startCount;
+    h->steps    = s_legSteps;
+    h->runMs    = SysTickHl_GetMs() - s_runStartMs;
+    h->trqFinal = s_trqCount;
+    h->reason   = reason;
+    h->fault    = s_fault;
+    h->diag2    = s_diag2;
+    h->olov     = (uint8_t)s_olov;
+    h->rsv      = 0u;
+    s_mtHistHead = (uint8_t)((s_mtHistHead + 1u) % MTRACE_HIST);
+    if (s_mtHistN < MTRACE_HIST) s_mtHistN++;
+}
+
+
 static void stepper_disable_output(void)
 {
     (void)drv8434s_set_enable(&g_hMotor, DRV8434S_DISABLED);
@@ -102,6 +187,8 @@ void App_Stepper_Init(void)
     s_trqCount = 0; s_olovCnt = 0; s_olovDnCnt = 0;
     s_olovTickMs = 0; s_runStartMs = 0; s_runMsAcc = 0;
     s_stats.runSeconds = 0; s_stats.startCount = 0; s_stats.lastReason = STEPPER_RSN_NONE;
+    s_mtN = 0u; s_mtHead = 0u; s_mtHistN = 0u; s_mtHistHead = 0u;
+    s_trqPct = STEPPER_PCT_DEFAULT;
 
     /* 硬件 STEP 定时器: PB6 重配为 TIM4_CH1, 产生微秒级均匀 STEP 脉冲 */
     StepperTim4_Init();
@@ -169,6 +256,8 @@ void App_Stepper_Process(void)
             /* 定步数运动完成: TIM4 走满 stepsReq 自动停脉冲(IsRunning=0),
              * 据此回 IDLE 并断电 (外部 Stop 类路径各自置状态, 不会走到这) */
             if (StepperTim4_IsRunning() == 0u) {
+                s_legSteps = StepperTim4_GetStepsDone();
+                mtrace_stop(STEPPER_RSN_NORMAL);
                 stepper_disable_output();
                 s_state = APP_STEPPER_IDLE;
                 s_stats.lastReason = STEPPER_RSN_NORMAL;
@@ -183,6 +272,7 @@ void App_Stepper_Process(void)
              *     上腿(dir=0, 奔 KEY_UP):  超过 LEG_UP_LIMIT 未触发 -> 上行程错
              *     下腿(dir=1, 奔 KEY_DOWN): 超过 LEG_DOWN_LIMIT 未触发 -> 下行程错 */
             if (s_dir == 0u && s_legSteps >= LEG_UP_LIMIT) {
+                mtrace_stop(STEPPER_RSN_OVERLOAD);
                 StepperTim4_Stop();
                 stepper_disable_output();
                 s_state = APP_STEPPER_IDLE;
@@ -192,6 +282,7 @@ void App_Stepper_Process(void)
                 return;
             }
             if (s_dir == 1u && s_legSteps >= LEG_DOWN_LIMIT) {
+                mtrace_stop(STEPPER_RSN_OVERLOAD);
                 StepperTim4_Stop();
                 stepper_disable_output();
                 s_state = APP_STEPPER_IDLE;
@@ -205,6 +296,7 @@ void App_Stepper_Process(void)
             if ((s_fault & DRV8434S_FLT_FAULT) ||
                 (s_diag2 & DRV8434S_DIAG2_STALL) ||
                 (drv8434s_check_fault_pin(&g_hMotor) == 0u)) {
+                mtrace_stop(STEPPER_RSN_DRVFAULT);
                 StepperTim4_Stop();
                 s_state = APP_STEPPER_FAULT;
                 stepper_disable_output();
@@ -214,6 +306,7 @@ void App_Stepper_Process(void)
 
             /* 连续运行时限: 防机构长时间卡死持续通电 */
             if ((now - s_runStartMs) >= STEPPER_RUN_MAX_MS) {
+                mtrace_stop(STEPPER_RSN_TIMEOUT);
                 StepperTim4_Stop();
                 stepper_disable_output();
                 s_state = APP_STEPPER_IDLE;
@@ -231,8 +324,9 @@ void App_Stepper_Process(void)
                 if (s_trqCount < s_olovThresh) {
                     if (s_olov == STEPPER_OL_OVERLOAD) {
                         /* 已降速仍高负载 -> 停机保护 */
-                        if (++s_olovDnCnt >= STEPPER_OL_DN_SAMPLES) {
-                            StepperTim4_Stop();
+                    if (++s_olovDnCnt >= STEPPER_OL_DN_SAMPLES) {
+                        mtrace_stop(STEPPER_RSN_OVERLOAD);
+                        StepperTim4_Stop();
                             stepper_disable_output();
                             s_state = APP_STEPPER_IDLE;
                             s_olov = STEPPER_OL_FAULT;
@@ -252,6 +346,8 @@ void App_Stepper_Process(void)
                         s_speedHz = s_cmdSpeedHz;
                     s_olov = STEPPER_OL_NONE;
                 }
+                /* 黑匣子采样: 与过载判读同拍, flags 中的降速位反映本拍判后状态 */
+                mtrace_sample(now);
             }
         }
     }
@@ -275,6 +371,7 @@ int App_Stepper_Move(AppStepperMove_t *mv)
     s_olov = STEPPER_OL_NONE;
     s_olovCnt = 0; s_olovDnCnt = 0;
     s_legSteps = 0;
+    mtrace_reset();                     /* 黑匣子: 新腿覆盖旧采样 */
     s_speedHz = s_cmdSpeedHz;
     s_runStartMs = SysTickHl_GetMs();
     s_olovTickMs = s_runStartMs;
@@ -287,6 +384,7 @@ int App_Stepper_Move(AppStepperMove_t *mv)
 
 int App_Stepper_Stop(void)
 {
+    if (s_state == APP_STEPPER_RUN) mtrace_stop(STEPPER_RSN_NORMAL);  /* 仅真实停机入历史环 */
     s_stepsReq = 0;
     StepperTim4_Stop();
     stepper_disable_output();
@@ -302,6 +400,7 @@ int App_Stepper_Stop(void)
 #define STEPPER_DC_BRAKE_MS  8u
 int App_Stepper_DcBrakeStop(void)
 {
+    if (s_state == APP_STEPPER_RUN) mtrace_stop(STEPPER_RSN_NORMAL);
     s_stepsReq = 0;
     StepperTim4_Stop();
     uint32_t t0 = SysTickHl_GetMs();
@@ -325,6 +424,7 @@ int App_Stepper_SetTorquePercent(uint8_t pct)
 {
     if (pct < 6u)  pct = 6u;
     if (pct > 100u) pct = 100u;
+    s_trqPct = pct;                     /* 黑匣子终态上报用 */
     stepper_set_trq(pct);
     return 0;
 }
@@ -366,3 +466,74 @@ AppStepperOlovState_t App_Stepper_GetOlovState(void) { return s_olov; }
 uint16_t App_Stepper_GetTorqueCount(void)  { return s_trqCount; }
 
 AppStepperStats_t App_Stepper_GetStats(void) { return s_stats; }
+
+/* 黑匣子导出 (MOTOR_CMD_TRACE 0x20/0x0A). 全 LE, 布局见 App_CustomProtocol.h:
+ * 头 20B(实时态) + 停机历史环(最新->最旧, 各 19B) + 采样环(最新->最旧, 各 9B)。
+ * 历史环最新一条即最近一次停机终态 (含 fault 冻结快照); 采样环为最近一腿
+ * (每次 Move 覆盖) 的 TRQ/步数/开关轨迹, 断电清零。 */
+const uint8_t *App_Stepper_TraceDump(uint16_t *len)
+{
+    static uint8_t buf[20u + MTRACE_HIST * 19u + MTRACE_SAMPLES * 9u];
+    uint16_t p = 0u;
+    uint8_t i;
+
+    buf[p++] = 0x0Au;                     /* cmd 回显 */
+    buf[p++] = 0u;                        /* err=OK */
+    buf[p++] = (uint8_t)s_state;          /* 实时: 步进态 */
+    buf[p++] = s_fault;
+    buf[p++] = s_diag1;
+    buf[p++] = s_diag2;
+    buf[p++] = (uint8_t)s_olov;
+    buf[p++] = (uint8_t)(s_olovThresh & 0xFFu);       /* 7..8: 过载阈值 */
+    buf[p++] = (uint8_t)(s_olovThresh >> 8);
+    buf[p++] = s_trqPct;                  /* 9: 当前转矩档 % */
+    buf[p++] = s_dir;                     /* 10 */
+    buf[p++] = s_switchErr;               /* 11 */
+    buf[p++] = (uint8_t)(s_speedHz & 0xFFu);          /* 12..15: 速度 */
+    buf[p++] = (uint8_t)((s_speedHz >> 8) & 0xFFu);
+    buf[p++] = (uint8_t)((s_speedHz >> 16) & 0xFFu);
+    buf[p++] = (uint8_t)((s_speedHz >> 24) & 0xFFu);
+    buf[p++] = s_mtN;                     /* 16: 样本数 */
+    buf[p++] = s_mtHistN;                 /* 17: 历史条数 */
+    buf[p++] = (uint8_t)MTRACE_INTERVAL_MS;          /* 18: 采样间隔 ms */
+    buf[p++] = 0u;                        /* 19: 预留 */
+
+    for (i = 0u; i < s_mtHistN; i++) {
+        const MTraceStop_t *h = &s_mtHist[(uint8_t)((s_mtHistHead + MTRACE_HIST - 1u - i) % MTRACE_HIST)];
+        buf[p++] = (uint8_t)(h->startCnt & 0xFFu);
+        buf[p++] = (uint8_t)((h->startCnt >> 8) & 0xFFu);
+        buf[p++] = (uint8_t)((h->startCnt >> 16) & 0xFFu);
+        buf[p++] = (uint8_t)((h->startCnt >> 24) & 0xFFu);
+        buf[p++] = (uint8_t)(h->steps & 0xFFu);
+        buf[p++] = (uint8_t)((h->steps >> 8) & 0xFFu);
+        buf[p++] = (uint8_t)((h->steps >> 16) & 0xFFu);
+        buf[p++] = (uint8_t)((h->steps >> 24) & 0xFFu);
+        buf[p++] = (uint8_t)(h->runMs & 0xFFu);
+        buf[p++] = (uint8_t)((h->runMs >> 8) & 0xFFu);
+        buf[p++] = (uint8_t)((h->runMs >> 16) & 0xFFu);
+        buf[p++] = (uint8_t)((h->runMs >> 24) & 0xFFu);
+        buf[p++] = (uint8_t)(h->trqFinal & 0xFFu);
+        buf[p++] = (uint8_t)(h->trqFinal >> 8);
+        buf[p++] = h->reason;
+        buf[p++] = h->fault;
+        buf[p++] = h->diag2;
+        buf[p++] = h->olov;
+        buf[p++] = h->rsv;
+    }
+
+    for (i = 0u; i < s_mtN; i++) {
+        const MTraceSmp_t *s = &s_mtSmp[(uint8_t)((s_mtHead + MTRACE_SAMPLES - 1u - i) % MTRACE_SAMPLES)];
+        buf[p++] = (uint8_t)(s->trq & 0xFFu);
+        buf[p++] = (uint8_t)(s->trq >> 8);
+        buf[p++] = (uint8_t)(s->ms & 0xFFu);
+        buf[p++] = (uint8_t)(s->ms >> 8);
+        buf[p++] = (uint8_t)(s->steps & 0xFFu);
+        buf[p++] = (uint8_t)((s->steps >> 8) & 0xFFu);
+        buf[p++] = (uint8_t)((s->steps >> 16) & 0xFFu);
+        buf[p++] = (uint8_t)((s->steps >> 24) & 0xFFu);
+        buf[p++] = s->flags;
+    }
+
+    if (len) *len = p;
+    return buf;
+}

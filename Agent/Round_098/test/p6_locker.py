@@ -254,7 +254,7 @@ def run():
               f"d={d.hex() if d else 'TO'}")
 
     # C3: 单标走 0x0A epcCnt=1, 短窗 (1200ms): PC4 未触 -> NO_IR;
-    #     触发 -> 窗短于 3s 确认判据 -> PARTIAL_TIMEOUT(conf=0); 命中不可能
+    #     触发 -> 窗短于 1.5s 确认判据 -> PARTIAL_TIMEOUT(conf=0); 命中不可能
     stash = []
     lk.send_frame(1, FC, bytes([MULTI, 0xE8, 0x03, 0xB0, 0x04, 0, 1, 12] + list(REAL_EPC)))
     fin = collect(lk, MULTI, 15, stash)
@@ -312,15 +312,15 @@ def run():
     d = a(MULTI, [0xE8, 0x03, 0xD0, 0x07, 0, 1, 12, 1, 2])
     rec.check("D1f", "帧长不足 -> PARAM", d is not None and d[1] == UNLK_ERR_PARAM, "err=2", "")
 
-    # D4a: 短窗 (2s < 稳定确认门限 3s) -> PARTIAL_TIMEOUT, 不动磁块安全收尾
+    # D4a: 短窗 (1200ms < 稳定确认门限 1.5s) -> PARTIAL_TIMEOUT, 不动磁块安全收尾
     stash = []
-    lk.send_frame(1, FC, bytes([MULTI, 0xE8, 0x03, 0xD0, 0x07, 0, 1, 12] + list(REAL_EPC)))
+    lk.send_frame(1, FC, bytes([MULTI, 0xE8, 0x03, 0xB0, 0x04, 0, 1, 12] + list(REAL_EPC)))
     fin = collect(lk, MULTI, 12, stash)
     pushes = [p for p in stash if p[0] in (0x0F, 0x0B, 0x0C, 0x0D, 0x0E)]
     m = mq(lk)
     okfin = (fin is not None and fin[1] == 0 and fin[2] == 2 and fin[4] == 0
              and fin[5] == 1 and fin[6] == 0 and fin[7] == 0)
-    rec.check("D4a", "短窗(<3s确认门限) -> PARTIAL_TIMEOUT(2), 零确认零升降",
+    rec.check("D4a", "短窗(<1.5s确认门限) -> PARTIAL_TIMEOUT(2), 零确认零升降",
               okfin and m == 0 and any(p[0] == 0x0F for p in pushes)
               and any(p[0] == 0x0D and p[1] == 2 for p in pushes),
               f"fin={fin.hex() if fin else 'TO'} pushes={[p.hex() for p in pushes]} 电机={m}",
@@ -360,9 +360,9 @@ def run():
                   f"end={endR} bmp={bmp} conf={conf}/{tot} rise={rise} "
                   f"pushes={[p[0] for p in pushes]} 电机={m}",
                   f"fin={fin.hex()} pushes={[p.hex() for p in pushes]}")
-        rec.check("D5", "确认推送 0x0B 含真EPC (判据耗时≈3s门限)",
+        rec.check("D5", "确认推送 0x0B 含真EPC (判据耗时≈1.5s门限, 裁决2)",
                   any(p[0] == 0x0B and p[2] == 12 and bytes(p[3:15]) == REAL_EPC
-                      and (p[17] | (p[18] << 8)) >= 2900 for p in pushes),
+                      and (p[17] | (p[18] << 8)) >= 1400 for p in pushes),
                   "EPC✓ 判据耗时✓", f"pushes={[p.hex() for p in pushes]}")
     else:
         rec.fail("D4", "UNLOCK_MULTI 终帧缺失/异常",

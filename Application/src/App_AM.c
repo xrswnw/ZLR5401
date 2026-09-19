@@ -12,7 +12,7 @@
  *    写→总查闭环已实锤 0x63 读到的是真实存储值。
  *  - 设备自身 ID 可读写: 写ID 0x5F(5字节: 年月日+序列), 读ID 0x5E; 实测可写可持久化。
  *  - 标签 ID 仅读 0x5E(默认 FF×5), 该消磁器不解码唯一标签 ID。
- *  - cmd17 为"消磁结果"主动上报: 连发 FF×5 = 消磁失败重试; 单帧 = 消磁成功。
+ *  - cmd17 为"消磁结果"主动上报: 帧内容无信息, 成败只能按突发形态推断。
  *  - 0x88 解码指令: 实测无作用(即使正确校验也无效), 已移除。
  * ===================================================================== */
 
@@ -20,15 +20,19 @@
 /* 无链路空闲衰减: AM 空闲时静默 (仅消磁事件主动发帧), 与 UHF 对齐,
  * s_link 仅反映最近一次总线事务结果 (查询/参数写/波形采集). */
 
-/* cmd17 消磁结果判定 (live 实测 2026-08-29, 直连串口换标签验证):
+/* cmd17 消磁结果判定 (2026-08-29 直连串口实测 + 2026-09-19 真机复验修订):
  *  - 帧内容恒 FF FF FF FF FF 00 00 (datalen=7), 成功帧与失败帧内容完全相同,
  *    内容无信息, 唯一判据是突发模式。
- *  - 消磁成功: 恰好 1 帧后永久静默 (标签失活, 设备不再检测到)。
- *  - 消磁失败: 持续连发 (实测 ≈800ms 周期, 帧距 0.8~1.4s) 直到标签离开。
- *  突发判据: 相邻帧间隔 > AM_BURST_GAP_MS 视为不同消磁事件;
- *  事件结束 (静默超 GAP) 时结算: 帧数==1 -> 成功, >=2 -> 失败。
+ *  - 2026-08-29 初判: 成功 = 恰好 1 帧后永久静默; 失败 = 持续连发
+ *    (实测 ≈800ms 周期, 帧距 0.8~1.4s) 直到标签离开。
+ *  - 2026-09-19 0x11 真机证伪 ">=2 帧=失败": 场内 3 标签出 1 单帧 +
+ *    2 多帧事件, 事后复窗全静默 -> 3 张全消死。帧数不预示标签死活
+ *    (多帧 = 补杀重试, 结局仍是死)。
+ *  现判据: 相邻帧间隔 > AM_BURST_GAP_MS (定义在 App_AM.h) 视为不同
+ *  消磁事件; 事件静默超 GAP 结算即一次成功消磁 (多帧照计)。真失败
+ *  标签持续连发永不静默 -> 永不结算 -> 不计入 (由 0x11 窗满正确排除)。
+ *  s_failCount 失去来源恒 0, 保留字段待新形态再立。
  *  结算后状态保持 (供 GET_STATUS 轮询), 下一事件首帧时回到 IDLE。 */
-#define AM_BURST_GAP_MS    3000u
 
 static AppAMConfig_t s_cfg;
 static int           s_link;          /* 0=正常 */
@@ -38,9 +42,9 @@ static uint32_t      s_lastEvtMs;     /* 最近一次 cmd17 相对上电 ms */
 /* cmd17 消磁事件状态机 */
 static uint16_t            s_burstFrames;   /* 当前消磁事件已收 cmd17 帧数, 0=无进行中事件 */
 static uint32_t            s_lastCmd17Ms;  /* 最近一次 cmd17 时刻 */
-static AppAMDeactState_t   s_deact;        /* 当前/最近结算结果 (0空闲/1成功/2失败) */
-static uint32_t            s_deactCount;   /* 成功消磁累计 (单帧事件结算) */
-static uint32_t            s_failCount;    /* 消磁失败累计 (>=2 帧事件结算) */
+static AppAMDeactState_t   s_deact;        /* 当前/最近结算结果 (0空闲/1成功; 2失败判据证伪后不可达, 保留) */
+static uint32_t            s_deactCount;   /* 成功消磁累计 (每结算突发一计, 帧数不限) */
+static uint32_t            s_failCount;    /* 消磁失败累计 (判据证伪后无来源, 恒 0, 保留) */
 
 /* Round_098 #10: 链路瞬断自动探测 (App_AM_Process 尾部) */
 static uint32_t            s_probeNextMs;  /* 下次探链时刻 (0=未调度) */
@@ -107,10 +111,12 @@ void App_AM_Process(void)
         }
     }
 
-    /* 消磁事件结束结算: 静默超 GAP 时按本事件帧数定成功/失败 */
+    /* 消磁事件结束结算: 静默超 GAP 即一次成功消磁 (2026-09-19 真机证伪
+     * ">=2 帧=失败" — 多帧=补杀重试, 结局仍是死; 真失败持续连发永不
+     * 结算, 由窗满正确排除。s_failCount 无来源恒 0, 保留。) */
     if (s_burstFrames != 0u && (SysTickHl_GetMs() - s_lastCmd17Ms) > AM_BURST_GAP_MS) {
-        if (s_burstFrames == 1u) { s_deact = AM_DEACT_SUCCESS; s_deactCount++; }
-        else                     { s_deact = AM_DEACT_FAILURE; s_failCount++;  }
+        s_deact = AM_DEACT_SUCCESS;
+        s_deactCount++;
         s_burstFrames = 0u;
     }
 
@@ -287,6 +293,12 @@ uint32_t App_AM_GetLastEventMs(void)  { return s_lastEvtMs; }
 AppAMDeactState_t App_AM_GetDeactState(void) { return s_deact; }
 uint32_t          App_AM_GetDeactCount(void) { return s_deactCount; }
 uint32_t          App_AM_GetFailCount(void)  { return s_failCount; }
+
+uint8_t App_AM_BurstActive(void)
+{
+    /* 突发进行中 (已收帧未满 3s 静默结算窗): 结果未定, 计数窗末宽限判定用 */
+    return (s_burstFrames != 0u) ? 1u : 0u;
+}
 
 /* ---------- 波形 cmd 0x64: 同步采集 4 包 (背靠背, 镜像 am_query_all 时序) ---------- */
 int App_AM_CaptureWave(void)

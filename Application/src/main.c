@@ -73,6 +73,11 @@ void System_Init(void)
         ParamInit(&g_sParam);
         (void)ParamSave(&g_sParam);
     }
+    /* 版本同步: 上电检测 flash 内 hw/sw/boot 版本与固件内置宏不一致时,
+     * 覆写为最新并落盘 (与 Boot main.c 的 ParamSyncVersion 对齐).
+     * 此前 App 缺此步, 且 Boot 侧宏曾为旧值 C8T6_V1.0, 导致 0x07 上报的
+     * hwVersion 停留在 flash 旧值, DEV_HW_VERSION 变更后永不生效. */
+    (void)ParamSyncVersion(&g_sParam);
     /* App 启动时计算 deviceUidHash (Bootloader 在 main.c:139 已算)。
      * 若 ParamInit/ParamLoad 后仍为 0 (老参数区未写入 hash), 重新算并写回 flash。*/
     if (g_sParam.deviceUidHash == 0U) {
@@ -141,29 +146,13 @@ void System_Init(void)
      * GET_CONFIG 读到模块默认值的窗口)。探测阻塞期间喂狗。 */
     App_BootSelfTest_Run();
 
-    /* 9.5 AM 持久化配置复位 (开中断后执行 — 不可提前)
-     * App_AM_SetConfig 为阻塞收发: 等回帧依赖 USART1 RX 中断, 500ms
-     * 超时依赖 SysTick ms 计数. 此前放在 8.8 (步骤4~9 关中断期),
-     * 一旦 AM 解码器不在设备侧 (接上位机/未接), 回帧永不到且超时
-     * 永不成立 -> 死循环 -> IWDG 复位循环, 上电看似"不运行"。 */
-    {
-        AMUserCfg_t pc;
-        if (AmParam_Load(&pc) == 0) {
-            AppAMConfig_t c;
-            c.threshold   = pc.threshold;
-            c.hitCount    = pc.hitCount;
-            c.freqRange   = pc.freqRange;
-            c.recvDelay   = pc.recvDelay;
-            c.recvLength  = pc.recvLength;
-            c.phaseInvert = pc.phaseInvert;
-            c.phaseSync   = pc.phaseSync;
-            c.decodeVolt  = pc.decodeVolt;
-            c.mode        = pc.mode;
-            c.mainsFreq   = pc.mainsFreq;
-            IwdgHl_Feed();
-            (void)App_AM_SetConfig(&c, 0);
-        }
-    }
+    /* 9.5 AM 解码器上电零下发 (2026-09-19 裁决 "AM 设备从上电到结束,
+     * 不要控制, 按照默认参数即可"): 不再推送持久化参数区/归一工作模式
+     * — 解码器按自身默认参数与自主状态运行, 固件仅被动收 cmd17
+     * (App_AM_Process)。原上电全量下发 (阈值/命中/.../mode 共 11 项写
+     * + 0x63 复核) 一并废除; 上位机仍可经 SET_CONFIG/SET_MODE 显式
+     * 配置 (Dispatch 层, AmParam 持久化照旧)。POST 自检 9.4 的只读
+     * 探链保留 (自检锁存位 AM_COMM 需要, 不写任何参数)。 */
 
     /* 9.6 后台回零启动 (Round_098 #11: 原阻塞回零占住启动 10~20s,
      * USB 已枚举但协议无人服务; 改为非阻塞状态机, 主循环推进

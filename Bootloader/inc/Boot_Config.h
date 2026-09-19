@@ -70,7 +70,7 @@
 
 /* ===================== Device Version Info =====================*/
 //注意、注意这部分参数不要动，给我自行修改
-#define DEV_HW_VERSION      "C8T6_V1.0"           /* 硬件版本,16B补零*/
+#define DEV_HW_VERSION      "GD5401_V1.0"           /* 硬件版本,16B补零; 与 App_Config.h 保持一致, 否则 Boot/App 上电版本同步互覆*/
 #define DEV_SW_VERSION      "ZLR5401_V1.0"               /* 软件版本,16B补零*/
 #define DEV_BOOT_VERSION    "BOOT_V1.0"               /* BOOT版本,16B补零*/
 #define VER_STR_LEN         16U                  /* 版本字符串长度*/

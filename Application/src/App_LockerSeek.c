@@ -15,11 +15,21 @@
 
 static volatile uint8_t *s_abortFlag;    /* 调用方 CANCEL 请求 (NULL=不参与) */
 static volatile uint8_t *s_immuneFlag;   /* 调用方回退免疫标志 (NULL=不参与) */
+static int (*s_monitor)(void);            /* 泵拍监守回调 (NULL=无): 返回非0 → 主动停机 */
 
 void LockerSeek_BindAbort(volatile uint8_t *abortFlag, volatile uint8_t *immuneFlag)
 {
     s_abortFlag  = abortFlag;
     s_immuneFlag = immuneFlag;
+}
+
+/* 设置寻触段泵拍监守回调 (每拍调用一次, 回调内可做阻塞时长 ≤ 单发盘点
+ * 超时的采样)。返回非0 → 主动停机, Run 返回 3 (不重试)。
+ * Round_013: EPC 解锁 0x10 升起期间 0x21 连续盘点监守 (标签移除/更换
+ * 即收起)。传 NULL 撤销。 */
+void LockerSeek_SetMonitor(int (*fn)(void))
+{
+    s_monitor = fn;
 }
 
 /* 泵循环: 阻塞在主循环上下文时手动推进各状态机 + 喂狗 + 节拍。
@@ -50,12 +60,17 @@ int LockerSeek_Run(uint8_t dir, uint32_t maxSteps, uint32_t *stepsOut)
     uint32_t lastSeq = App_Stepper_GetStepsDone();
     uint32_t stallMs = t0;
     uint8_t  aborted = 0u;
+    uint8_t  monitored = 0u;
     while (1) {
         LockerSeek_Pump();
         /* CANCEL 打断: 立即停机 (免疫段忽略) */
         if (s_abortFlag && *s_abortFlag &&
             !(s_immuneFlag && *s_immuneFlag)) {
             (void)App_Stepper_Stop(); aborted = 1u; break;
+        }
+        /* 监守回调请求停机 (标签移除/更换等, 不重试) */
+        if (s_monitor && s_monitor() != 0) {
+            (void)App_Stepper_Stop(); monitored = 1u; break;
         }
         int hit = (dir == LSEEK_DIR_DOWN) ? (App_NewPeriph_ReadKeyDown() == 0u)
                                           : (App_NewPeriph_ReadKeyUp() == 0u);
@@ -74,7 +89,7 @@ int LockerSeek_Run(uint8_t dir, uint32_t maxSteps, uint32_t *stepsOut)
         if ((now - t0) >= LSEEK_TIMEOUT_MS)     { (void)App_Stepper_Stop(); break; }
     }
     if (stepsOut) *stepsOut = App_Stepper_GetStepsDone();
-    return aborted ? 2 : 1;
+    return aborted ? 2 : (monitored ? 3 : 1);
 }
 
 /* 寻触 + 失败重试一次 (覆盖: 上电首驱 nFAULT 瞬态误停 [判据同回零] 与

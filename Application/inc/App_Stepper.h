@@ -66,4 +66,10 @@ AppStepperOlovState_t App_Stepper_GetOlovState(void);  /* 高负载监测状态 
 uint16_t App_Stepper_GetTorqueCount(void); /* 最近一次 TRQ_COUNT 采样 */
 AppStepperStats_t App_Stepper_GetStats(void);          /* 运行统计 (RAM) */
 
+/* ---- 电机黑匣子 (现场堵转排查; RAM 记录断电清零) ----
+ * 每腿(每次 Move)覆盖记录: RUN 中每 100ms 采 {TRQ_COUNT, 相对ms, 累计步数,
+ * 行程开关/降速标志}; 每次真实停机记终态快照入 8 条历史环(含回零重试序列)。
+ * 导出布局见 MOTOR_CMD_TRACE (App_CustomProtocol.h)。 */
+const uint8_t *App_Stepper_TraceDump(uint16_t *len);   /* 返回静态缓冲, *len=字节数 */
+
 #endif /* __APP_STEPPER_H */

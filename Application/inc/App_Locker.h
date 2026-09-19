@@ -11,6 +11,8 @@
  *      硬标签预留 2min 开锁时间, 每多一个标签 +30s;
  *      读到不同 EPC 且已解锁数 n 达到硬标签数 m 时, 进入软标阶段;
  *      软标阶段每个软标消耗一次解码数量, 次数用尽则结账完成。
+ *  - Round_116: START 后先进 IR_WAIT, 光电被挡住(标签插入槽)>=200ms
+ *      才开始盘点比对 (旧流程 START 即盘点, 标签仅进入 UHF 场就匹配)。
  *  - 编排已实现的模块: App_UHF(硬标签EPC读) + App_Stepper(升降开锁)
  *                      + App_MotorHoming(行程基准) + App_AM(软标解码器)
  *  - 磁块升降为 KEY_UP/KEY_DOWN 行程开关寻触 (非定步数), 判据与
@@ -44,7 +46,10 @@ typedef enum {
     LOCKER_SOFT_DECODE = 3,   /* 硬标签全部解锁, 软标解码阶段 */
     LOCKER_DONE        = 4,   /* 结账完成, 停留片刻后回降 */
     LOCKER_FAULT       = 5,   /* 故障 (电机/链路); CANCEL 可退出 */
-    LOCKER_LOWERING    = 6    /* 回降中: 寻触 KEY_DOWN 完成后回 IDLE */
+    LOCKER_LOWERING    = 6,   /* 回降中: 寻触 KEY_DOWN 完成后回 IDLE */
+    /* Round_116: START 后不再立即盘点, 待光电被挡住(标签插入槽)才开始后续流程.
+     * 尾部追加不影响既有 0~6 协议码. */
+    LOCKER_IR_WAIT     = 7    /* START 已激活: 待放标 (光电挡住>=200ms 后转 CONFIGURED) */
 } AppLockerState_t;
 
 /* ---- 单条硬标签清单项 ---- */
@@ -72,11 +77,14 @@ typedef struct {
 #define APP_LOCKER_EXTRA_PER_TAG_MS  (30u * 1000u)       /* 每多一标签 +30s */
 #define APP_LOCKER_DONE_IDLE_MS      5000u               /* 结账完成后停留再回降 */
 #define APP_LOCKER_SOFT_WINDOW_MS    (5u * 60u * 1000u)  /* 软标阶段兜底窗口 */
+/* Round_116: 光电放标确认去抖 (与 App_LockerUnlock UNLK_IR_CONFIRM_MS 同值),
+ * START 后挡住持续 >=200ms 才开始盘点, 计时窗从确认时刻起算. */
+#define APP_LOCKER_IR_CONFIRM_MS      200u
 
 /* ---- 寻触升降工况 (与 App_MotorHoming 实测一致) ----
  * 定步数 4800 旧方案已废弃: 实测行程 4287/4280, 超程会硬顶挡块。 */
 #define APP_LOCKER_SEEK_SPEED_HZ     2000u
-#define APP_LOCKER_SEEK_TORQUE_PCT   40u
+#define APP_LOCKER_SEEK_TORQUE_PCT   90u    /* 2026-09-19 全电机腿统一 90% (与回零/寻触/行程测试同源定稿) */
 #define APP_LOCKER_SEEK_RISE_MAX     (4085u * 2u + 800u)  /* 上行超步兜底 */
 #define APP_LOCKER_SEEK_LOWER_MAX    (4324u * 2u + 800u)  /* 下行超步兜底 */
 #define APP_LOCKER_SEEK_STALL_MS     400u                 /* 步数停滞判丢步 */
@@ -95,7 +103,7 @@ void App_Locker_Process(void);   /* 主循环非阻塞节拍: 推进状态机+�
 int  App_Locker_Configure(const AppLockerItem_t *items, uint16_t hardCount,
                           uint16_t softCount);   /* 全量重建结账任务 (仅 IDLE) */
 int  App_Locker_AddTag(const AppLockerItem_t *item);  /* 追加硬标签 (仅 START 前) */
-int  App_Locker_Start(void);       /* 激活: 纯软标直入 SOFT, 否则开扫 CONFIGURED */
+int  App_Locker_Start(void);       /* 激活: 纯软标直入 SOFT, 否则待光电挡住(IR_WAIT)再开扫 CONFIGURED */
 int  App_Locker_Cancel(void);      /* 取消: 磁块升起中则先回降 (LOWERING) 再回 IDLE */
 int  App_Locker_StopDecode(void);  /* 消耗一次软标解码 (v1 软标驱动) */
 

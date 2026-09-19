@@ -64,6 +64,7 @@ static uint32_t        s_seekT0, s_seekStallMs, s_seekSeq;
 static uint32_t        s_amDeactSeen;    /* 软标阶段 AM 消磁成功计数基线 (闪显判定) */
 static uint32_t        s_amFailSeen;     /* 软标阶段 AM 消磁失败计数基线 */
 static uint8_t         s_uhfRecover;       /* UHF ERROR 链路恢复尝试次数 */
+static uint32_t        s_irHighMs;         /* Round_116: IR_WAIT 光电持续高电平起点 (0=当前低) */
 
 /* 事件环形缓冲 */
 static void evr_init(void) { s_ring.used = 0; s_ring.head = 0; s_ring.tail = 0; }
@@ -226,6 +227,7 @@ void App_Locker_Init(void)
     s_uhfRecover = 0u;
     s_seekT0 = 0u; s_seekStallMs = 0u; s_seekSeq = 0u;
     s_amDeactSeen = 0u; s_amFailSeen = 0u;
+    s_irHighMs = 0u;
 }
 
 int App_Locker_Configure(const AppLockerItem_t *items, uint16_t hardCount,
@@ -288,10 +290,14 @@ int App_Locker_Start(void)
     if (App_UHF_GetState() != APP_UHF_READY) {
         (void)App_UHF_Open();
     }
-    (void)App_UHF_Inventory();
-    window_refresh(SysTickHl_GetMs());
+    /* Round_116: 光电门控 — 旧流程此处立即 Inventory() 开盘点, 标签只要
+     * 进 UHF 场即匹配升起, 与是否插入槽无关. 改为先进 IR_WAIT 待光电
+     * 被挡住(标签插入槽, >=200ms 去抖)再开扫; UHF 上电/链路探测仍在此
+     * 处完成 (断链尽早暴露), 仅押后盘点本身. 保持窗由 IR 确认时刻起算
+     * (对齐 App_LockerUnlock "W 基准=IR 触发时刻"). */
+    s_irHighMs = 0u;
     LedHl_EOff();
-    set_state(LOCKER_CONFIGURED);
+    set_state(LOCKER_IR_WAIT);
     return 0;
 }
 
@@ -406,6 +412,26 @@ static void match_scan_process(uint32_t now)
 /* ---- 主循环节拍 ---- */
 static void locker_process_idle(void) { }
 
+/* Round_116: IR_WAIT — 光电门控去抖 (判据同 App_LockerUnlock 放标确认).
+ * 挡住持续 >=200ms 视为标签插入槽: 此时才开盘点并起算保持窗
+ * (旧流程 START 即开扫, 标签仅进入 UHF 场就匹配, 不问是否插槽).
+ * 未挡住前无限等待 (holdDeadlineMs==0 不超时), 上位机可 CANCEL 退出. */
+static void locker_process_ir_wait(void)
+{
+    uint32_t now = SysTickHl_GetMs();
+    if (App_NewPeriph_ReadIr() != 0u) {
+        if (s_irHighMs == 0u) s_irHighMs = now;
+        if ((now - s_irHighMs) >= APP_LOCKER_IR_CONFIRM_MS) {
+            s_irHighMs = 0u;
+            window_refresh(now);          /* 保持窗从插入确认时刻起算 */
+            (void)App_UHF_Inventory();     /* 此刻才开扫 */
+            set_state(LOCKER_CONFIGURED);
+        }
+    } else {
+        s_irHighMs = 0u;
+    }
+}
+
 static void locker_process_configured(void)
 {
     match_scan_process(SysTickHl_GetMs());
@@ -497,6 +523,9 @@ static void pat_sync(void)
 {
     uint8_t pat;
     switch (s_ctx.state) {
+    case LOCKER_IR_WAIT:     /* Round_116: 待放标 白慢闪 (同 0x0A 解锁通道灯语) */
+        pat = RGBPAT_IR_WAIT;
+        break;
     case LOCKER_CONFIGURED:
     case LOCKER_UNLOCK_HOLD:
         pat = (s_motor == M_RISE) ? RGBPAT_RISE_HOLD_GREEN : RGBPAT_SCAN_ACTIVE;
@@ -518,6 +547,7 @@ void App_Locker_Process(void)
 {
     switch (s_ctx.state) {
     case LOCKER_IDLE:        locker_process_idle(); break;
+    case LOCKER_IR_WAIT:     locker_process_ir_wait(); break;
     case LOCKER_CONFIGURED:  locker_process_configured(); break;
     case LOCKER_UNLOCK_HOLD: locker_process_hold(); break;
     case LOCKER_SOFT_DECODE: locker_process_soft(); break;

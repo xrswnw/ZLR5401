@@ -15,8 +15,9 @@ from zlr.hid_link import HidLink          # noqa: E402
 from zlr import const as C                # noqa: E402
 from zlr.frame import build_frame, parse_frame  # noqa: E402
 
-# ---- 框架缺失的常量 (新功能, 见 App_CustomProtocol.h / App_LockerOneShot.h) ----
-FC_SELFTEST_CTRL = 0x0F
+# ---- 框架缺失的常量 (新功能, 见 App_CustomProtocol.h / App_LockerUnlock.h) ----
+# Round_013 起 FC 分层: SELFTEST 0x0F -> 0x25 (App 级 0x20~0x26)
+FC_SELFTEST_CTRL = 0x25
 SELFTEST_SUB_QUERY = 0x01
 SELFTEST_SUB_RERUN = 0x02
 SELFTEST_SUB_CLEAR = 0x03

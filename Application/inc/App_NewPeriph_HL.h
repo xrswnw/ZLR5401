@@ -16,7 +16,7 @@
 void App_NewPeriph_Init(void);     /* 初始化全部 GPIO + 调试串口 */
 
 /* ---- 光电 / 行程开关 (输入, 高电平有效) ---- */
-uint8_t App_NewPeriph_ReadIr(void);       /* 1=检测到红外/光电 (PC4) */
+uint8_t App_NewPeriph_ReadIr(void);       /* 1=检测到红外/光电 (PC11) */
 uint8_t App_NewPeriph_ReadKeyUp(void);    /* 1=上行程触发 (PC8) */
 uint8_t App_NewPeriph_ReadKeyDown(void);  /* 1=下行程触发 (PC9, 已恢复) */
 

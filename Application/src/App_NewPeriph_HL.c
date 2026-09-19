@@ -8,7 +8,7 @@
 
 /* =====================================================================
  * 新增外设硬件抽象层 (骨架, 见原理图)
- *   光电接口 (TLP181): MCU_IR1_DET = PC4 (输入, 检测红外/光电)
+ *   光电接口 (TLP181): MCU_IR1_DET = PC11 (输入, 检测红外/光电)
  *   行程开关:  MCU_KEY_UP=PC8 (输入), MCU_KEY_DOWN=PC9 (输入, 已恢复)
  *   蜂鸣器:    MCU_BEEP5V0_CTL=PC12 (输出, 高电平响)
  *   调试串口:  UART4 TX=PC10 (AF_PP), RX=PC11 (输入浮空, UHF 已回归 USART3 后释放)
@@ -41,7 +41,7 @@ static void gpio_cfg_output(GPIO_TypeDef *port, uint16_t pin)
 
 void App_NewPeriph_Init(void)
 {
-    /* 输入: 光电 PC4, 上行程 PC8, 下行程 PC9 (高电平有效) */
+    /* 输入: 光电 PC11, 上行程 PC8, 下行程 PC9 (高电平有效) */
     gpio_cfg_input(IR_DET_GPIO_PORT,     IR_DET_GPIO_PIN);
     gpio_cfg_input(KEY_UP_GPIO_PORT,     KEY_UP_GPIO_PIN);
     gpio_cfg_input(KEY_DOWN_GPIO_PORT,   KEY_DOWN_GPIO_PIN);
@@ -83,7 +83,7 @@ void App_NewPeriph_Beep(uint8_t on)
 /* ---- 一次性蜂鸣脉冲 (ms): 立即响, 持续 ms 后自动停 ----
  * 供业务反馈触发 (结账完成提示 / 回零成功长鸣等)。
  * 重复触发会延长截止时刻 (粘连抑制靠上层节流)。
- * 注: 原 IR 光电(PC4) 100ms 循环蜂鸣联动已按需求移除, 蜂鸣器专职
+ * 注: 原 IR 光电(PC11) 100ms 循环蜂鸣联动已按需求移除, 蜂鸣器专职
  *     业务脉冲提示; IR 检测读取仍可用 App_NewPeriph_ReadIr()。 */
 void App_NewPeriph_BeepPulse(uint32_t ms)
 {

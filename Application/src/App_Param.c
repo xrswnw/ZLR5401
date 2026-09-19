@@ -254,7 +254,8 @@ void AmParam_Default(AMUserCfg_t *cfg)
     cfg->phaseInvert = 0u;
     cfg->phaseSync   = 0u;
     cfg->decodeVolt  = 1u;
-    cfg->mode        = 0u;
+    cfg->mode        = 1u;   /* 仅检测: 消磁为 0x11 流程独占瞬时态,
+                               * 不为设备常态 (2026-09-19 裁决) */
     cfg->mainsFreq   = 0u;
 }
 

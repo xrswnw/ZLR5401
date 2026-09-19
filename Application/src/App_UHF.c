@@ -550,6 +550,91 @@ int App_UHF_InventorySync(uint16_t timeoutMs)
     return (int)s_totalTags;
 }
 
+/* Round_013 调试: 0x21 同步盘点结果计数 (IO_DIAG 带出, 排查流程内读取失效) */
+static uint8_t s_inv1Ok, s_inv1NotRdy, s_inv1Busy, s_inv1NoTag, s_inv1Tmo, s_inv1Other;
+static uint8_t s_inv1LastLen;                 /* 最后一次成功返回的 EPC */
+static uint8_t s_inv1LastEpc[16];
+void App_UHF_GetInv1Dbg(uint8_t *v)
+{
+    v[0] = s_inv1Ok; v[1] = s_inv1NotRdy; v[2] = s_inv1Busy;
+    v[3] = s_inv1NoTag; v[4] = s_inv1Tmo; v[5] = s_inv1Other;
+    v[6] = s_inv1LastLen;
+    for (uint8_t i = 0; i < 16; i++) v[7 + i] = s_inv1LastEpc[i];
+}
+
+/* 同步阻塞单标签盘点 (0x21): Timeout 内读到 1 张立即返回, EPC 直接在
+ * 响应 Data [Option(1), EPCID(N), TagCRC(2)] 中, 无 0x29 取回 (请求格式
+ * 依 Round_048 实现: [Timeout(2 大端), Option=0x00])。伪短帧 (RF 边际
+ * 读错, status=0 但 EPC 被截断) 丢弃, 同异步路径 0x21 注释。
+ * Round_013: EPC 解锁切单标签指令的耗时标定通道。 */
+int App_UHF_InventoryOneSync(uint16_t timeoutMs, AppUHFTag_t *out, uint32_t *elapsedMs)
+{
+    if (timeoutMs == 0u) timeoutMs = 1000u;
+    if (timeoutMs > 10000u) timeoutMs = 10000u;
+
+    if (!s_powered) { s_inv1NotRdy++; return APP_UHF_ERR_NOT_READY; }
+    if (s_scanOn) { s_inv1Busy++; return APP_UHF_ERR_BUSY; }   /* 自动扫描进行中, 拒绝单次同步盘点 */
+    if (s_state != APP_UHF_READY && s_state != APP_UHF_IDLE &&
+        s_state != APP_UHF_ERROR) {
+        s_inv1Busy++;
+        return APP_UHF_ERR_BUSY;
+    }
+
+    {
+        uint8_t d[3];
+        d[0] = (uint8_t)(timeoutMs >> 8);
+        d[1] = (uint8_t)(timeoutMs & 0xFF);
+        d[2] = 0x00u;                        /* Option: 无过滤 */
+        uhf_dump_req(UHF_EX_INVENTORY_SINGLE, d, 3u);
+        UHF_HL_RxFlush();
+        UHF_HL_SendFrame(UHF_EX_INVENTORY_SINGLE, d, 3u);
+    }
+
+    /* 等待 0x21 响应 (超时 = 模块 Timeout + 链路余量, 同 InventorySync) */
+    {
+        uint8_t  cmd, data[UHF_HL_FRAME_MAX];
+        uint16_t st, len;
+        uint32_t t0 = SysTickHl_GetMs();
+        while ((SysTickHl_GetMs() - t0) < (uint32_t)(timeoutMs + 500u)) {
+            IwdgHl_Feed();
+            if (UHF_HL_RecvFrame(&cmd, &st, data, &len, 0u) == 0) {
+                if (cmd == UHF_EX_INVENTORY_SINGLE) {
+                    uint32_t ms = SysTickHl_GetMs() - t0;
+                    if (elapsedMs) *elapsedMs = ms;
+                    uhf_dump_rsp(st, data, len);
+                    if (st == UHF_STATUS_OK && len >= 3u) {
+                        uint16_t n = len - 3u;          /* EPCID 字节数 */
+                        if (n >= UHF_EPC_MIN_LEN && n <= 16u) {
+                            AppUHFTag_t t;
+                            t.rssi = 0;                 /* 0x21 无元数据 */
+                            t.epcLen = (uint8_t)n;
+                            for (uint16_t k = 0; k < n; k++) t.epc[k] = data[1 + k];
+                            s_inv1LastLen = t.epcLen;   /* 调试: 记录最后返回 EPC */
+                            for (uint8_t k = 0; k < n && k < 16u; k++)
+                                s_inv1LastEpc[k] = t.epc[k];
+                            if (out) *out = t;          /* 直返调用方, 不入缓冲
+                                                          * (Round_013 计数判据后
+                                                          * 流程不再排空缓冲) */
+                            s_inv1Ok++;
+                            return APP_UHF_ERR_OK;
+                        }
+                        /* 伪短帧: 同步路径同样丢弃 (见 case 0x21 注释) */
+                        s_inv1NoTag++;
+                        return APP_UHF_ERR_NO_TAG;
+                    }
+                    /* status 非 OK: 窗口内未读到标签 (模块语义, 实测再细分) */
+                    s_inv1NoTag++;
+                    return APP_UHF_ERR_NO_TAG;
+                }
+                /* 收到其他 cmd 帧: 计数后继续等 0x21 */
+                s_inv1Other++;
+            }
+        }
+    }
+    s_inv1Tmo++;
+    return APP_UHF_ERR_TIMEOUT;
+}
+
 int App_UHF_ReadTag(const uint8_t *epc, uint8_t epcLen, uint8_t bank,
                     uint8_t addr, uint8_t cnt)
 {

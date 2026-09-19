@@ -25,12 +25,14 @@ typedef struct {
     uint8_t  mainsFreq;    /* 市电 0=50Hz 1=60Hz */
 } AppAMConfig_t;
 
-#define APP_AM_CONFIG_DEFAULT { 5u, 6u, 1u, 0u, 0u, 0u, 0u, 1u, 0u, 0u }
+/* mode 字段默认仅检测 (2026-09-19 裁决: 消磁流程独占, 不为常态) */
+#define APP_AM_CONFIG_DEFAULT { 5u, 6u, 1u, 0u, 0u, 0u, 0u, 1u, 1u, 0u }
 #define APP_AM_CFG_VERSION   1u
 
-/* 工作模式 (cmd 0x50) */
-#define AM_MODE_DEACTIVATE   0u   /* 检测/消磁 */
-#define AM_MODE_DETECT_ONLY  1u   /* 仅检测 */
+/* 工作模式 (cmd 0x50) — 消磁 (mode 0) 为解锁流程 0x11 独占瞬时态,
+ * 设备常态恒为仅检测 (2026-09-19 裁决; 上电 main.c 对记录 mode 0 归一) */
+#define AM_MODE_DEACTIVATE   0u   /* 检测/消磁 (仅 0x11 流程受理->终帧期间) */
+#define AM_MODE_DETECT_ONLY  1u   /* 仅检测 (设备常态) */
 #define AM_MODE_STANDBY      2u   /* 待机 */
 
 /* 波形 (cmd 0x64): 400 点, 上位机分页 (48 点/页, 9 页, 末页 16 点) */
@@ -63,6 +65,11 @@ int  App_AM_SetConfig(const AppAMConfig_t *cfg, int save); /* 下发全部 + 可
 int  App_AM_Query(void);        /* 发 0x63 总查询, 真读回全部参数 + 探链, 更新缓存 */
 int  App_AM_GetLinkStatus(void);/* 0=正常, 非0=掉线 */
 
+/* 突发判据: 相邻 cmd17 帧间隔 > AM_BURST_GAP_MS 视为不同消磁事件;
+ * 事件结束 (静默超 GAP) 时结算 (帧数==1 成功 / >=2 失败)。
+ * 0x11 计数窗末宽限同用此值 (窗末消磁的标签不得漏计)。 */
+#define AM_BURST_GAP_MS    3000u
+
 /* ---- 监控 (标签检测事件) ---- */
 uint32_t App_AM_GetEventCount(void);   /* cmd17 上报帧累计 (兼容保留, 不参与状态判定) */
 uint32_t App_AM_GetLastEventMs(void);  /* 最近一次 cmd17 相对上电 ms, 0=尚无 */
@@ -71,6 +78,8 @@ uint32_t App_AM_GetLastEventMs(void);  /* 最近一次 cmd17 相对上电 ms, 0=
 AppAMDeactState_t App_AM_GetDeactState(void); /* 最近结算结果 (0空闲/1成功/2失败) */
 uint32_t          App_AM_GetDeactCount(void); /* 成功消磁事件累计 (单帧事件) */
 uint32_t          App_AM_GetFailCount(void);  /* 消磁失败事件累计 (>=2 帧事件) */
+uint8_t           App_AM_BurstActive(void);   /* 1=cmd17 突发进行中未结算
+                                               * (0x11 计数窗末宽限判定用) */
 
 /* ---- 波形 (cmd 0x64): 同步采集一次完整波形 + 分页取回 ---- */
 int      App_AM_CaptureWave(void);      /* 发 0x64, 阻塞收 4 包到缓存, 0=OK, 负=链路失败 */

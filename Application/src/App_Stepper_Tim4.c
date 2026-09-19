@@ -13,16 +13,23 @@
  * 每个完整 PWM 周期 = 一个 STEP 脉冲 (上升+下降沿推进一步). 硬件自动输出,
  * 零 CPU 忙等, 脉冲均匀, 根治软件时基导致的"一顿一顿".
  *
- * 定时器时钟: PCLK1=36MHz, APB1 预分频=2 (>1) -> TIM4 计数时钟 72MHz.
- * 期望微步间隔 interval(us) -> ARR = 72*interval - 1; CCR = ARR/2 (50% duty).
+ * 定时器时钟: PCLK1=36MHz, APB1 预分频=2 (>1) -> TIM4 时钟 72MHz;
+ *   PSC 两档换分频 (TIM_PSC_*): 1MHz/10kHz 计数,
+ *   期望微步间隔 interval(us) -> ARR = interval/pscDiv - 1; CCR = ARR/2.
  *
  * 仅驱动 STEP 脉冲产生 + 步数计数 + 限步 + 斜坡调速(ISR 内按步数更新 ARR);
  * 方向(DIR)、使能(EN_OUT/ENABLE)、故障检测仍走 App_Stepper / DRV SDK.
  * ==================================================================== */
 
-#define STEP_TIM_CLK_HZ   72000000UL   /* TIM4 计数时钟 72MHz */
+/* PSC 分频 (2026-09-19 修): 原实现 PSC=0 (72MHz 直数) 且 ARR 16 位封顶
+ * 65535 -> 任何 <1099Hz 的请求被悄悄抬到 ~1099Hz (统一 1000 微步/s 裁决
+ * 时黑匣子实测 1096 步/s 发现; 过载降速档 800 / MOVE 低速同源失真)。
+ * 改两档 PSC: 1MHz 计数精确到 1us, 覆盖 >=15.26Hz (全部业务速度);
+ * 更慢 (协议 MOVE 允许 1Hz) 用 10kHz 计数, 100us 粒度覆盖 0.16~15Hz。
+ * PSC 在 Start 按本腿最慢间隔(=起步间隔, 斜坡只升频)一次性选定。 */
+#define TIM_PSC_FAST   71u    /* 1MHz 计数:  ARR = iv_us - 1 */
+#define TIM_PSC_SLOW   7199u  /* 10kHz 计数: ARR = iv_us/100 - 1 */
 
-/* 斜坡参数 (与 App_Stepper 一致; 档位相关: 1/2档=400步/圈) */
 #define STEP_RAMP_STEPS   400u
 #define STEP_RAMP_MIN_HZ  1000u
 
@@ -30,6 +37,7 @@ static volatile uint32_t  s_stepsDone = 0;
 static volatile uint32_t  s_stepsReq  = 0;   /* 0=持续 */
 static volatile uint8_t   s_run       = 0;
 static volatile uint32_t  s_targetHz  = 0;
+static volatile uint8_t   s_pscDiv    = 1u;  /* µs/计数tick: 1(快档) 或 100(慢档) */
 
 /* S 形曲线 LUT: 输入 P(0..100) -> 升频权重 S(0..100), 两端缓/中段快.
  * 采样点 = (1-cos(pi*X/10))/2*100, X=0..10 (0,2,10,21,35,50,65,79,90,98,100).
@@ -73,7 +81,7 @@ void TIM4_IRQHandler(void)
         /* 斜坡: 起步后逐步升频到目标速 (改 ARR; 周期性更新, 单片阶差可接受) */
         if (s_targetHz != 0u) {
             uint32_t iv = tim4_ramp_interval(s_stepsDone, s_targetHz);
-            uint32_t arr = STEP_TIM_CLK_HZ / 1000000UL * iv - 1UL;
+            uint32_t arr = (iv / s_pscDiv) - 1UL;
             if (arr > 65535UL) arr = 65535UL;
             TIM_SetAutoreload(TIM4, arr);
             TIM_SetCompare1(TIM4, arr / 2UL);
@@ -96,8 +104,8 @@ void StepperTim4_Init(void)
     GPIO_Init(MOTOR_CTRL_GPIO_PORT, &gpio);
 
     TIM_DeInit(TIM4);
-    tb.TIM_Prescaler     = 0;                 /* 72MHz 直数 */
-    tb.TIM_Period        = 8999u;             /* 默认 125us/步 (8000 微步/s) */
+    tb.TIM_Prescaler     = TIM_PSC_FAST;         /* 1MHz 计数 (Start 按速度换档) */
+    tb.TIM_Period        = 999u;                 /* 默认 1000us/步 (1000 微步/s) */
     tb.TIM_ClockDivision = TIM_CKD_DIV1;
     tb.TIM_CounterMode   = TIM_CounterMode_Up;
     TIM_TimeBaseInit(TIM4, &tb);
@@ -115,13 +123,23 @@ void StepperTim4_Init(void)
     NVIC_EnableIRQ(TIM4_IRQn);
 
     s_stepsDone = 0; s_stepsReq = 0; s_run = 0; s_targetHz = 0;
+    s_pscDiv = 1u;
 }
 
 /* 启动连续 STEP, 从斜坡起步转速开始, ISR 内升到 targetHz */
 void StepperTim4_Start(uint32_t stepsReq, uint32_t targetHz)
 {
     uint32_t iv = tim4_ramp_interval(0u, targetHz);
-    uint32_t arr = STEP_TIM_CLK_HZ / 1000000UL * iv - 1UL;
+    /* 起步间隔即本腿最慢间隔 (斜坡只升频, 恒速腿全程不变) ->
+     * 据此选 PSC 档: 1us 粒度覆盖 >=15.26Hz, 慢于此换 10kHz 档 */
+    if (iv <= 65536u) {
+        s_pscDiv = 1u;
+        TIM_PrescalerConfig(TIM4, TIM_PSC_FAST, TIM_PSCReloadMode_Immediate);
+    } else {
+        s_pscDiv = 100u;
+        TIM_PrescalerConfig(TIM4, TIM_PSC_SLOW, TIM_PSCReloadMode_Immediate);
+    }
+    uint32_t arr = (iv / s_pscDiv) - 1UL;
     if (arr > 65535UL) arr = 65535UL;
 
     s_stepsDone = 0;

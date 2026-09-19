@@ -123,7 +123,8 @@ void AppDispatch(ProtoFrame_t *f) {
         if (f->dataLen >= 1) cmd = f->data[0];
 
         if (App_LockerUnlock_IsBusy() &&
-            cmd != MOTOR_CMD_QUERY && cmd != MOTOR_CMD_HEALTH && cmd != MOTOR_CMD_STATS) {
+            cmd != MOTOR_CMD_QUERY && cmd != MOTOR_CMD_HEALTH &&
+            cmd != MOTOR_CMD_STATS && cmd != MOTOR_CMD_TRACE) {
             uint8_t r[2] = { cmd, MOTOR_ERR_BUSY };
             Proto_TxResponse(ch, FC_MOTOR_CTRL, r, 2);
             break;
@@ -256,11 +257,20 @@ void AppDispatch(ProtoFrame_t *f) {
             Proto_TxResponse(ch, FC_MOTOR_CTRL, srsp, sizeof(srsp));
             break;
         }
+        case MOTOR_CMD_TRACE: {
+            /* 黑匣子导出 (只读, 无阻塞): 静态缓冲直接组帧, 布局见
+             * App_CustomProtocol.h MOTOR_CMD_TRACE. */
+            uint16_t tl = 0u;
+            const uint8_t *tb = App_Stepper_TraceDump(&tl);
+            Proto_TxResponse(ch, FC_MOTOR_CTRL, tb, tl);
+            break;
+        }
         default:
             break;
         }
 
-        if (cmd != MOTOR_CMD_QUERY && cmd != MOTOR_CMD_HEALTH && cmd != MOTOR_CMD_STATS) {
+        if (cmd != MOTOR_CMD_QUERY && cmd != MOTOR_CMD_HEALTH &&
+            cmd != MOTOR_CMD_STATS && cmd != MOTOR_CMD_TRACE) {
             rsp[pos++] = cmd;
             rsp[pos++] = err;
             Proto_TxResponse(ch, FC_MOTOR_CTRL, rsp, pos);
@@ -335,6 +345,39 @@ void AppDispatch(ProtoFrame_t *f) {
                 for (uint8_t i = 0; i < t.epcLen; i++) r[pos++] = t.epc[i];
                 sent--;
             }
+            Proto_TxResponse(ch, FC_UHF_CTRL, r, pos);
+            break;
+        }
+        case UHF_SUB_INVENTORY_ONE: {
+            /* [sub, tmoL, tmoH]  同步阻塞单标签盘点 (0x21, Round_013 耗时
+             * 标定通道): 回 [sub,err,(epcLen,epc..),msL,msH] — ms 为设备侧
+             * 发帧->收模块响应耗时 (LE u16); NO_TAG/TIMEOUT 无 EPC 仍带 ms。 */
+            uint16_t tmo = (f->dataLen >= 3u)
+                           ? (uint16_t)(f->data[1] | ((uint16_t)f->data[2] << 8)) : 0u;
+            if (App_UHF_IsBusy()) {
+                uint8_t r[2] = { sub, UHF_ERR_BUSY };
+                Proto_TxResponse(ch, FC_UHF_CTRL, r, 2);
+                break;
+            }
+            AppUHFTag_t t;
+            uint32_t ms = 0u;
+            int e = App_UHF_InventoryOneSync(tmo, &t, &ms);
+            if (ms > 0xFFFFu) ms = 0xFFFFu;
+            uint8_t r[2 + 1 + 16 + 2];
+            uint16_t pos = 0;
+            r[pos++] = sub;
+            r[pos++] = UHF_ERR_OK;
+            if (e == APP_UHF_ERR_BUSY)          r[1] = UHF_ERR_BUSY;
+            else if (e == APP_UHF_ERR_NOT_READY) r[1] = UHF_ERR_NOT_READY;
+            else if (e == APP_UHF_ERR_LINK)      r[1] = UHF_ERR_LINK;
+            else if (e == APP_UHF_ERR_NO_TAG)    r[1] = UHF_ERR_NO_TAG;
+            else if (e == APP_UHF_ERR_TIMEOUT)   r[1] = UHF_ERR_TIMEOUT;
+            else {
+                r[pos++] = t.epcLen;
+                for (uint8_t i = 0; i < t.epcLen; i++) r[pos++] = t.epc[i];
+            }
+            r[pos++] = (uint8_t)(ms & 0xFF);
+            r[pos++] = (uint8_t)((ms >> 8) & 0xFF);
             Proto_TxResponse(ch, FC_UHF_CTRL, r, pos);
             break;
         }
@@ -767,8 +810,8 @@ void AppDispatch(ProtoFrame_t *f) {
 
     case FC_LOCKER_CTRL: {
         /* 开锁器业务编排. data[0]=子命令. 响应 data[0]=cmd, data[1]=err, 其余随 cmd.
-         * 0x08 同步流程进行中: 仅放行 QUERY/GET_PROGRESS/CANCEL, 其余回 BUSY。
-         * 0x0A 多标签解锁进行中 (解锁态): 仅放行 CANCEL/GET_PROGRESS, 其余回 BUSY。 */
+         * 解锁流程 (Round_013 起 0x10 EPC 解锁; 0x0A 已关闭备恢复) 进行中:
+         * 仅放行 QUERY/GET_PROGRESS/CANCEL, 其余回 BUSY。 */
         uint8_t sub = (f->dataLen >= 1u) ? f->data[0] : 0u;
 
         if (App_LockerUnlock_IsBusy() &&
@@ -841,7 +884,7 @@ void AppDispatch(ProtoFrame_t *f) {
         }
         case LOCKER_SUB_CANCEL:
             if (App_LockerUnlock_IsBusy()) {
-                /* 0x0A 解锁流程进行中: 打断请求 (立即回 OK, 安全回降后回终帧) */
+                /* 解锁流程 (0x10) 进行中: 打断请求 (立即回 OK, 安全回降后回终帧) */
                 App_LockerUnlock_Abort();
             } else {
                 App_Locker_Cancel();
@@ -854,10 +897,11 @@ void AppDispatch(ProtoFrame_t *f) {
         case LOCKER_SUB_GET_PROGRESS: {
             /* [cmd] 进度快照, 统一多标签布局 (非流程时 phase=0)。
              * Round_011: 0x08 单标签流程已废除, 单标即 0x0A epcCnt=1,
-             * 本布局成为唯一进度布局。 */
+             * 本布局成为唯一进度布局; Round_013 0x10 EPC 流程追加第 12
+             * 字节 lastCycle (softCnt/softDone=周期数/成功数)。 */
             LockerUnlockProgress_t up;
             App_LockerUnlock_GetProgress(&up);
-            uint8_t r[11];
+            uint8_t r[12];
             uint16_t pos = 0;
             r[pos++] = sub;
             r[pos++] = LOCKER_ERR_OK;
@@ -871,6 +915,7 @@ void AppDispatch(ProtoFrame_t *f) {
             r[pos++] = up.confirmedBitmap;
             r[pos++] = up.softCnt;
             r[pos++] = up.softDone;
+            r[pos++] = up.lastCycle;   /* Round_013 0x10: 上轮 0无/1成功/2移除/3更换 */
             Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
             break;
         }
@@ -926,14 +971,29 @@ void AppDispatch(ProtoFrame_t *f) {
                 Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
             }
             break;
-        case LOCKER_SUB_UNLOCK_MULTI: {
+        case LOCKER_SUB_UNLOCK_MULTI:
+            /* [Round_013 用户裁决] 0x0A 多标签解锁流程注释关闭: 解锁业务
+             * 改走 0x10 UNLOCK_EPC; 灯语槽位 RGBSRC_UNLOCK 与 UNLK_ERR_*
+             * 错误码移交新流程。保留码位显式回 PARAM (同 0x08 处理, 区别于
+             * 未知子命令); 原实现整体保留于下方 #if 0, 恢复时还原此处。 */
+            {
+                uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+            }
+            break;
+#if 0   /* ---- Round_013 关闭的 0x0A 原实现 (整体保留备恢复) ---- */
+        case LOCKER_SUB_UNLOCK_MULTI_disabled: {
             /* [cmd, tmoL,tmoH, holdL,holdH, softCnt, epcCnt, epcLen, epcCnt*epcLen]
              * 多标签解锁: 单帧 m(<=4) 张期望 EPC + 软标数, 阻塞至结账完成
              * (App_LockerUnlock.c)。过程推送 0x0F/0x0B/0x0C/0x0D/0x0E 帧,
-             * 本响应为终帧 (0x0A 回显 = 流程结束标志)。 */
-            if (f->dataLen < 8u || f->data[6] == 0u || f->data[6] > UNLK_MAX_TAGS ||
-                f->data[7] == 0u || f->data[7] > UNLK_EPC_MAX ||
-                (uint16_t)(8u + (uint16_t)f->data[6] * f->data[7]) > f->dataLen) {
+             * 本响应为终帧 (0x0A 回显 = 流程结束标志)。
+             * epcCnt=0 且 softCnt>0: 纯软标结账, 跳过 EPC 校验直通软解码;
+             * epcCnt=0 且 softCnt=0 无意义 -> PARAM。 */
+            if (f->dataLen < 8u || f->data[6] > UNLK_MAX_TAGS ||
+                f->data[7] > UNLK_EPC_MAX ||
+                (f->data[6] > 0u && (f->data[7] == 0u ||
+                    (uint16_t)(8u + (uint16_t)f->data[6] * f->data[7]) > f->dataLen)) ||
+                (f->data[6] == 0u && f->data[5] == 0u)) {
                 uint8_t r[2] = { sub, UNLK_ERR_PARAM };
                 Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
                 break;
@@ -963,7 +1023,12 @@ void AppDispatch(ProtoFrame_t *f) {
                 r[pos++] = (uint8_t)(res.lowerSteps & 0xFF); r[pos++] = (uint8_t)((res.lowerSteps >> 8) & 0xFF);
                 r[pos++] = res.softDone;
                 r[pos++] = res.softCnt;
-                r[pos++] = (uint8_t)(res.elapsedMs & 0xFF); r[pos++] = (uint8_t)((res.elapsedMs >> 8) & 0xFF);
+                {   /* elapsed 单位秒 (2026-09-19 统一; 0x0A 已废除, 随改) */
+                    uint32_t es = res.elapsedMs / 1000u;
+                    if (es > 0xFFFFu) es = 0xFFFFu;
+                    r[pos++] = (uint8_t)es;
+                    r[pos++] = (uint8_t)(es >> 8);
+                }
                 break;
             case UNLK_ERR_BUSY:
                 r[pos++] = res.lockerState;
@@ -995,6 +1060,168 @@ void AppDispatch(ProtoFrame_t *f) {
                 r[pos++] = res.retreat;
                 break;
             default:   /* PARAM / AM_LINK / NO_IR: 无诊断字段 */
+                break;
+            }
+            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
+            break;
+        }
+#endif  /* ---- Round_013 关闭的 0x0A 原实现结束 ---- */
+
+        case LOCKER_SUB_UNLOCK_EPC: {
+            /* [cmd, epcLen, tmoL,tmoH, winL,winH, holdTopL,holdTopH, rsv0..3, epc..]
+             * EPC 解锁 (Round_013 新, 阻塞自治, App_LockerUnlock.c EpcRun):
+             * 单周期: IR 门控 + EPC 计数稳定确认 -> 升起寻触 KEY_UP (期间
+             * 盘点监守: 移除/更换即收起) -> 顶部保持 holdTopMs -> 周期末回降。
+             * rsv0=流程超时秒 (0=单轮, >0=循环模式至超时, 周期失败不推帧,
+             * 状态经 GET_PROGRESS 拉取); win 仅单轮模式生效; rsv1..3 保留
+             * 位原样回显。流程态仅放行 QUERY/CANCEL/GET_PROGRESS (case 头)。 */
+            if (f->dataLen < 12u || f->data[1] == 0u || f->data[1] > UNLK_EPC_MAX ||
+                (uint16_t)(12u + (uint16_t)f->data[1]) > f->dataLen) {
+                uint8_t r[2] = { sub, UNLK_ERR_PARAM };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+                break;
+            }
+            uint16_t tmoMs     = (uint16_t)(f->data[2] | ((uint16_t)f->data[3] << 8));
+            uint16_t winMs     = (uint16_t)(f->data[4] | ((uint16_t)f->data[5] << 8));
+            uint16_t holdTopMs = (uint16_t)(f->data[6] | ((uint16_t)f->data[7] << 8));
+            uint8_t  timeoutSec = f->data[8];   /* rsv0: 0=单轮 / >0=循环窗 (秒) */
+            uint8_t  epcLen    = f->data[1];
+
+            LockerUnlockResult_t res;
+            App_LockerUnlock_EpcRun(&f->data[12], epcLen, tmoMs, winMs, holdTopMs,
+                                    timeoutSec, ch, &res);
+            App_LockerUnlock_Finish();   /* 清 busy/abort/phase (含 CANCEL 路径) */
+
+            uint8_t r[23];
+            uint16_t pos = 0;
+            r[pos++] = sub;
+            r[pos++] = res.err;
+            switch (res.err) {
+            case UNLK_ERR_OK:
+                r[pos++] = res.endReason;
+                r[pos++] = res.confirmedBitmap;
+                r[pos++] = (uint8_t)(res.riseSteps  & 0xFF); r[pos++] = (uint8_t)((res.riseSteps  >> 8) & 0xFF);
+                r[pos++] = (uint8_t)(res.lowerSteps & 0xFF); r[pos++] = (uint8_t)((res.lowerSteps >> 8) & 0xFF);
+                {   /* elapsed 单位秒, 0xFFFF 封顶 (2026-09-19 统一裁决:
+                     * 原 u16 ms 在长窗 4min 已封顶失真) */
+                    uint32_t es = res.elapsedMs / 1000u;
+                    if (es > 0xFFFFu) es = 0xFFFFu;
+                    r[pos++] = (uint8_t)(es & 0xFF);
+                    r[pos++] = (uint8_t)(es >> 8);
+                }
+                for (uint8_t i = 0; i < 4u; i++) r[pos++] = f->data[8 + i];   /* rsv 保留位回显 */
+                /* Round_013: 周期计数 (循环模式核心读数; 单轮 1/x/x) */
+                r[pos++] = res.softCnt;                    /* cycles */
+                r[pos++] = res.softDone;                   /* okCycles */
+                r[pos++] = (res.softCnt > res.softDone) ? (uint8_t)(res.softCnt - res.softDone) : 0u;   /* failCycles */
+                break;
+            case UNLK_ERR_BUSY:
+                r[pos++] = res.lockerState;
+                r[pos++] = res.uhfState;
+                r[pos++] = res.stepperState;
+                break;
+            case UNLK_ERR_UHF_OPEN:
+            case UNLK_ERR_UHF_LINK:
+                r[pos++] = (uint8_t)(int8_t)res.uhfRawErr;
+                break;
+            case UNLK_ERR_HOMING:
+                r[pos++] = res.switchErr;
+                break;
+            case UNLK_ERR_MOTOR_FAULT:
+                r[pos++] = res.fault;
+                r[pos++] = res.diag1;
+                r[pos++] = res.diag2;
+                r[pos++] = (uint8_t)(res.steps & 0xFF);
+                r[pos++] = (uint8_t)((res.steps >> 8) & 0xFF);
+                r[pos++] = (uint8_t)((res.steps >> 16) & 0xFF);
+                r[pos++] = res.motorPhase;
+                r[pos++] = res.retreat;
+                break;
+            case UNLK_ERR_MOTOR_TIMEOUT:
+                r[pos++] = (uint8_t)(res.steps & 0xFF);
+                r[pos++] = (uint8_t)((res.steps >> 8) & 0xFF);
+                r[pos++] = (uint8_t)((res.steps >> 16) & 0xFF);
+                r[pos++] = res.motorPhase;
+                r[pos++] = res.retreat;
+                break;
+            default:   /* PARAM / NO_IR: 无诊断字段 */
+                break;
+            }
+            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
+            break;
+        }
+        case LOCKER_SUB_UNLOCK_AM: {
+            /* [cmd, amCnt, tmoL, tmoH, rsv0, rsv1]  AM 标签解锁 (Round_013 新,
+             * 阻塞自治, App_LockerUnlock.c AmRun): 受理起 tmo 秒窗内被动计数 AM
+             * 消磁成功事件 (cmd17 突发结算), 达标 (>=amCnt) 即蜂鸣+绿闪结账 —
+             * 全程不动电机 (2026-09-19 裁决), rise/lower 恒 0; 窗满未达标按超时
+             * 结账 (部分完成数上报)。
+             * amCnt=0 支路: 无计数门, 不耗窗直接结账 ALL_OK。
+             * AM 解码器零控制 (2026-09-19 裁决 "从上电到结束不要控制, 按照
+             * 默认参数即可, 仅在解锁期间监控解锁帧"): 不探链/不切模式/不下发
+             * 参数。rsv0/rsv1 保留位原样回显。流程态仅放行
+             * QUERY/CANCEL/GET_PROGRESS (case 头)。 */
+            uint16_t tmoSec = (f->dataLen >= 4u)
+                              ? (uint16_t)(f->data[2] | ((uint16_t)f->data[3] << 8)) : 0u;
+            if (f->dataLen < 6u || tmoSec == 0u) {
+                uint8_t r[2] = { sub, UNLK_ERR_PARAM };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+                break;
+            }
+            uint8_t amCnt = f->data[1];
+
+            LockerUnlockResult_t res;
+            App_LockerUnlock_AmRun(amCnt, tmoSec, ch, &res);
+            App_LockerUnlock_Finish();   /* 清 busy/abort/phase (含 CANCEL 路径) */
+
+            uint8_t r[16];
+            uint16_t pos = 0;
+            r[pos++] = sub;
+            r[pos++] = res.err;
+            switch (res.err) {
+            case UNLK_ERR_OK:
+                r[pos++] = res.endReason;
+                r[pos++] = (uint8_t)(res.riseSteps  & 0xFF); r[pos++] = (uint8_t)((res.riseSteps  >> 8) & 0xFF);
+                r[pos++] = (uint8_t)(res.lowerSteps & 0xFF); r[pos++] = (uint8_t)((res.lowerSteps >> 8) & 0xFF);
+                {   /* elapsed 单位秒, 0xFFFF 封顶 (2026-09-19 统一裁决:
+                     * 原 u16 ms 在 120s 窗封顶 65535 失真) */
+                    uint32_t es = res.elapsedMs / 1000u;
+                    if (es > 0xFFFFu) es = 0xFFFFu;
+                    r[pos++] = (uint8_t)(es & 0xFF);
+                    r[pos++] = (uint8_t)(es >> 8);
+                }
+                r[pos++] = amCnt;               /* 目标数回显 */
+                r[pos++] = res.softDone;        /* 实际解锁数 */
+                r[pos++] = res.amFail;          /* 消磁失败事件数 (判据证伪后恒 0, 保留) */
+                r[pos++] = f->data[4];          /* rsv 保留位回显 */
+                r[pos++] = f->data[5];
+                break;
+            case UNLK_ERR_BUSY:
+                r[pos++] = res.lockerState;
+                r[pos++] = res.uhfState;
+                r[pos++] = res.stepperState;
+                break;
+            case UNLK_ERR_HOMING:
+                r[pos++] = res.switchErr;
+                break;
+            case UNLK_ERR_MOTOR_FAULT:
+                r[pos++] = res.fault;
+                r[pos++] = res.diag1;
+                r[pos++] = res.diag2;
+                r[pos++] = (uint8_t)(res.steps & 0xFF);
+                r[pos++] = (uint8_t)((res.steps >> 8) & 0xFF);
+                r[pos++] = (uint8_t)((res.steps >> 16) & 0xFF);
+                r[pos++] = res.motorPhase;
+                r[pos++] = res.retreat;
+                break;
+            case UNLK_ERR_MOTOR_TIMEOUT:
+                r[pos++] = (uint8_t)(res.steps & 0xFF);
+                r[pos++] = (uint8_t)((res.steps >> 8) & 0xFF);
+                r[pos++] = (uint8_t)((res.steps >> 16) & 0xFF);
+                r[pos++] = res.motorPhase;
+                r[pos++] = res.retreat;
+                break;
+            default:   /* PARAM / AM_LINK: 无诊断字段 */
                 break;
             }
             Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
@@ -1120,7 +1347,7 @@ void AppDispatch(ProtoFrame_t *f) {
          * 原只能靠业务失败码反推). 布局见 App_CustomProtocol.h FC_IO_DIAG. */
         AppUHFStatus_t ust;
         App_UHF_GetStatus(&ust);
-        uint8_t r[10] = {
+        uint8_t r[10 + 7 + 16 + 12] = {
             0u,
             App_NewPeriph_ReadIr(),
             App_NewPeriph_ReadKeyUp(),
@@ -1130,8 +1357,18 @@ void AppDispatch(ProtoFrame_t *f) {
             (uint8_t)App_AM_GetLinkStatus(),
             App_MotorHoming_GetStatus(),
             (uint8_t)App_Locker_GetState(),
-            (uint8_t)App_MotorTest_GetState()
+            (uint8_t)App_MotorTest_GetState(),
+            /* [10..32] Round_013 调试: 0x21 同步盘点结果计数 (排查流程内
+             * 读取失效): ok/notRdy/busy/noTag/timeout/otherCmd + 最后成功
+             * EPC (len + 16B 原样);
+             * [33..44] 校对段匹配快照: total/tagLen/phase/vMiss/epc[0..7] */
+            0u, 0u, 0u, 0u, 0u, 0u, 0u,
+            0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u,
+            0u, 0u, 0u, 0u, 0u, 0u, 0u,
+            0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u, 0u
         };
+        App_UHF_GetInv1Dbg(&r[10]);
+        App_LockerUnlock_GetEpcDbg(&r[33]);
         Proto_TxResponse(ch, FC_IO_DIAG, r, sizeof(r));
         break;
     }

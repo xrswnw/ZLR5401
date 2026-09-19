@@ -2,7 +2,7 @@
 
 前置: 真标签 33553463a4000158eb7e7507 在天线场内; JLink 已拔除干扰.
 覆盖:
-  O1  IO_DIAG (0x10) 新命令字段基线 (#8)
+  O1  IO_DIAG (0x26) 新命令字段基线 (#8)
   O2  UHF CLOSE -> QUERY=NOT_READY(3) + IO_DIAG 联动 (#15/#8)
   O3  TEST 互斥/完成/二次 TEST (#3/#4)
   O4  QUERY state 重映射: 测试中 state=1, 完成后回落步进态 (#4)
@@ -20,7 +20,7 @@ from lib import Recorder, open_link, tx, txm, reopen_until_alive, drain, C, load
 FCM = C.FC_MOTOR_CTRL
 FCU = C.FC_UHF_CTRL
 FCL = C.FC_LOCKER_CTRL
-FC_IO_DIAG = 0x10
+FC_IO_DIAG = 0x26   # Round_013 起 App 级 0x20~0x26 (原 0x10)
 
 MT_IDLE, MT_RUN, MT_DONE, MT_FAULT = 0, 1, 2, 3
 BUSY = 3
@@ -57,7 +57,7 @@ def uhf(sub, data=None, t=4):
 # ---- O1 IO_DIAG 基线 (#8) ----
 d = iod(3)
 ok = d is not None and len(d) == 10
-rec.check("O1a", "FC_IO_DIAG(0x10) 返回 10 字段帧", ok,
+rec.check("O1a", "FC_IO_DIAG(0x26) 返回 10 字段帧", ok,
           f"ir={d[1]} keyUp={d[2]} keyDn={d[3]} uhfPwr={d[4]} ant={d[5]} "
           f"am={d[6]} homing={d[7]} locker={d[8]} test={d[9]}" if ok else f"d={d.hex() if d else 'TO'}",
           f"d={d.hex() if d else 'TO'} len={len(d) if d else 0}")

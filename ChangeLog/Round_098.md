@@ -105,3 +105,120 @@ P3 26/0 · P4 22/0 · P5 16/0 · P9 28/2 (O5 废弃×3 全过; O6c 2 失败=标�
 9 失败=B2~B7 真标签匹配链 + D4/D5 长窗确认, 均标签不在场所致,
 与 0x08 移除无因果 — UHF INVENTORY 探针 err=5 NO_TAG 证实)。
 固件 ZLR5401_202609030003.hex。
+
+## 微调 — 0x0A 默认盘点时限 1000→500ms (2026-09-03)
+
+需求重申 (业务追加点1: "EPC校验时默认盘点500Ms"): tmoMs=0 缺省由
+1000ms 改 500ms (UNLK_INVENTORY_TMO_MS), 协议文档 13.2 同步 (0→500)。
+仅编译回归 (App_202609032336.hex), 台架 P6/P9 待跑。
+追加点1 其余各条 (逐张稳定确认推 0x0B 带信息 / 失配 0x0C / 流程结束
+关 AM) 经核对与现实现一致; 电机/AM 时序两处有意偏差 (消磁待软标段才开、
+磁块硬标段末即回降) 待用户裁决是否改按字面 (电机升起同时开消磁、流程
+结束才回降)。流程结束 AM 恢复"仅检测"为 void 直发无复核, 若该帧丢失
+AM 将滞留检测消磁模式 (静置自消磁可疑根因之一), 加固待裁决。
+
+## Round_014 — 0x0A 流程五项裁决落地 (2026-09-03)
+
+用户五项裁决 (对照当日早前"待裁决"清单全部闭卷):
+1. 流程结束 AM 固定"仅检测", 不恢复流程前预设 (维持原实现);
+2. 稳定判据改 1.5s: UNLK_STABLE_CONFIRM_MS 3000→1500;
+3. 外来标签同样按稳定判据逐张上报: 废除"外来独占连续 3 轮"事件
+   结算 (UNLK_MISMATCH_CONFIRM_ROUNDS 删除), 新增外来标签独立缓存
+   (UNLK_MAX_FGN_TAGS=4, FgnTagRec_t 多标签缓存, 满后只计数不上报),
+   稳定一张推一帧 0x0C (尾字节 rounds→hits=稳定期命中次数, 单向
+   掩码不重报, 离场超窗释放缓存槽);
+4. 电机至上行程开关同时开 AM 消磁 (softCnt>0, 首确认升起时切,
+   失败软标入口再试一次, 再败 err=10), 磁块保持升起至整个流程
+   结束才统一回降 (lower_if_risen 公共出口, CANCEL/AM_LINK/软标段
+   全部路径复用), AM 出口统一切回仅检测;
+5. 软标窗 5min 满未校验完成按超时失败结账: 新增 endReason=7
+   UNLK_END_SOFT_TIMEOUT (终帧布局不变, 蜂鸣/绿三连闪不发, 红双闪)。
+另: 0x0A 默认盘点时限 1000→500ms (当日早前已改, 见上节)。
+
+| 位置 | 变更 |
+|------|------|
+| App_LockerUnlock.h | 判据 1.5s; UNLK_END_SOFT_TIMEOUT=7; UNLK_MAX_FGN_TAGS=4; 流程注释 ⑸~⑻ 重写 |
+| App_LockerUnlock.c | FgnTagRec_t 外来缓存+fgn_track; 失配改逐张稳定确认; 升起同时切消磁+s_demagBase 提前至首确认; lower_if_risen 统一回降出口; ⑹⑺⑸ CANCEL/AM_LINK 出口重排; 软标超时失败结账 |
+| App_CustomProtocol.h | 0x0A 注释: 0x0C 语义/hits, endReason 1/2/4/6/7 列表 |
+| Protocol/App_Protocol.html | 13.1 业务闭环/流程 ⑸~⑻, 0x0C/0x0D 推送表, endReason note+7, err=10 说明, 图 A/B 重排 (SOFT 前置于 LOWER), 灯语红双闪含软标超时 |
+
+仅编译回归 (App_202609032344.hex); 台架 P6 (0x0A 全路径) /
+P9 待跑 — 行为变更点: 失配帧推送时机/频度、磁块保持时长、软标
+段超时终态、消磁起始时刻, 需重点复测。
+
+### Round_014 台架回归终态 (2026-09-03, 固件 App_202609032344.hex)
+
+烧录实测全绿: proto_smoke 22/0 (新码 0x20~0x26 全通道 + 旧码拒绝) ·
+unlock_multi 20/0 含新增 M9b 三连 (软标段中途 IO_DIAG keyUp=0 压上行程
+开关实证磁块保持升起[裁决4]; 5min 窗满 endReason=7 SOFT_TIMEOUT 无
+0x0E[裁决5]; 流程后 AM GET_PARAM 真读回 mode=1 仅检测[裁决1]) ·
+确认帧判据耗时实测 1500ms 整 (裁决2 门限精确生效) · M5 外来标签稳定
+一张一帧 0x0C (裁决3) · p6_locker 49/0 (D4a 短窗改 1200ms<1.5s 门限) ·
+p1 15/0 · p2 16/0 · p5_am 16/0 · p9_optfix 30/0 (冷启动)。
+测试基建同步: zlr/const.py + lib.py FC 码 0x20~0x26 (lib FC_SELFTEST
+0x0F→0x25); p9 IO_DIAG 0x10→0x26; unlock_multi M6e 改 11B holdMs3B 布局;
+新增 M9b (--soft-timeout); p6 D4a/D5 门限适配 1.5s。
+文档修正: App_CustomProtocol.h FC_IO_DIAG 注释 keyUp/keyDown 极性
+原误标 "1=触发", 实为低有效 0=压到 (与 LockerSeek 判据/协议文档一致)。
+已知非阻塞项: p9 O1b 对 MT_STATE_DONE 残留敏感 (上轮 O3 行程测试的
+DONE 态跨运行携带, 冷启动 30/0; MotorTest 模块本次未改动);
+M2 双真标/M3 逐张放取/软标真实解码 0x0E 仍需双标签/软标台架。
+
+### Round_014 台架补测 — 双真标 + 真实软标闭环 (2026-09-03)
+
+台架补上 2 硬标 + 1 软标, 前日三项待跑闭环全部完成:
+
+- **M2 双真标全流程**: 2 EPC (…eb7dbcdb + …eb7e7507) 同时在场,
+  0x0A m=2 → end=ALL_OK, confirmed=2/2, bitmap=0x03, 确认 seq=[1,2],
+  7.6s 收束 (unlock_multi 18/0 — 原 4 SKIP 项中 M2 转正)。
+- **M5 多外来缓存实证** (意外收获): m=1 假EPC 双真标在场 →
+  **2×0x0C 各带独立真实 EPC**, 一张一帧 (裁决3 多标签缓存逐张上报实证,
+  原单标台架只能见 1 帧)。
+- **M9c 真实软标解码闭环** (新增 soft_real.py): 0x0A m=1 softCnt=1,
+  真软标在 AM 区 → 终帧 err=0 + ≥1×0x0E 解码帧收讫; 事后 AM
+  GET_STATUS deactCnt 0→1 / deact=1(消磁成功) / failCnt=0,
+  AM mode 回 1 仅检测 (裁决1), locker/motor 双 IDLE。
+  对照 M9b (无软标 5min→SOFT_TIMEOUT): 真实软标在窗内即解码即结账,
+  与软标段 AM 才开始消磁 + 首帧解码即完成的设计闭环自洽 (裁决4/5)。
+  注: 该次运行 soft_real.py 打印段索引 bug (元组下标误写) 在证据
+  采集后崩溃, 已修复; 软标一次性已消费, 终帧字段以事后状态佐证。
+
+至此 0x0A 六步业务闭环 (付款→受理→比对→升降+消磁→软标→结账)
+全路径真实台架验证完毕。仍需人工: M8 蜂鸣听感 / M7-补充 升降中
+打断 / M3 逐张放取时序。
+
+## Round_015 — 0x0A 全确认门控 + epcCnt=0 纯软标通道 (2026-09-04)
+
+用户两项行为变更裁决 (2026-09-03 深夜):
+1. **全确认门控**: 所有 EPC 均校验通过 (n==m) 才动电机 — 原首确认
+   即升起改为循环收齐后才升起; PARTIAL/UHF_LOST 出口磁块全程不动
+   (不升不降不消磁, 不进软标段) — 部分确认不再解锁/消磁 (防盗语义)。
+2. **epcCnt=0 纯软标**: 原入口 PARAM 拒绝 → 合法 (需 softCnt>0, =0
+   仍 PARAM): 跳过光电门控与 EPC 校验, 受理帧 phase=5 SOFT/
+   win=300000, 受理即计时, 直接 升起+开消磁+软解码 (无硬标结账场景)。
+
+| 位置 | 变更 |
+|------|------|
+| App_LockerUnlock.c | push_start 增 phase 参; 升起块自确认处理内移至循环后 (hardEnd==ALL_OK 门控); epcCnt=0 分支: 跳 ⑵⑷⑸ (win=软标窗, s_irMs=受理时刻, hardEnd 预置 ALL_OK); ⑺ 软标段仅 ALL_OK 进入; UHF Stop/盘点仅 epcCnt>0 |
+| App_Dispatch.c | 0x0A 校验: epcCnt=0 需 softCnt>0; epcLen/帧长校验仅 epcCnt>0 时要求 |
+| App_LockerUnlock.h | 契约注释 ⑴⑵⑸⑹⑺ 重写 (纯软标通道 + 全确认门控); UNLK_PH_RISE 注释 |
+| App_CustomProtocol.h | 0x0A 注释: epcCnt=0 语义 + 全确认门控 + 0x0F phase 变体 |
+| Protocol/App_Protocol.html | 13.1 业务步骤 4/5 + 请求段 epcCnt 0~4 + W 段 + 流程 ⑴⑵⑵⑸⑹⑺ + 0x0F/0x0D 推送行 + 13.2 err=0/err=2 + endReason note + GET_PROGRESS holdMs + 图 A/B (升起移至 n==m 后, 纯软标旁路) |
+| 测试 | unlock_multi: P1a 更名(epcCnt=0且softCnt=0), M4 断言强化 rise/lower==0, 新增 M10a~d (纯软标受理/升起/CANCEL/AM回1) + M10e (--soft-timeout 5min SOFT_TIMEOUT); soft_real.py end 断言收紧为 ==1 |
+
+### Round_015 台架回归 (固件 2026-09-04 00:40 编译烧录)
+
+- unlock_multi 23 记录: P1×5 ✓ · M1 ✓ (单标全确认后升, 判据 1500ms 整,
+  ALL_OK rise/lower=4321/4321) · **M4 ✓ (PARTIAL 1/2 确认 rise/lower=0/0
+  — 全确认门控实证: 未全过磁块不动)** · M5 ✓ · **M10a~d ✓ (纯软标:
+  受理 phase=5 win=300000, keyUp=0 升起中, CANCEL→ABORTED
+  rise/lower>0, 0x0D[end=1,0,0,0], AM mode 回 1)** · M6×6/M7/R1 ✓。
+- p1 15/0 · p2 16/0 (SELFTEST 全过) · p5_am 16/0 · proto_smoke 21/1
+  (T3c 单轮盘点 0 标签 — 台架硬标已被取走, 非链路故障) ·
+  p6 40/9 + p9 29/1 (B2~B7/O6c/D4/D5 均需真标在场, 属台架条件;
+  D4 终帧 0a0002·0000·0001·rise=0·lower=0 恰为全确认门控 0 确认
+  不动磁块的直接实证) · **M10e ✓ (纯软标 5min 窗满: 305.7s ->
+  end=SOFT_TIMEOUT, rise/lower=4321/4321, softDone=0/1, 裁决5)**。
+- M2 双真标在新门控下未复测 (回归中途硬标被取离读区; 新旧门控对
+  M2 终帧无差异 — 全确认时升起点后移, ALL_OK/bitmap/seq 不变)。
+  台上恢复双标后可一键复测。

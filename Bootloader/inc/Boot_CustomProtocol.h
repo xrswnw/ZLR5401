@@ -10,7 +10,7 @@
 /* =====================================================================*/
 
 #define PROTO_HEADER       0x7753U   /* 帧头 "Sw" LE (0x53 'S' + 0x77 'w')*/
-#define PROTO_VERSION      2
+#define PROTO_VERSION      3
 #define PROTO_MAX_DATA     1024
 #define PROTO_FRAME_MIN    5
 

@@ -1,0 +1,110 @@
+[   0.0s] == 发起 0x10 循环窗 255s: epc=33553463a4000158eb7e7a50 tmo=100 win=20000 holdTop=3000 ==
+[   0.1s] 0x0F 受理: phase=1 winMs=255000
+[   0.1s] 相位=等放标 holdMs=50 total=1 confirmed=0 bm=00 周期=0 ok=0 lastCycle=进行中/无
+[   0.7s] 相位=校对 holdMs=653 total=1 confirmed=0 bm=00 周期=0 ok=0 lastCycle=进行中/无
+[   1.2s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[   1.3s] 相位=升起 holdMs=1231 total=1 confirmed=1 bm=01 周期=1 ok=0 lastCycle=进行中/无
+[   5.4s] 相位=顶部保持 holdMs=5336 total=1 confirmed=1 bm=01 周期=1 ok=0 lastCycle=进行中/无
+[   8.3s] 相位=回降 holdMs=8255 total=1 confirmed=1 bm=01 周期=1 ok=1 lastCycle=进行中/无
+[  13.0s] 相位=等放标 holdMs=12902 total=1 confirmed=1 bm=01 周期=1 ok=1 lastCycle=进行中/无
+[  20.8s] 相位=校对 holdMs=20761 total=1 confirmed=1 bm=01 周期=1 ok=1 lastCycle=进行中/无
+[  29.4s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[  29.4s] 相位=升起 holdMs=29368 total=1 confirmed=1 bm=01 周期=2 ok=1 lastCycle=进行中/无
+[  32.5s] 相位=回降 holdMs=32455 total=1 confirmed=1 bm=01 周期=2 ok=1 lastCycle=移除
+[  40.8s] 相位=校对 holdMs=40685 total=1 confirmed=1 bm=01 周期=2 ok=1 lastCycle=移除
+[  42.4s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[  42.5s] 相位=升起 holdMs=42438 total=1 confirmed=1 bm=01 周期=3 ok=1 lastCycle=移除
+[  44.6s] 相位=回降 holdMs=44500 total=1 confirmed=1 bm=01 周期=3 ok=1 lastCycle=移除
+[  50.5s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[  50.6s] 相位=升起 holdMs=50484 total=1 confirmed=1 bm=01 周期=4 ok=1 lastCycle=移除
+[  55.3s] 相位=顶部保持 holdMs=55202 total=1 confirmed=1 bm=01 周期=4 ok=1 lastCycle=移除
+[  57.8s] 相位=回降 holdMs=57726 total=1 confirmed=1 bm=01 周期=4 ok=1 lastCycle=移除
+[  65.4s] 相位=校对 holdMs=65325 total=1 confirmed=1 bm=01 周期=4 ok=1 lastCycle=移除
+[  70.7s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[  70.8s] 相位=升起 holdMs=70681 total=1 confirmed=1 bm=01 周期=5 ok=1 lastCycle=移除
+[  75.4s] 相位=顶部保持 holdMs=75354 total=1 confirmed=1 bm=01 周期=5 ok=1 lastCycle=移除
+[  77.3s] 相位=回降 holdMs=77221 total=1 confirmed=1 bm=01 周期=5 ok=1 lastCycle=移除
+[  79.7s] 相位=校对 holdMs=79593 total=1 confirmed=1 bm=01 周期=5 ok=1 lastCycle=移除
+[  80.2s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[  80.2s] 相位=升起 holdMs=80169 total=1 confirmed=1 bm=01 周期=6 ok=1 lastCycle=移除
+[  83.2s] 相位=顶部保持 holdMs=83113 total=1 confirmed=1 bm=01 周期=6 ok=1 lastCycle=移除
+[  86.1s] 相位=回降 holdMs=86053 total=1 confirmed=1 bm=01 周期=6 ok=2 lastCycle=移除
+[  90.3s] 相位=等放标 holdMs=90230 total=1 confirmed=1 bm=01 周期=6 ok=2 lastCycle=移除
+[ 103.5s] 相位=校对 holdMs=103398 total=1 confirmed=1 bm=01 周期=6 ok=2 lastCycle=移除
+[ 104.0s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[ 104.1s] 相位=升起 holdMs=104013 total=1 confirmed=1 bm=01 周期=7 ok=2 lastCycle=移除
+[ 108.2s] 相位=顶部保持 holdMs=108137 total=1 confirmed=1 bm=01 周期=7 ok=2 lastCycle=移除
+[ 111.8s] 相位=回降 holdMs=111706 total=1 confirmed=1 bm=01 周期=7 ok=3 lastCycle=移除
+[ 115.9s] 相位=等放标 holdMs=115784 total=1 confirmed=1 bm=01 周期=7 ok=3 lastCycle=移除
+[ 155.8s] 相位=校对 holdMs=155702 total=1 confirmed=1 bm=01 周期=7 ok=3 lastCycle=移除
+[ 158.3s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[ 158.4s] 相位=升起 holdMs=158307 total=1 confirmed=1 bm=01 周期=8 ok=3 lastCycle=移除
+[ 160.9s] 相位=回降 holdMs=160788 total=1 confirmed=1 bm=01 周期=8 ok=3 lastCycle=移除
+[ 165.0s] 相位=校对 holdMs=164947 total=1 confirmed=1 bm=01 周期=8 ok=3 lastCycle=移除
+[ 174.1s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[ 174.1s] 相位=升起 holdMs=174057 total=1 confirmed=1 bm=01 周期=9 ok=3 lastCycle=移除
+[ 176.7s] 相位=回降 holdMs=176591 total=1 confirmed=1 bm=01 周期=9 ok=3 lastCycle=移除
+[ 186.6s] 相位=校对 holdMs=186516 total=1 confirmed=1 bm=01 周期=9 ok=3 lastCycle=移除
+[ 194.5s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[ 194.6s] 相位=升起 holdMs=194525 total=1 confirmed=1 bm=01 周期=10 ok=3 lastCycle=移除
+[ 196.5s] 相位=回降 holdMs=196469 total=1 confirmed=1 bm=01 周期=10 ok=3 lastCycle=移除
+[ 207.6s] 相位=校对 holdMs=207550 total=1 confirmed=1 bm=01 周期=10 ok=3 lastCycle=移除
+[ 208.1s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[ 208.2s] 相位=升起 holdMs=208123 total=1 confirmed=1 bm=01 周期=11 ok=3 lastCycle=移除
+[ 212.9s] 相位=顶部保持 holdMs=212804 total=1 confirmed=1 bm=01 周期=11 ok=3 lastCycle=移除
+[ 214.8s] 相位=回降 holdMs=214765 total=1 confirmed=1 bm=01 周期=11 ok=3 lastCycle=移除
+[ 218.9s] 相位=校对 holdMs=218865 total=1 confirmed=1 bm=01 周期=11 ok=3 lastCycle=移除
+[ 219.5s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[ 219.6s] 相位=升起 holdMs=219484 total=1 confirmed=1 bm=01 周期=12 ok=3 lastCycle=移除
+[ 223.2s] 相位=顶部保持 holdMs=223088 total=1 confirmed=1 bm=01 周期=12 ok=3 lastCycle=移除
+[ 225.6s] 相位=回降 holdMs=225582 total=1 confirmed=1 bm=01 周期=12 ok=3 lastCycle=移除
+[ 230.9s] 相位=校对 holdMs=230811 total=1 confirmed=1 bm=01 周期=12 ok=3 lastCycle=移除
+[ 231.4s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[ 231.5s] 相位=升起 holdMs=231381 total=1 confirmed=1 bm=01 周期=13 ok=3 lastCycle=移除
+[ 235.2s] 相位=回降 holdMs=235158 total=1 confirmed=1 bm=01 周期=13 ok=3 lastCycle=移除
+[ 241.3s] 相位=校对 holdMs=241231 total=1 confirmed=1 bm=01 周期=13 ok=3 lastCycle=移除
+[ 247.9s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[ 247.9s] 相位=升起 holdMs=247862 total=1 confirmed=1 bm=01 周期=14 ok=3 lastCycle=移除
+[ 252.6s] 相位=顶部保持 holdMs=252553 total=1 confirmed=1 bm=01 周期=14 ok=3 lastCycle=移除
+[ 255.6s] 相位=回降 holdMs=255548 total=1 confirmed=1 bm=01 周期=14 ok=4 lastCycle=移除
+[ 259.6s] == 终帧: err=0 ==
+[ 259.6s]    endReason=1(ALL_OK) bm=01 rise=4301 lower=4249 elapsed=65535ms
+[ 259.6s]    周期: cycles=14 ok=4 fail=10  (ok+fail=自洽)
+[ 259.6s] == 监控结束, 复位事件=0 ==
+[   0.0s] == 发起 0x10 循环窗 255s: epc=33553463a4000158eb7e7a50 tmo=100 win=20000 holdTop=3000 ==
+[   0.1s] 0x0F 受理: phase=1 winMs=255000
+[   0.1s] 相位=等放标 holdMs=51 total=1 confirmed=0 bm=00 周期=0 ok=0 lastCycle=进行中/无
+[   6.6s] 相位=校对 holdMs=6487 total=1 confirmed=0 bm=00 周期=0 ok=0 lastCycle=进行中/无
+[   7.1s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[   7.1s] 相位=升起 holdMs=7062 total=1 confirmed=1 bm=01 周期=1 ok=0 lastCycle=进行中/无
+[  11.2s] 相位=回降 holdMs=11160 total=1 confirmed=1 bm=01 周期=1 ok=0 lastCycle=更换
+[  15.4s] 相位=校对 holdMs=15324 total=1 confirmed=1 bm=01 周期=1 ok=0 lastCycle=更换
+[  27.7s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[  27.8s] 相位=升起 holdMs=27706 total=1 confirmed=1 bm=01 周期=2 ok=0 lastCycle=更换
+[  31.9s] 相位=顶部保持 holdMs=31860 total=1 confirmed=1 bm=01 周期=2 ok=0 lastCycle=更换
+[  34.9s] 相位=回降 holdMs=34830 total=1 confirmed=1 bm=01 周期=2 ok=1 lastCycle=更换
+[  39.6s] 相位=等放标 holdMs=39497 total=1 confirmed=1 bm=01 周期=2 ok=1 lastCycle=更换
+[  48.9s] 相位=校对 holdMs=48801 total=1 confirmed=1 bm=01 周期=2 ok=1 lastCycle=更换
+[  55.5s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[  55.5s] 相位=升起 holdMs=55438 total=1 confirmed=1 bm=01 周期=3 ok=1 lastCycle=更换
+[  60.2s] 相位=顶部保持 holdMs=60161 total=1 confirmed=1 bm=01 周期=3 ok=1 lastCycle=更换
+[  63.4s] 相位=回降 holdMs=63308 total=1 confirmed=1 bm=01 周期=3 ok=1 lastCycle=移除
+[  70.6s] 相位=校对 holdMs=70535 total=1 confirmed=1 bm=01 周期=3 ok=1 lastCycle=移除
+[  92.9s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[  93.0s] 相位=升起 holdMs=92963 total=1 confirmed=1 bm=01 周期=4 ok=1 lastCycle=移除
+[  97.2s] 相位=顶部保持 holdMs=97099 total=1 confirmed=1 bm=01 周期=4 ok=1 lastCycle=移除
+[ 100.1s] 相位=回降 holdMs=100057 total=1 confirmed=1 bm=01 周期=4 ok=2 lastCycle=移除
+[ 104.8s] 相位=等放标 holdMs=104743 total=1 confirmed=1 bm=01 周期=4 ok=2 lastCycle=移除
+[   0.0s] == 发起 0x10 循环窗 60s: epc=33553463a4000158eb7e7a50 tmo=100 win=20000 holdTop=3000 ==
+[   0.1s] 0x0F 受理: phase=1 winMs=60000
+[   0.1s] 相位=等放标 holdMs=50 total=1 confirmed=0 bm=00 周期=0 ok=0 lastCycle=进行中/无
+[   0.7s] 相位=校对 holdMs=653 total=1 confirmed=0 bm=00 周期=0 ok=0 lastCycle=进行中/无
+[   1.2s] 0x0B 周期确认: 判据耗时=257ms (epcLen=12)
+[   1.3s] 相位=升起 holdMs=1219 total=1 confirmed=1 bm=01 周期=1 ok=0 lastCycle=进行中/无
+[   5.5s] 相位=顶部保持 holdMs=5403 total=1 confirmed=1 bm=01 周期=1 ok=0 lastCycle=进行中/无
+[   8.4s] 相位=回降 holdMs=8342 total=1 confirmed=1 bm=01 周期=1 ok=1 lastCycle=进行中/无
+[  13.1s] 相位=等放标 holdMs=13029 total=1 confirmed=1 bm=01 周期=1 ok=1 lastCycle=进行中/无
+[  60.3s] == 终帧: err=0 ==
+[  60.3s]    endReason=1(ALL_OK) bm=01 rise=4267 lower=4299 elapsed=60021ms
+[  60.3s]    周期: cycles=1 ok=1 fail=0  (ok+fail=自洽)
+[  60.3s] == 监控结束, 复位事件=0 ==

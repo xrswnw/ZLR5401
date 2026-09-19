@@ -3,16 +3,7 @@
   "33553463a4000158eb7e7507"
  ],
  "am_link": true,
- "selftest": {
-  "err": 0,
-  "errBits": 0,
-  "motorCommOk": 1,
-  "drvFault": 0,
-  "uhfLink": 0,
-  "amLink": 0,
-  "paramCrc": 0,
-  "switchErr": 0
- },
+ "selftest": null,
  "ir_gate": "triggered(err=0)",
  "ir_err": 0,
  "jlink": true

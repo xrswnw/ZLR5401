@@ -1,0 +1,6 @@
+[   0.1s] phase=WAIT_TAG cycles=8 ok=0 lastCycle=2
+[  16.2s] 推帧 0b010c33553463a4000158eb7e7a5001018e00ffff
+[  16.3s] phase=RISE cycles=9 ok=0 lastCycle=2
+[  18.6s] phase=HOLD cycles=9 ok=0 lastCycle=2
+[  20.4s] phase=LOWER cycles=9 ok=0 lastCycle=2
+[  22.7s] 终帧 err=0 endReason=3 周期=9/0/9

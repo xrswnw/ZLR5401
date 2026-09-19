@@ -1,0 +1,29 @@
+[   0.1s] 推帧 0f000120bf02
+[   0.1s] phase=WAIT_TAG cycles=0 ok=0 lastCycle=0
+[   7.4s] 推帧 0b010c33553463a4000158eb7e7a5001018f00af1c
+[   7.5s] phase=RISE cycles=1 ok=0 lastCycle=0
+[   9.8s] phase=HOLD cycles=1 ok=0 lastCycle=0
+[  12.8s] phase=LOWER cycles=1 ok=1 lastCycle=1
+[  15.0s] phase=WAIT_TAG cycles=1 ok=1 lastCycle=1
+[ 126.6s] 推帧 0b010c33553463a4000158eb7e7a5001018b00ffff
+[ 126.6s] phase=RISE cycles=2 ok=1 lastCycle=1
+[ 129.0s] phase=HOLD cycles=2 ok=1 lastCycle=1
+[ 130.1s] phase=LOWER cycles=2 ok=1 lastCycle=2
+[ 132.2s] phase=VERIFY cycles=2 ok=1 lastCycle=2
+[ 135.1s] 推帧 0b010c33553463a4000158eb7e7a500101a70bffff
+[ 135.3s] phase=RISE cycles=3 ok=1 lastCycle=2
+[ 136.6s] phase=LOWER cycles=3 ok=1 lastCycle=2
+[ 138.1s] 推帧 0b010c33553463a4000158eb7e7a5001018d00ffff
+[ 138.2s] phase=RISE cycles=4 ok=1 lastCycle=2
+[ 139.9s] phase=LOWER cycles=4 ok=1 lastCycle=2
+[ 140.5s] phase=VERIFY cycles=4 ok=1 lastCycle=2
+[ 140.7s] 推帧 0b010c33553463a4000158eb7e7a500101c200ffff
+[ 140.8s] phase=RISE cycles=5 ok=1 lastCycle=2
+[ 142.3s] phase=HOLD cycles=5 ok=1 lastCycle=2
+[ 142.6s] phase=LOWER cycles=5 ok=1 lastCycle=2
+[ 144.9s] phase=VERIFY cycles=5 ok=1 lastCycle=2
+[ 145.0s] 推帧 0b010c33553463a4000158eb7e7a500101be00ffff
+[ 145.2s] phase=RISE cycles=6 ok=1 lastCycle=2
+[ 145.6s] phase=LOWER cycles=6 ok=1 lastCycle=2
+[ 146.6s] phase=VERIFY cycles=6 ok=1 lastCycle=2
+[ 180.1s] 终帧 err=0 endReason=1 rise=1172 lower=1410 周期=6/1/5

@@ -74,6 +74,11 @@ int      App_UHF_Close(void);             /* 停止 + 下电 */
 int      App_UHF_Inventory(void);         /* 发起一次盘点 (默认 1s 超时, 0x22 多标签) */
 int      App_UHF_InventoryTimeout(uint16_t timeoutMs); /* 发起一次盘点, 指定超时 (0x22 多标签) */
 int      App_UHF_InventorySync(uint16_t timeoutMs);    /* 同步阻塞盘点: 完成 0x22->0x29 并返标签数 */
+int      App_UHF_InventoryOneSync(uint16_t timeoutMs, AppUHFTag_t *out, uint32_t *elapsedMs);
+                                    /* 同步阻塞单标签盘点 (0x21): Timeout 内读到 1 张立即返,
+                                     * EPC 直接在响应中 (无 0x29 取回, 无 RSSI 元数据)。
+                                     * out/elapsedMs 可 NULL; elapsedMs=发帧->收响应耗时。
+                                     * 返回 APP_UHF_ERR_OK / NO_TAG / TIMEOUT / BUSY 等 */
 
 /* ---- 自动扫描 (连续盘点, 标签入缓冲不主动上报; 主机用 GET_TAGS 拉取) ---- */
 int      App_UHF_ScanStart(uint16_t cycleMs);  /* 启动连续扫描: 每轮 0x22->0x29 入缓冲, 回 READY 立起下一轮 */
@@ -128,6 +133,7 @@ typedef struct {
     uint16_t rspLen;
 } AppUHFDump_t;
 void App_UHF_GetDump(AppUHFDump_t *d);    /* 拷贝诊断记录 */
+void App_UHF_GetInv1Dbg(uint8_t *v);      /* Round_013 调试: 0x21 同步盘点结果计数 [ok,notRdy,busy,noTag,tmo,other] (IO_DIAG 带出) */
 
 /* 错误码 */
 #define APP_UHF_ERR_OK          0

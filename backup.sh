@@ -24,9 +24,11 @@ SIZE_LIMIT_MB=500
 # 白名单：顶层目录（全量复制其内容）
 WHITELIST_DIRS=(.claude .vscode Application Bootloader Protocol Agent ChangeLog)
 # 白名单：根目录下文件（按 glob 匹配）
-WHITELIST_ROOT_GLOBS=("*.sh" "CMakeLists.txt" ".gitignore" "toolchain-arm-none-eabi.cmake" "backup_tool.py")
+WHITELIST_ROOT_GLOBS=("*.sh" "CMakeLists.txt" "CLAUDE.md" ".gitignore" "toolchain-arm-none-eabi.cmake" "backup_tool.py")
 # 复制时在白名单目录内部排除的条目
-INTERNAL_EXCLUDE=(".DS_Store" "__pycache__" ".git")
+#   node_modules: Protocol/ 的 npm 第三方包, 按全局规则 2.3 排除第三方目录, 且曾致快照超限
+#   (._* 边车无法在复制时排除, 由下方清除段统一处理)
+INTERNAL_EXCLUDE=(".DS_Store" "__pycache__" ".git" "node_modules")
 
 CHANGELOG_DIR="${BACKUP_ROOT}/ChangeLog"
 CHANGELOG_FILE="${CHANGELOG_DIR}/Changelog.log"
@@ -121,6 +123,16 @@ if [ -f "${GLOBAL_CLAUDE_MD}" ]; then
     echo "    [copy] _global_CLAUDE.md (全局约束规则副本)"
 fi
 
+# ---------- exFAT ._ 边车清除 ----------
+# macOS provenance 机制: 每个新写入 exFAT 卷的文件都会自动生成 ._ 边车文件
+# (含 com.apple.provenance xattr, 无法从复制工具层面禁止, 即使 touch 也会生成)。
+# 边车是本脚本复制过程的副产品而非工程文件, 保留会令快照文件数翻倍并在回滚时
+# 污染工程目录, 故复制完成后统一清除。用户已于 2026-09-04 确认授权此清除。
+APPLEDOUBLE_PURGED=$(find "${ROUND_DIR}" -name '._*' -type f -delete -print | wc -l | tr -d ' ')
+if [ "${APPLEDOUBLE_PURGED}" -gt 0 ]; then
+    echo "    [pur ] 已清除 ${APPLEDOUBLE_PURGED} 个 exFAT ._ 边车文件"
+fi
+
 # ---------- 快照大小统计 ----------
 SNAP_SIZE_BYTES=$(du -sk "${ROUND_DIR}" | awk '{print $1 * 1024}')
 SNAP_SIZE_MB=$(echo "scale=2; ${SNAP_SIZE_BYTES} / 1048576" | bc)
@@ -131,18 +143,15 @@ fi
 echo "    快照大小:  ${SNAP_SIZE_MB}M  (${SIZE_STATUS}, 上限 ${SIZE_LIMIT_MB}M)"
 
 # ---------- 验证：源-目的文件计数对比 ----------
+# 源/目的使用同一套排除规则（与 INTERNAL_EXCLUDE 对应）：
+#   .DS_Store / __pycache__ / .git / node_modules 按路径排除；._* 边车按名排除
 SRC_COUNT=0
 for dir in "${WHITELIST_DIRS[@]}"; do
     src_dir="${SRC}/${dir}"
     [ -e "${src_dir}" ] || continue
-    excl_args=()
-    for e in "${INTERNAL_EXCLUDE[@]}"; do
-        excl_args+=( ! -name "$e" )
-    done
-    # 统计源白名单目录内文件（排除内部排除项与 .git 等目录）
     n=$(find "${src_dir}" -type f \
-        ! -name ".DS_Store" ! -name "__pycache__" \
-        -not -path "*/.git/*" 2>/dev/null | wc -l | tr -d ' ')
+        ! -name ".DS_Store" ! -name "._*" \
+        -not -path "*/__pycache__/*" -not -path "*/.git/*" -not -path "*/node_modules/*" 2>/dev/null | wc -l | tr -d ' ')
     SRC_COUNT=$((SRC_COUNT + n))
 done
 # 加根文件
@@ -155,7 +164,7 @@ for pat in "${WHITELIST_ROOT_GLOBS[@]}"; do
 done
 [ -f "${GLOBAL_CLAUDE_MD}" ] && SRC_COUNT=$((SRC_COUNT + 1))
 
-DST_COUNT=$(find "${ROUND_DIR}" -type f | wc -l | tr -d ' ')
+DST_COUNT=$(find "${ROUND_DIR}" -type f ! -name "._*" | wc -l | tr -d ' ')
 VERIFY="源=${SRC_COUNT} 目的=${DST_COUNT}"
 if [ "${SRC_COUNT}" -ne "${DST_COUNT}" ]; then
     VERIFY="${VERIFY} [WARN: 计数不一致]"
