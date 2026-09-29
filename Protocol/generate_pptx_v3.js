@@ -1,23 +1,19 @@
-// ZLR5401 应用层通信协议 — 客户版 PPT (V1.7 · 2026-09-29)
-// V1.7: 老清单业务链 (0x23 01/02/03/05/06/07) 整批废除 — 码位回 PARAM,
-//   状态查询页改"已废除命令组"页; 灯语页 0x05 引用改自检/IO 诊断
-// V1.6: 0x09 进度改 v3 九字节布局 — status 单字节观测位图 (BUSY/IR/TAG/
-//   MOTOR/FGN/ALARM/UHF, bit3-4 电机状态), phase/motorPh/flags 三字段折叠;
-//   0x0F 受理帧字节[2] 同步改 statusBits (0x10=0x01 / 0x11=0x05); 拉模式
-//   (建议 100ms 轮询); 新增 statusBits 位定义+速查值页
-// V1.5: 解锁态门禁收紧为仅 0x04/0x09；外来缓存扩至 10；电机保持 2000 微步/s
-// V1.4: 0x10 多标签名单 + 新状态机 (任意非空子集有效 / 外来介入报警 / 在场即保持)
-//   · 0x11 恢复 AM 控制 (受理切消磁 → 达标/超窗挂起) · 0x09 进度 v2 (motorPh / flags)
-//   · 电机全腿统一 2000 微步/s · 蜂鸣增补异常报警节奏
-// V1.3: 解锁章 0x0A→0x10 EPC + 0x11 AM 双通道重做 · 双流程图 · 灯控映射更新
-//   增补: AM 消磁器控制章移除 (固件零控制, 0x22 转厂商内部) · hex 单行化 + 动态测试帧防踩踏
+// ZLR5401 应用层通信协议 — 客户版 PPT (V1.4 · 2026-09-29)
+// V1.4 = 现行固件实际落地形态的全量描述 (旧 1.x 版本历史废止):
+//   · 解锁: 0x10 EPC / 0x11 AM 双通道 + 0x04 取消 + 0x09 进度
+//     (0x01/0x02/0x03/0x05/0x06/0x07 老清单链与 0x08/0x0A 已废除, 不设
+//      历史页 — 本文档只描述现行为)
+//   · 0x09: v3 九字节布局, status 单字节观测位图
+//     (BUSY/IR/TAG/MOTOR/FGN/ALARM/UHF, bit3-4 电机状态) + 速查值页
+//   · 0x0F 受理帧字节[2] = statusBits (0x10=0x01 / 0x11=0x05)
+//   · 电机 2000 µ步/s; 外来缓存 10; 解锁态门禁仅 0x04/0x09
 // 风格: 晕染水彩 (白纸底 · 青绿晕染 · 金色点缀 · 宋体标题) — 参照水彩风模板 (17)
 const pptxgen = require("pptxgenjs");
 
 const pres = new pptxgen();
 pres.layout = "LAYOUT_WIDE";
 pres.author = "ZLR5401";
-pres.title = "ZLR5401 应用层通信协议 V1.7";
+pres.title = "ZLR5401 应用层通信协议 V1.4";
 
 const A = "assets"; // 水彩素材 (相对本脚本目录)
 
@@ -193,7 +189,7 @@ function cmdPage({ head, tag, hex, desc, reqRows, rspRows, note, test, testY, fi
   s.addText("ZLR5401", { x: 4.3, y: 2.0, w: 4.75, h: 0.85, fontSize: 44, bold: true, color: C.green, fontFace: FT, align: "center", margin: 0, charSpacing: 3 });
   s.addText("应用层通信协议", { x: 4.3, y: 2.9, w: 4.75, h: 0.75, fontSize: 32, color: C.ink, fontFace: FT, align: "center", margin: 0 });
   s.addText([
-    { text: "V1.7", options: { bold: true, color: C.gold } },
+    { text: "V1.4", options: { bold: true, color: C.gold } },
     { text: "（2026-09-29）", options: { color: C.muted } },
   ], { x: 4.3, y: 4.0, w: 4.75, h: 0.5, fontSize: 18, fontFace: FT, align: "center", margin: 0 });
   s.addText("帧格式 · 系统层命令 · UHF 控制 · 解锁命令 · 灯控映射", {
@@ -256,14 +252,7 @@ function cmdPage({ head, tag, hex, desc, reqRows, rspRows, note, test, testY, fi
     { text: "说明", options: { bold: true, fill: { color: C.headFill }, color: C.green, fontSize: 12.5 } },
   ];
   const vrows = [
-    ["V1.0", "2026-08-24", "初版定版"],
-    ["V1.1", "2026-09-12", "增补 CRC 算法与 HID 传输层"],
-    ["V1.2", "2026-09-19", "增补行程开关异常灯语"],
-    ["V1.3", "2026-09-20", "解锁 0x10 / 0x11 双通道；移除 AM 控制章"],
-    ["V1.4", "2026-09-29", "0x10 多标签新状态机；0x11 恢复 AM 控制；电机提速 2000"],
-    ["V1.7", "2026-09-29", "老清单业务链 01/02/03/05/06/07 整批废除（回 PARAM），解锁仅 0x10/0x11/0x04/0x09"],
-    ["V1.6", "2026-09-29", "0x09 v3 九字节位图布局 + statusBits 速查页 + 0x0F 受理帧同步"],
-    ["V1.5", "2026-09-29", "电机保持 2000；解锁态仅 0x04/0x09；外来缓存扩至 10"],
+    ["V1.4", "2026-09-29", "现行固件全量描述：解锁 0x10/0x11 双通道、0x09 statusBits 位图、0x0F 受理帧同步、电机 2000 µ步/s"],
   ];
   s.addTable([vh, ...vrows.map((r, i) => r.map((c, j) => ({
     text: c, options: { fill: { color: i % 2 ? C.rowFill : "FFFFFF" }, color: C.ink, fontSize: 12, align: j < 2 ? "center" : "left" },
@@ -367,7 +356,7 @@ IN : 02 53 77 01 00 21 00 FE 00 03 01 1C D9 37 30 38 33 0B 00 39 35 37 39
     ["0x07", "系统层", "设备信息", "读取设备地址与硬件 / 软件版本"],
     ["0x08", "系统层", "软件复位", "设备回 OK 后立即复位重启"],
     ["0x21", "UHF 控制", "超高频读写", "盘点、读写标签、配置、链路状态、自动扫描"],
-    ["0x23", "解锁命令", "开锁业务", "EPC 解锁 0x10 / AM 解锁 0x11、取消 0x04、进度查询 0x09、事件推送（01/02/03/05/06/07 已废除）"],
+    ["0x23", "解锁命令", "开锁业务", "EPC 解锁 0x10 / AM 解锁 0x11、取消 0x04、进度查询 0x09、事件推送 0x0F/0x0B/0x0C/0x0E"],
   ];
   const header = ["功能码", "类别", "名称", "用途"].map(t => ({ text: t, options: { bold: true, fill: { color: C.headFill }, color: C.green, fontSize: 13 } }));
   const body = rows.map((r, i) => r.map((c, j) => ({
@@ -655,29 +644,15 @@ cmdPage({
   rspRows: [["cmd / err", "2", "回显 + 0 = 成功（立即回帧）"]],
 });
 
-cmdPage({
-  head: "已废除命令组", tag: "解锁 · 0x23 01·02·03·05·06·07",
-  hex: "0x23\n·05",
-  test: [{ tag: "示例 · 0x05 下发（V1.7）", hex: "53 77 01 00 06 00 23 05 7E 4F 2F 5A",
-    exp: "老清单状态查询 — 已废除，回 err=2 PARAM。",
-    rsp: { hex: "53 77 01 00 07 00 DC 05 02 F3 29 85 E7",
-      exp: "err=2 · 码位保留但拒绝执行" } }],
-  desc: "V1.7 起，老清单业务链整批废除（用户裁决：老清单业务彻底不回归，现在只有 0x10 / 0x11 解锁）。以下六个码位保留但一律回 err=2 PARAM：0x01 配置清单 / 0x02 追加 EPC / 0x03 启动扫描 / 0x05 状态查询 / 0x06 软标上报 / 0x07 事件队列取件。解锁进度统一走 0x09（statusBits 位图），解锁事件统一走推送帧 0x0F / 0x0B / 0x0C / 0x0E。处置先例同 0x08 / 0x0A。",
-  reqRows: [["cmd", "1", "0x01 / 0x02 / 0x03 / 0x05 / 0x06 / 0x07"]],
-  rspRows: [
-    ["cmd / err", "2", "回显 + 恒 2 = PARAM（码位废除）"],
-    ["—", "—", "无其余字段；主机不得再下发本组命令"],
-  ],
-});
 
 cmdPage({
   head: "进度查询", tag: "解锁 · 0x23 09",
   hex: "0x23\n·09",
-  test: [{ tag: "测试帧（v3 位图布局）", hex: "53 77 01 00 06 00 23 09 1A D4 23 6F",
+  test: [{ tag: "测试帧（实测）", hex: "53 77 01 00 06 00 23 09 1A D4 23 6F",
     exp: "拉取实时进度：单字节状态位图 + 计数（一问一答，节奏由上位机定，建议 100 ms）。",
     rsp: { hex: "53 77 01 00 0E 00 DC 09 00 15 02 0C 01 00 01 00 AB 42 2C 83",
       exp: "err=0 · status=0x15 在顶保持 · 2 张确认 · 已 12 s · 升顶 1 次 · 上次循环=升至顶" } }],
-  desc: "解锁流程中拉取实时进度（V1.6 起 0x10 / 0x11 统一 v3 布局，9 字节）；无流程时全零（status=0x00 无歧义）。status 单字节只陈述可观测事实，上位机查表即读，无需理解流程内部相位。",
+  desc: "解锁流程中拉取实时进度（0x10 / 0x11 统一布局，9 字节）；无流程时全零（status=0x00 无歧义）。status 单字节只陈述可观测事实，上位机查表即读，无需理解流程内部相位。",
   reqRows: [["cmd", "1", "0x09"]],
   rspRows: [
     ["cmd / err", "2", "回显 + 错误码"],
@@ -736,7 +711,7 @@ cmdPage({
     { tag: "推送帧 · 0x0B 标签稳定确认", hex: "53 77 01 00 14 00 DC 0B 01 06 AA AA AA AA AA AA 01 02 51 00 03 00 95 EC 03 D5",
       exp: "第 1 张稳定在场 · 81 ms 判据。" },
   ],
-  desc: "EPC 解锁（V1.4 重设计）：下发超时窗 + 名单 1~10 张变长 EPC；任意非空子集稳定在场 + 红外遮挡 → 升起 → 在场即保持，异常报警快速下行、恢复再升，循环至超窗（详见流程图页）。",
+  desc: "EPC 解锁：下发超时窗 + 名单 1~10 张变长 EPC；任意非空子集稳定在场 + 红外遮挡 → 升起 → 在场即保持，异常报警快速下行、恢复再升，循环至超窗（详见流程图页）。",
   fieldW: 1.95,
   reqRows: [
     ["cmd", "1", "0x10"],
@@ -767,7 +742,7 @@ cmdPage({
     { tag: "推送帧 · 0x0E 每解锁一张", hex: "53 77 01 00 08 00 DC 0E 01 03 40 B3 99 4B",
       exp: "done=1 · 一张一帧 · 白单闪。" },
   ],
-  desc: "AM 解锁（V1.4 恢复消磁控制）：受理即切消磁模式 → 逐帧即时计数（一条 = 一张，无等待无稳定判定）→ 达标 / 超窗即挂起消磁 → 蜂鸣 1 s + 绿三闪结账，全程不动电机（详见流程图页）。",
+  desc: "AM 解锁（消磁控制）：受理即切消磁模式 → 逐帧即时计数（一条 = 一张，无等待无稳定判定）→ 达标 / 超窗即挂起消磁 → 蜂鸣 1 s + 绿三闪结账，全程不动电机（详见流程图页）。",
   reqRows: [
     ["cmd", "1", "0x11"],
     ["amCnt", "1", "期望张数 0 ~ 255；0 = 无计数门受理即结账 ALL_OK"],
@@ -798,17 +773,15 @@ cmdPage({
     ["0", "成功"], ["1", "忙 BUSY（须先取消）"], ["2", "参数非法"],
     ["3 / 4", "UHF 启动 / 链路失败"], ["7", "未回零 / 行程开关错误"],
     ["8 / 9", "电机故障 / 电机超时"], ["10", "AM 链路 / 切模式失败（0x11）"],
-    ["11", "光电等待窗满（0x10 · 已废除通道保留）"],
-  ], 4.55, 1.62, 3.9);
+      ], 4.55, 1.62, 3.9);
   s.addText("结束原因 endReason（err=0）", { x: 8.85, y: 1.25, w: 3.9, h: 0.32, fontSize: 13, bold: true, color: C.green, fontFace: FB, margin: 0 });
   kvTable(s, [
     ["1", "ALL_OK：0x10 超窗时在顶（曾升起保持）/ 0x11 计数达标"],
-    ["2", "（V1.4 起 0x10 不再触发，保留码位）"],
-    ["3", "0x10 超窗未在顶（未升起 / 异常回降后未恢复）/ 0x11 计数窗满未达标"],
+        ["3", "0x10 超窗未在顶（未升起 / 异常回降后未恢复）/ 0x11 计数窗满未达标"],
     ["4", "UHF 链路失联（0x10）"],
     ["6", "被 0x04 取消（0x11 无机械段，窗内即回）"],
   ], 8.85, 1.62, 3.9);
-  s.addText("0x11 全程不动电机：err 7 / 8 / 9 对 0x11 不可达（编码保留兼容）；受理切消磁失败 3 次重试后按 err=10 结账，挂起失败仅终帧 deactFail=1 如实上报。0x0A 多标签解锁已停用（任意请求回 err=2）。",
+  s.addText("0x11 全程不动电机：受理切消磁失败 3 次重试后按 err=10 结账；挂起失败仅终帧 deactFail=1 如实上报。",
     { x: 4.55, y: 5.35, w: 8.2, h: 0.9, fontSize: 11.5, color: C.muted, fontFace: FB, margin: 0, valign: "top", lineSpacingMultiple: 1.25 });
 }
 
@@ -950,10 +923,10 @@ cmdPage({
 
   // 左侧异常出口
   const exits = [
-    ["计数窗满未达标", "endReason = 3 · 黄慢闪 2 s", 3.0],
-    ["窗内 0x04 取消", "endReason = 6（尽力挂起 · 无机械段）", 4.6],
-    ["帧长 / tmo=0 非法", "err = 2", 6.2],
-    ["切消磁模式失败（3 次重试）", "err = 10 · 红双闪", 7.6],
+    ["帧长 / tmo=0 非法", "err = 2", 2.2],
+    ["切消磁模式失败（3 次重试）", "err = 10 · 红双闪", 3.6],
+    ["计数窗满未达标", "endReason = 3 · 黄慢闪 2 s", 5.0],
+    ["窗内 0x04 取消", "endReason = 6（尽力挂起 · 无机械段）", 6.4],
   ];
   s.addText("异常出口", { x: M, y: 1.15, w: 3.0, h: 0.32, fontSize: 12.5, bold: true, color: C.green, fontFace: FB, margin: 0 });
   exits.forEach((e) => {
@@ -971,7 +944,7 @@ cmdPage({
     fill: { color: C.rowFill }, line: { color: C.border, width: 1 },
   });
   s.addText([
-    { text: "AM 消磁控制（V1.4 恢复）\n", options: { bold: true, fontSize: 13, color: C.green } },
+    { text: "AM 消磁控制\n", options: { bold: true, fontSize: 13, color: C.green } },
     { text: "受理即切消磁模式，达标 / 超窗 / 取消即挂起（切仅检测）\n", options: { fontSize: 11, color: C.ink, breakLine: true } },
     { text: "模式切换经回显确认，失败重试 3 次\n", options: { fontSize: 11, color: C.ink, breakLine: true } },
     { text: "每收到一条消磁成功帧立即入账一计（无等待无稳定判定）\n", options: { fontSize: 11, color: C.ink, breakLine: true } },
@@ -1047,10 +1020,10 @@ cmdPage({
   s.background = { color: C.paper };
   s.addImage({ path: `${A}/wash_right.png`, x: W - 4.5, y: H - 2.6, w: 4.5, h: 2.6, transparency: 15, flipH: true, flipV: true });
   s.addShape(pres.shapes.LINE, { x: M, y: 2.95, w: 2.4, h: 0, line: { color: C.goldLine, width: 1.5 } });
-  s.addText("V1.7", { x: M, y: 3.25, w: 8, h: 0.8, fontSize: 38, bold: true, color: C.green, fontFace: FT, margin: 0 });
-  s.addText("V1.7 于 2026-09-29 发布：老清单业务链（0x01 配置 / 0x02 追加 / 0x03 启动 / 0x05 状态查询 / 0x06 软标上报 / 0x07 事件队列）整批废除，码位保留一律回 err=2 PARAM；解锁业务仅剩 0x10 EPC / 0x11 AM 双通道 + 0x04 取消 / 0x09 进度；固件 App_Locker 模块退出编译，互斥由解锁流程独立承担。历史变更见版本说明。",
+  s.addText("V1.4", { x: M, y: 3.25, w: 8, h: 0.8, fontSize: 38, bold: true, color: C.green, fontFace: FT, margin: 0 });
+  s.addText("V1.4 (2026-09-29)：本文档描述现行固件实际落地形态 — 解锁业务为 0x10 EPC / 0x11 AM 双通道，辅以 0x04 取消与 0x09 进度查询（statusBits 单字节位图，轮询建议 100 ms 拉模式）；事件经推送帧 0x0F / 0x0B / 0x0C / 0x0E 主动上报；电机全腿 2000 µ步/s；防踩踏三锁（单腿串行 / 回降免疫 / 门禁）。",
     { x: M, y: 4.25, w: 9, h: 0.5, fontSize: 14, color: C.muted, fontFace: FB, margin: 0 });
 }
 
-pres.writeFile({ fileName: "/Users/swnw/Documents/Software/ZLR5401/Protocol/App_Protocol_V1.7.pptx" })
+pres.writeFile({ fileName: "/Users/swnw/Documents/Software/ZLR5401/Protocol/App_Protocol_V1.4.pptx" })
   .then(() => console.log("OK"));
