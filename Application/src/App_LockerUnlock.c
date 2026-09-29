@@ -99,42 +99,43 @@ void App_LockerUnlock_GetProgress(LockerUnlockProgress_t *p)
 {
     if (!p) return;
     Memset8((void*)p, 0, sizeof(*p));
-    p->phase = s_phase;
-    if (!s_busy) return;
-    p->total = s_total;
-    p->confirmed = s_confirmed;
-    p->confirmedBitmap = s_bitmap;
-    p->softCnt = s_softCnt;
-    p->softDone = s_softDone;
+    if (!s_busy) return;                   /* 空闲: 全零 (status=0x00) */
+    p->status |= UNLK_ST_BUSY;
+    /* 0x10: tag=当前 CONFIRMED 有效子集张数 (s_validCnt 每拍重算;
+     * 不用 s_confirmed — 它仅在 TRACKING->CONFIRMED 跃迁时递增,
+     * 已确认标签的后续拍不重新计数, 不能反映"当前在场" (Round_016 修)。
+     * 0x11: s_confirmed=已解锁数 (am_count_take 维护) */
+    p->tag       = s_amDemagFlag ? s_confirmed : s_validCnt;
+    p->riseCnt   = s_riseCnt;
+    p->alarmCnt  = s_alarmCnt;
     p->lastCycle = s_lastCyc;
-    p->motorPhase = s_mph;                 /* Round_014 v2: 电机子状态 */
     if (s_irMs != 0u) {
-        p->holdMs = SysTickHl_GetMs() - s_irMs;
+        uint32_t es = (SysTickHl_GetMs() - s_irMs) / 1000u;
+        p->elapsed = (es > 0xFFu) ? 0xFFu : (uint8_t)es;
     }
-    uint32_t now = SysTickHl_GetMs();
-    for (uint8_t i = 0; i < s_total; i++) {
-        if ((s_tag[i].state == UTAG_TRACKING || s_tag[i].state == UTAG_CONFIRMED) &&
-            (now - s_tag[i].lastSeen) <= EPC_ABSENT_MS) {
-            p->tagPresent = 1u;
-            break;
-        }
+    /* Round_016 v3 statusBits: 0x10 全量; 0x11 仅 TAG(=消磁在线, am_run 维护
+     * s_validCnt=0 使 TAG/IR/FGN/ALARM 自然为零) */
+    if (s_amDemagFlag) {
+        p->status |= UNLK_ST_TAG;           /* 0x11: 消磁模式在线+收帧中 */
+        return;                             /* 0x11 其余位恒 0 */
     }
-    /* Round_014 v2 flags 位图 (0x10: 全量; 0x11: 仅 DEMAG_ON 由 am_run 维护) */
-    if (s_total != 0u && s_validCnt > 0u)  p->flags |= UNLK_FLG_VALID_STABLE;
-    if (s_fgnActive)                       p->flags |= UNLK_FLG_FGN_ACTIVE;
-    if (s_alarmActive)                     p->flags |= UNLK_FLG_ALARM;
-    if (App_NewPeriph_ReadIr() != 0u)      p->flags |= UNLK_FLG_IR_BLOCKED;
-    if (s_amDemagFlag)                     p->flags |= UNLK_FLG_DEMAG_ON;
+    if (s_validCnt > 0u)  p->status |= UNLK_ST_TAG;   /* 0x10: 有效子集在场 */
+    if (App_NewPeriph_ReadIr() != 0u) p->status |= UNLK_ST_IR;
+    p->status |= (uint8_t)(s_mph << 3);     /* bit3-4: 电机状态/位置 */
+    if (s_fgnActive)   p->status |= UNLK_ST_FGN;
+    if (s_alarmActive) p->status |= UNLK_ST_ALARM;
+    if (App_UHF_GetState() == APP_UHF_ERROR || App_UHF_GetLinkStatus() != 0)
+        p->status |= UNLK_ST_UHF;           /* 失联累计中 (5s 未恢复->终帧 4) */
 }
 
 /* ---- 推送帧 (阻塞期间随时经原通道直发, func=FC_LOCKER_CTRL^0xFF) ---- */
 
-static void push_start(uint32_t winMs, uint8_t phase)
+static void push_start(uint32_t winMs, uint8_t status)
 {
     uint8_t r[6];
     r[0] = LOCKER_SUB_EVT_START;
     r[1] = UNLK_ERR_OK;
-    r[2] = phase;
+    r[2] = status;                  /* Round_016 v3: statusBits (原 phase) */
     r[3] = (uint8_t)(winMs & 0xFF);
     r[4] = (uint8_t)((winMs >> 8) & 0xFF);
     r[5] = (uint8_t)((winMs >> 16) & 0xFF);
@@ -385,8 +386,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
         if (winMs > UNLK_HOLD_MAX_MS) winMs = UNLK_HOLD_MAX_MS;
     }
 
-    push_start(winMs,
-               (epcCnt == 0u) ? UNLK_PH_SOFT : UNLK_PH_WAIT_TAG);   /* 受理帧 */
+    push_start(winMs, UNLK_ST_BUSY);            /* 受理帧 (0x0A 关闭路径, 保留实现) */
 
     if (epcCnt == 0u) {
         /* ---- 纯软标通道 (epcCnt=0, 裁决"直接启动软解码"): 跳过
@@ -945,7 +945,7 @@ static void epc_run(uint16_t tmoSec, uint8_t channel, LockerUnlockResult_t *out)
     uint32_t flowMs = (uint32_t)tmoSec * 1000u;
     uint32_t flowT0 = SysTickHl_GetMs();
     s_irMs = flowT0;                     /* 流程耗时基准 = 受理时刻 */
-    push_start(flowMs, UNLK_PH_WAIT_TAG);            /* 受理帧 0x0F */
+    push_start(flowMs, UNLK_ST_BUSY);            /* 受理帧 0x0F (v3: statusBits) */
     (void)App_Stepper_SetSpeedHz(LSEEK_SPEED_HZ);   /* Round_014: 2000µ步/s */
     (void)App_Stepper_SetTorquePercent(LSEEK_TORQUE_PCT);
     (void)App_UHF_InventoryTimeout(EPC_ONE_TMO_MS); /* 常态连续多标签盘点 */
@@ -1184,7 +1184,8 @@ static void am_run(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
     s_validCnt = 0u;
     s_fgnActive = 0u;
     s_alarmActive = 0u;
-    /* 0x10 记录残留清零 (GET_PROGRESS tagPresent / IO_DIAG 读这些槽) */
+    /* 0x10 记录残留清零 (Round_016 补: v3 GetProgress 直接读这些槽) */
+    s_riseCnt = 0u; s_alarmCnt = 0u; s_fgnSeen = 0u; s_tagsFound = 0u;
     s_tag[0].len = 0u;
     s_tag[0].state = UTAG_PENDING;
     s_tag[0].hits = 0u;
@@ -1214,7 +1215,7 @@ static void am_run(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
     uint32_t winMs = (uint32_t)tmoSec * 1000u;
     uint32_t t0 = SysTickHl_GetMs();
     s_irMs = t0;                     /* 流程耗时基准 = 受理时刻 */
-    push_start(winMs, UNLK_PH_SOFT); /* 受理帧 0x0F */
+    push_start(winMs, UNLK_ST_BUSY | UNLK_ST_TAG); /* 受理帧 0x0F (v3: 消磁在线) */
     App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_SOFT_WAIT_WHITE);
 
     uint8_t endR = 0u;               /* AM_END_* (0=未结束) */

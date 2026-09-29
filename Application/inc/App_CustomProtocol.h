@@ -120,24 +120,38 @@
                                         单标场景统一走 0x0A (epcCnt=1, W=120000 即 2min)。
                                         保留码位显式回 err=2 PARAM (区别于未知子命令);
                                         主机不得再下发本子命令。 */
-#define LOCKER_SUB_GET_PROGRESS 0x09 /* data: [cmd]  流程中拉取进度 (v2 布局,
-                                        Round_014 起 0x10/0x11 统一; 非流程时
-                                        phase=0 全零):
-                                        回 [cmd,err,phase,holdMs(3 LE),total,confirmed,bitmap,
-                                        softCnt,softDone,lastCycle,motorPh,flags]
-                                        phase 见 App_LockerUnlock.h (UNLK_PH_x)。
-                                        holdMs 3 字节: 10min 窗仍在回填范围。
-                                        0x10 (Round_014): total=名单张数, confirmed/
-                                        bitmap=当前稳定在场的名单位图, softCnt=累计
-                                        升至顶部次数, softDone=异常报警次数,
-                                        lastCycle=最近电机事件 (0=无 1=升至顶
-                                        2=名单全失回降 3=外来介入回降),
-                                        motorPh=0静止/1上行/2在顶/3下行,
-                                        flags: bit0=有效子集稳定在场 bit1=外来介入
-                                        bit2=报警中 bit3=红外遮挡。
-                                        0x11: total/softCnt=amCnt, confirmed/softDone=
-                                        已解锁数 (逐帧即时), motorPh 恒 0,
-                                        flags 仅 bit4=AM 消磁运行中。 */
+#define LOCKER_SUB_GET_PROGRESS 0x09 /* data: [cmd]  流程中拉取进度 (v3 布局,
+                                        Round_016 起 0x10/0x11 统一; 非流程时
+                                        全零):
+                                        回 [cmd,err,status,tag,elapsed,
+                                        riseCnt,alarmCnt,lastCycle,rsv] (9B)
+                                        status=单字节观测位图 (查表即读,
+                                        不需理解流程内部相位):
+                                          bit0 BUSY  流程进行中 (受理~终帧)
+                                          bit1 IR    红外遮挡 (200ms 去抖后;
+                                                     仅作升起门, 升起后只报不控)
+                                          bit2 TAG   0x10=名单存在 CONFIRMED
+                                                     有效子集; 0x11=AM 消磁在线
+                                          bit3-4 MOTOR 电机状态/位置:
+                                                     0=静止·底 1=上行 2=在顶
+                                                     3=下行 (正常回降/异常快降)
+                                          bit5 FGN   外来标签已判介入 (读到 2 次)
+                                          bit6 ALARM 报警进行中 (红50/50+蜂鸣)
+                                          bit7 UHF   UHF 失联累计中 (5s 未恢复
+                                                     -> 终帧 endReason=4)
+                                        tag: 0x10=当前 CONFIRMED 名单张数;
+                                             0x11=已解锁数 (逐帧即时)
+                                        elapsed: 流程已进行秒 (u8, 0xFF 封顶;
+                                             窗口全程时长见终帧)
+                                        riseCnt/alarmCnt/lastCycle: 0x10 循环
+                                        统计 (升顶次数/报警次数/最近电机事件
+                                        0无 1升至顶 2全失回降 3外来回降);
+                                        0x11 恒 0。rsv 保留恒 0。
+                                        典型值速查: 0x00 空闲 / 0x01 等标签 /
+                                        0x05 门只差红外 / 0x0D 上行中 /
+                                        0x15 在顶保持 / 0x75 在顶·外来介入 /
+                                        0x79 介入快降 / 0x59 全失快降 /
+                                        0x1D 超窗正常回降 / 0x81 UHF 失联中。 */
 #define LOCKER_SUB_UNLOCK_MULTI 0x0A /* [Round_013 已关闭] 多标签解锁流程停用: 分发层显式
                                         回 PARAM (同 0x08), 灯语槽位/UNLK_ERR_* 错误码移交
                                         0x10 UNLOCK_EPC; 原实现保留于 App_Dispatch.c #if 0
@@ -203,11 +217,13 @@
                                         (黄慢闪)。CANCEL: 安全回降 + 全状态
                                         复原 + ABORTED。UHF 失联 5s -> UHF_LOST。
                                         阶段推送帧 (func 同 0x23^0xFF): 0x0F 受理
-                                        (winMs=tmo*1000) / 0x0B 名单标签稳定确认
+                                        (v3: 字节[2]=statusBits, 0x10=0x01 /
+                                        0x11=0x05 消磁在线; winMs=tmo*1000) /
+                                        0x0B 名单标签稳定确认
                                         (复用 0x0A 布局, 每次进入稳定态一帧) /
                                         0x0C 外来介入 (每事件一帧)。
-                                        GET_PROGRESS 0x09 v2 布局 (含 motorPh/
-                                        flags, 见上)。
+                                        GET_PROGRESS 0x09 v3 布局 (statusBits
+                                        单字节位图, 见上)。
                                         终帧 = 0x10 回显 (流程结束标志): [0x10,err,...]:
                                           err=0: [endReason,bitmap,rise(2 LE),lower(2 LE),
                                                   elapsed(2 LE 秒, 0xFFFF 封顶),
@@ -250,14 +266,13 @@
                                         无免疫窗口)。达标检查优先于窗满 (同拍
                                         边界); 逐帧即时入账, 无窗末宽限。
                                         阶段推送帧 (func 同 0x23^0xFF): 0x0F 受理
-                                        (phase=5 SOFT, winMs=tmo*1000) / 0x0E 每解锁
-                                        一张 [done, amCnt]。
-                                        GET_PROGRESS 0x09 v2 布局: phase
-                                        5=计数窗 (6=终帧组包瞬时, 轮询实际只见 5),
-                                        total/softCnt=amCnt, confirmed/softDone=
-                                        已解锁数 (逐帧即时), lastCycle 恒 0,
-                                        motorPh 恒 0, flags 仅 bit4=DEMAG_ON
-                                        (消磁运行中)。
+                                        (v3: 字节[2]=statusBits=0x05 消磁在线,
+                                        旧 phase=5 义废止; winMs=tmo*1000) /
+                                        0x0E 每解锁一张 [done, amCnt]。
+                                        GET_PROGRESS 0x09 v3 布局 (statusBits):
+                                        status 仅 BUSY|TAG(消磁在线; 挂起/结账
+                                        瞬时态 TAG 熄灭), tag=已解锁数 (逐帧
+                                        即时), riseCnt/alarmCnt/lastCycle 恒 0。
                                         终帧 = 0x11 回显 (流程结束标志): [0x11,err,...]:
                                           err=0: [endReason,rise(2 LE,恒0),lower(2 LE,恒0),elapsed(2 LE 秒,
                                                   0xFFFF 封顶),amCnt(回显),deactDone,

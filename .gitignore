@@ -37,3 +37,6 @@ __pycache__/
 *.hex
 *.map
 *.list
+sim
+sim_asan
+*.png

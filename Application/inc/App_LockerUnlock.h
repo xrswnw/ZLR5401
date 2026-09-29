@@ -139,18 +139,27 @@
 #define EPC_TMO_MAX_S               600u   /* tmo 秒上限 (10min, 超出钳位) */
 #define EPC_BEEP_FLOW_DONE_MS       1000u  /* 流程结束 (超窗在顶): 1s 持续鸣 */
 
-/* 电机子状态 (GET_PROGRESS v2 motorPh 字节) */
-#define UNLK_MPH_NONE               0u   /* 静止 */
+/* ---- 电机/位置状态 (statusBits bit3-4 编码, Round_016 v3) ---- */
+#define UNLK_MPH_NONE               0u   /* 静止·在底 */
 #define UNLK_MPH_RISING             1u   /* 上行中 */
-#define UNLK_MPH_UP                 2u   /* 顶部保持 */
-#define UNLK_MPH_LOWERING           3u   /* 下行中 (正常回降/异常快降) */
+#define UNLK_MPH_UP                 2u   /* 在顶·保持 */
+#define UNLK_MPH_LOWERING           3u   /* 下行中 (正常回降/异常快降共用) */
 
-/* GET_PROGRESS v2 flags 位图 (bit=1 有效) */
-#define UNLK_FLG_VALID_STABLE       0x01u /* 有名单标签稳定在场 (有效子集非空) */
-#define UNLK_FLG_FGN_ACTIVE         0x02u /* 外来标签介入中 */
-#define UNLK_FLG_ALARM              0x04u /* 异常报警中 */
-#define UNLK_FLG_IR_BLOCKED         0x08u /* 红外遮挡 (去抖后) */
-#define UNLK_FLG_DEMAG_ON           0x10u /* 0x11: AM 消磁模式运行中 */
+/* ---- statusBits 单字节观测位图 (GET_PROGRESS v3 / 受理帧 0x0F, Round_016) ----
+ * 设计原则: 每一位只陈述可观测事实 (传感器输入/电机实况), 不做流程内部
+ * 相位编码; 上位机查表即读。0x10 全量; 0x11 仅 BUSY/TAG(消磁在线)。
+ * bit=1 有效 */
+#define UNLK_ST_BUSY                0x01u /* bit0: 流程进行中 (受理~终帧) */
+#define UNLK_ST_IR                  0x02u /* bit1: 红外遮挡 (200ms 去抖后;
+                                           * 仅作 WAIT->升起门, 升起后只报不控) */
+#define UNLK_ST_TAG                 0x04u /* bit2: 0x10=名单内存在 CONFIRMED
+                                           * 有效子集; 0x11=AM 消磁在线 (确认+收帧中) */
+#define UNLK_ST_MOTOR_MASK          0x18u /* bit3-4: 电机状态/位置 = (status>>3)&3 */
+#define UNLK_ST_FGN                 0x20u /* bit5: 外来标签已判介入 (读到 2 次
+                                           * 即置位, 1500ms 未再读才清) */
+#define UNLK_ST_ALARM               0x40u /* bit6: 异常报警中 (红 50/50 闪+蜂鸣) */
+#define UNLK_ST_UHF                 0x80u /* bit7: UHF 失联累计中 (5s 未恢复
+                                           * -> 终帧 endReason=4) */
 
 /* ---- EPC 解锁结束原因 (err=0 时终帧 endReason 字段) ---- */
 #define EPC_END_ALL_OK              1u   /* 超窗时有效子集仍在场 (在顶回降后结账,
@@ -222,22 +231,21 @@ typedef struct {
     int      uhfRawErr;             /* UHF_*: App_UHF 原始错误码 */
 } LockerUnlockResult_t;
 
-/* 流程进行中进度快照 (GET_PROGRESS 0x09 v2, 0x10/0x11 统一; Round_014):
- *   0x10: total=名单张数, confirmed/bitmap=当前 CONFIRMED 位图,
- *         softCnt=累计升至顶部次数, softDone=异常报警次数,
- *         lastCycle=最近一次电机事件 (0=无 1=升至顶 2=名单全失回降
- *         3=外来介入回降), motorPh=UNLK_MPH_*, flags 见 UNLK_FLG_*。
- *   0x11: total/softCnt=amCnt, confirmed/softDone=已解锁数 (逐帧即时),
- *         motorPh 恒 0, flags 仅 DEMAG_ON。 */
+/* 流程进行中进度快照 (GET_PROGRESS 0x09 v3, Round_016; 0x10/0x11 统一):
+ *   回答 "设备此刻在哪、为什么" — 每个字段只陈述可观测事实。
+ *   0x10: status=单字节位图 UNLK_ST_*; tag=当前 CONFIRMED 名单张数;
+ *         riseCnt/alarmCnt/lastCycle=循环统计; elapsed=流程已进行秒。
+ *   0x11: tag=已解锁数 (逐帧即时); riseCnt/alarmCnt/lastCycle 恒 0;
+ *         status 仅 BUSY/TAG(消磁在线), IR/MOTOR/FGN/ALARM/UHF 恒 0。
+ * 原 v2 的 phase/motorPh/flags 三字段折叠进 status 单字节; total/bitmap
+ * 撤除 (命令自带名单, 终帧仍带最终 bitmap); holdMs(ms) 改 elapsed(s)。 */
 typedef struct {
-    uint8_t  phase;           /* UNLK_PH_* */
-    uint8_t  total, confirmed, confirmedBitmap;
-    uint8_t  softCnt, softDone;
-    uint32_t holdMs;          /* 自受理已过 ms (3 字节回填) */
-    uint8_t  tagPresent;      /* 有名单标签在场 (TRACKING/CONFIRMED) */
-    uint8_t  lastCycle;       /* 0x10: 最近电机事件 0/1升至顶/2全失回降/3外来回降 */
-    uint8_t  motorPhase;      /* UNLK_MPH_* (Round_014 v2 新增) */
-    uint8_t  flags;           /* UNLK_FLG_* 位图 (Round_014 v2 新增) */
+    uint8_t  status;          /* UNLK_ST_* 位图 (Round_016 v3) */
+    uint8_t  tag;             /* 0x10: CONFIRMED 张数; 0x11: 已解锁数 */
+    uint8_t  elapsed;         /* 流程已进行秒 (u8, 0xFF 封顶; 窗口全程见终帧) */
+    uint8_t  riseCnt;         /* 0x10: 累计升至顶部次数 */
+    uint8_t  alarmCnt;        /* 0x10: 异常报警触发次数 */
+    uint8_t  lastCycle;       /* 0x10: 最近电机事件 0无/1升至顶/2全失回降/3外来回降 */
 } LockerUnlockProgress_t;
 
 /* 阻塞执行整个多标签解锁流程 (FC_LOCKER_CTRL 分发上下文调用)。

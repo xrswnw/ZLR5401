@@ -895,35 +895,25 @@ void AppDispatch(ProtoFrame_t *f) {
             }
             break;
         case LOCKER_SUB_GET_PROGRESS: {
-            /* [cmd] 进度快照 v2 (Round_014, 0x10/0x11 统一; 非流程时
-             * phase=0 全零):
-             * [cmd,err,phase,holdMs(3 LE),total,confirmed,bitmap,softCnt,
-             *  softDone,lastCycle,motorPh,flags]
-             * 0x10: softCnt=升至顶部次数, softDone=报警次数, lastCycle=
-             * 0无/1升至顶/2全失回降/3外来回降, motorPh=UNLK_MPH_*,
-             *  flags 见 UNLK_FLG_* (VALID_STABLE/FGN_ACTIVE/ALARM/
-             *  IR_BLOCKED); 0x11: confirmed/softDone=已解锁数 (逐帧即时),
-             *  flags 仅 DEMAG_ON。 */
+            /* [cmd] 进度快照 v3 (Round_016, 0x10/0x11 统一; 非流程时全零):
+             * [cmd,err,status,tag,elapsed,riseCnt,alarmCnt,lastCycle,rsv]
+             * status=单字节观测位图 UNLK_ST_* (BUSY/IR/TAG/MOTOR/FGN/ALARM/UHF);
+             * 0x10: tag=CONFIRMED 张数, MOTOR=0静/1升/2顶/3降;
+             * 0x11: tag=已解锁数, status 仅 BUSY|TAG(消磁在线), 其余位恒 0。
+             * elapsed u8 秒 0xFF 封顶 (长窗全程时长见终帧 elapsed)。 */
             LockerUnlockProgress_t up;
             App_LockerUnlock_GetProgress(&up);
-            uint8_t r[14];
-            uint16_t pos = 0;
-            r[pos++] = sub;
-            r[pos++] = LOCKER_ERR_OK;
-            r[pos++] = up.phase;
-            /* holdMs 3 字节 (Round_011): 长 10min 窗仍超 16bit */
-            r[pos++] = (uint8_t)(up.holdMs & 0xFF);
-            r[pos++] = (uint8_t)((up.holdMs >> 8) & 0xFF);
-            r[pos++] = (uint8_t)((up.holdMs >> 16) & 0xFF);
-            r[pos++] = up.total;
-            r[pos++] = up.confirmed;
-            r[pos++] = up.confirmedBitmap;
-            r[pos++] = up.softCnt;
-            r[pos++] = up.softDone;
-            r[pos++] = up.lastCycle;
-            r[pos++] = up.motorPhase;   /* Round_014 v2: 电机子状态 */
-            r[pos++] = up.flags;        /* Round_014 v2: 状态位图 */
-            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
+            uint8_t r[9];
+            r[0] = sub;
+            r[1] = LOCKER_ERR_OK;
+            r[2] = up.status;
+            r[3] = up.tag;
+            r[4] = up.elapsed;
+            r[5] = up.riseCnt;
+            r[6] = up.alarmCnt;
+            r[7] = up.lastCycle;
+            r[8] = 0u;                     /* rsv 保留, 恒 0 */
+            Proto_TxResponse(ch, FC_LOCKER_CTRL, r, sizeof(r));
             break;
         }
         case LOCKER_SUB_QUERY: {
