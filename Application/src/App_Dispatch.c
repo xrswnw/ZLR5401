@@ -811,12 +811,12 @@ void AppDispatch(ProtoFrame_t *f) {
     case FC_LOCKER_CTRL: {
         /* 开锁器业务编排. data[0]=子命令. 响应 data[0]=cmd, data[1]=err, 其余随 cmd.
          * 解锁流程 (Round_013 起 0x10 EPC 解锁; 0x0A 已关闭备恢复) 进行中:
-         * 仅放行 QUERY/GET_PROGRESS/CANCEL, 其余回 BUSY。 */
+         * Round_015 用户裁决 (2026-09-29): 仅放行两条 — GET_PROGRESS (0x09
+         * 实时状态) / CANCEL (0x04 停止+复原); QUERY 亦回 BUSY。 */
         uint8_t sub = (f->dataLen >= 1u) ? f->data[0] : 0u;
 
         if (App_LockerUnlock_IsBusy() &&
-            sub != LOCKER_SUB_QUERY && sub != LOCKER_SUB_GET_PROGRESS &&
-            sub != LOCKER_SUB_CANCEL) {
+            sub != LOCKER_SUB_GET_PROGRESS && sub != LOCKER_SUB_CANCEL) {
             uint8_t r[2] = { sub, LOCKER_ERR_BUSY };
             Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
             break;

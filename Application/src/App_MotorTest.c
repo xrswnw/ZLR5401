@@ -38,7 +38,7 @@ static uint32_t s_wrongMs    = 0;     /* 错触触点持续起始时刻 (防抖)
 static uint8_t  s_wrongActive = 0;    /* 错触触点当前是否保持触发 */
 static uint8_t  s_brokeAway  = 1;     /* 已脱离起点进入自由行程 (两触点均释放过) */
 
-#define MT_TEST_SPEED_HZ    2000u   /* Round_014 用户裁决 (2026-09-29): 全电机腿统一 2000 微步/s (1000 翻倍, ≈300RPM) */
+#define MT_TEST_SPEED_HZ    4000u   /* Round_015 用户裁决 (2026-09-29): 全电机腿统一 4000 微步/s (Round_014 2000 再翻倍, ≈600RPM) */
 #define MT_TEST_TORQUE_PCT  90u    /* 2026-09-19 全电机腿统一 90% (20%/40% 实测失步区, 与回零同源定稿) */
 
 /* 测试速度2000(1/2档, 400步/转, 5转/s=300RPM) + 转矩90%: 0.9°/步.

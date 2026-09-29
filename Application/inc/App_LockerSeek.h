@@ -22,10 +22,11 @@
 #define LSEEK_LOWER_MAX     (4324u * 2u + 800u)
 #define LSEEK_TIMEOUT_MS    10000u
 #define LSEEK_STALL_MS      400u    /* 步数停滞判丢步 */
-#define LSEEK_SPEED_HZ      2000u   /* Round_014 用户裁决 (2026-09-29): 全电机腿统一
-                                      * 2000 微步/s (1000 翻倍, ≈300RPM, 全行程 ~2.1s;
-                                      * 步数上限路径 9448 步=4.7s 仍 < TIMEOUT 10s;
-                                      * 2000 > STEP_RAMP_MIN 1000, 起步重新进入斜坡段) */
+#define LSEEK_SPEED_HZ      4000u   /* Round_015 用户裁决 (2026-09-29): 全电机腿统一
+                                      * 4000 微步/s (Round_014 2000 再翻倍, ≈600RPM,
+                                      * 全行程 ~1.05s; 步数上限路径 9448 步=2.4s 仍
+                                      * < TIMEOUT 10s; TIM4 1MHz 档 4000Hz ARR=250
+                                      * 无失真; 90% 转矩失步风险留黑匣子 TRACE 首验) */
 #define LSEEK_TORQUE_PCT    90u    /* 2026-09-19 全电机腿统一 90%: 20%/40% 实测失步堵转,
                                       * 60%/80% 通过, 与回零 HOMING_TORQUE_PCT 同源定稿 */
 

@@ -96,7 +96,7 @@
 #define UNLK_STABLE_CONFIRM_MS      1500u     /* 确认门限A: 在场连续时长 (裁决2: 1.5s) */
 #define UNLK_PRESENT_WINDOW_MS      3000u     /* 在场判定窗 (容忍数轮漏读) */
 #define UNLK_CONFIRM_MIN_HITS       2u        /* 确认门限B: 累计最少命中 */
-#define UNLK_MAX_FGN_TAGS           4u        /* 外来标签缓存容量 (超出只计数不上报, 裁决3) */
+#define UNLK_MAX_FGN_TAGS           10u       /* 外来标签缓存容量 (超出只计数不上报; Round_015 4→10 与 EPC_MAX_TAGS 对齐) */
 #define UNLK_UHF_LOST_CONFIRM_MS    5000u     /* 链路异常确认窗 */
 #define UNLK_INVENTORY_TMO_MS       500u      /* 每轮盘点时限 (tmoMs=0 缺省, 需求: 默认盘点500Ms) */
 #define UNLK_HOLD_BASE_MS           120000u   /* W 基数: 首标签 2min */

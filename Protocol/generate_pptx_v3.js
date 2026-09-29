@@ -1,7 +1,8 @@
-// ZLR5401 应用层通信协议 — 客户版 PPT (V1.4 · 2026-09-29)
+// ZLR5401 应用层通信协议 — 客户版 PPT (V1.5 · 2026-09-29)
+// V1.5: 电机全腿提速 4000 微步/s；解锁态门禁收紧为仅 0x04/0x09；外来缓存扩至 10
 // V1.4: 0x10 多标签名单 + 新状态机 (任意非空子集有效 / 外来介入报警 / 在场即保持)
 //   · 0x11 恢复 AM 控制 (受理切消磁 → 达标/超窗挂起) · 0x09 进度 v2 (motorPh / flags)
-//   · 电机全腿提速 2000 微步/s · 蜂鸣增补异常报警节奏
+//   · 电机全腿提速 4000 微步/s (V1.5) · 蜂鸣增补异常报警节奏
 // V1.3: 解锁章 0x0A→0x10 EPC + 0x11 AM 双通道重做 · 双流程图 · 灯控映射更新
 //   增补: AM 消磁器控制章移除 (固件零控制, 0x22 转厂商内部) · hex 单行化 + 动态测试帧防踩踏
 // 风格: 晕染水彩 (白纸底 · 青绿晕染 · 金色点缀 · 宋体标题) — 参照水彩风模板 (17)
@@ -10,7 +11,7 @@ const pptxgen = require("pptxgenjs");
 const pres = new pptxgen();
 pres.layout = "LAYOUT_WIDE";
 pres.author = "ZLR5401";
-pres.title = "ZLR5401 应用层通信协议 V1.4";
+pres.title = "ZLR5401 应用层通信协议 V1.5";
 
 const A = "assets"; // 水彩素材 (相对本脚本目录)
 
@@ -186,7 +187,7 @@ function cmdPage({ head, tag, hex, desc, reqRows, rspRows, note, test, testY, fi
   s.addText("ZLR5401", { x: 4.3, y: 2.0, w: 4.75, h: 0.85, fontSize: 44, bold: true, color: C.green, fontFace: FT, align: "center", margin: 0, charSpacing: 3 });
   s.addText("应用层通信协议", { x: 4.3, y: 2.9, w: 4.75, h: 0.75, fontSize: 32, color: C.ink, fontFace: FT, align: "center", margin: 0 });
   s.addText([
-    { text: "V1.4", options: { bold: true, color: C.gold } },
+    { text: "V1.5", options: { bold: true, color: C.gold } },
     { text: "（2026-09-29）", options: { color: C.muted } },
   ], { x: 4.3, y: 4.0, w: 4.75, h: 0.5, fontSize: 18, fontFace: FT, align: "center", margin: 0 });
   s.addText("帧格式 · 系统层命令 · UHF 控制 · 解锁命令 · 灯控映射", {
@@ -253,11 +254,12 @@ function cmdPage({ head, tag, hex, desc, reqRows, rspRows, note, test, testY, fi
     ["V1.1", "2026-09-12", "增补 CRC 算法与 HID 传输层"],
     ["V1.2", "2026-09-19", "增补行程开关异常灯语"],
     ["V1.3", "2026-09-20", "解锁 0x10 / 0x11 双通道；移除 AM 控制章"],
-    ["V1.4", "2026-09-29", "0x10 多标签名单新状态机；0x11 恢复 AM 控制；0x09 进度 v2；电机提速 2000"],
+    ["V1.4", "2026-09-29", "0x10 多标签新状态机；0x11 恢复 AM 控制；电机提速 2000"],
+    ["V1.5", "2026-09-29", "电机提速 4000；解锁态仅 0x04/0x09；外来缓存扩至 10"],
   ];
   s.addTable([vh, ...vrows.map((r, i) => r.map((c, j) => ({
     text: c, options: { fill: { color: i % 2 ? C.rowFill : "FFFFFF" }, color: C.ink, fontSize: 12, align: j < 2 ? "center" : "left" },
-  })))], { x: 7.0, y: 5.36, w: W - M - 7.0, colW: [0.9, 1.5, 3.73], border: TB, fontFace: FB, margin: 0.06, valign: "middle", rowH: 0.32 });
+  })))], { x: 7.0, y: 4.95, w: W - M - 7.0, colW: [0.9, 1.5, 3.73], border: TB, fontFace: FB, margin: 0.05, valign: "middle", rowH: 0.28 });
 }
 
 // ───────────────────────── CRC-32 校验算法 (V1.1 增补 · V1.3 收编) ─────────────────────────
@@ -786,7 +788,7 @@ cmdPage({
     ["受理 · 推 0x0F（白慢闪 · phase=1）", 0],
     ["连续盘点 0x22 多标签（蓝慢闪 · 10 槽）", 0],
     ["非空子集稳定 + 红外遮挡 且无介入？", 1],
-    ["升起至顶（2000 微步/s · 绿常亮）", 0],
+    ["升起至顶（4000 微步/s · 绿常亮）", 0],
     ["在顶保持：在场即保持 · 盘点监守不停", 0],
     ["外来介入 / 名单全失？", 1],
     ["超窗回降 KEY_DOWN → 终帧（在顶 ALL_OK）", 0],
@@ -1006,10 +1008,10 @@ cmdPage({
   s.background = { color: C.paper };
   s.addImage({ path: `${A}/wash_right.png`, x: W - 4.5, y: H - 2.6, w: 4.5, h: 2.6, transparency: 15, flipH: true, flipV: true });
   s.addShape(pres.shapes.LINE, { x: M, y: 2.95, w: 2.4, h: 0, line: { color: C.goldLine, width: 1.5 } });
-  s.addText("V1.4", { x: M, y: 3.25, w: 8, h: 0.8, fontSize: 38, bold: true, color: C.green, fontFace: FT, margin: 0 });
-  s.addText("V1.4 于 2026-09-29 发布：0x10 改为多标签名单 + 新状态机（任意非空子集有效、外来介入报警、在场即保持），0x11 恢复 AM 消磁控制（受理切消磁、达标/超窗挂起），0x09 进度查询 v2 布局，电机全腿提速 2000 微步/s。历史变更见版本说明。",
+  s.addText("V1.5", { x: M, y: 3.25, w: 8, h: 0.8, fontSize: 38, bold: true, color: C.green, fontFace: FT, margin: 0 });
+  s.addText("V1.5 于 2026-09-29 发布：电机全腿提速 4000 微步/s（全行程约 2 s）；解锁流程进行中收紧为仅响应 0x04 停止 / 0x09 进度两条指令，其余一律 BUSY；外来标签追踪缓存扩至 10 张。0x10 多标签名单状态机与 0x11 AM 消磁控制沿用 V1.4 设计。历史变更见版本说明。",
     { x: M, y: 4.25, w: 9, h: 0.5, fontSize: 14, color: C.muted, fontFace: FB, margin: 0 });
 }
 
-pres.writeFile({ fileName: "/Users/swnw/Documents/Software/ZLR5401/Protocol/App_Protocol_V1.4.pptx" })
+pres.writeFile({ fileName: "/Users/swnw/Documents/Software/ZLR5401/Protocol/App_Protocol_V1.5.pptx" })
   .then(() => console.log("OK"));
