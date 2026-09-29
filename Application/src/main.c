@@ -16,7 +16,6 @@
 #include "App_Stepper.h"
 #include "App_UHF.h"
 #include "App_AM.h"
-#include "App_Locker.h"
 #include "App_NewPeriph_HL.h"
 #include "App_MotorTest.h"
 #include "App_MotorHoming.h"
@@ -131,8 +130,8 @@ void System_Init(void)
      * 持久化配置复位移至 9.4 —— 见下) */
     App_AM_Init();
 
-    /* 8.9 开锁器业务编排层初始化 (IDLE, 默认锁定)*/
-    App_Locker_Init();
+    /* 8.9 [Round_017 已废除] 老清单业务 (App_Locker) 整批关闭:
+     * Init/Process 撤除, 状态机不再驱动; 互斥由解锁流程自身承担。 */
 
     /* 8.10 电机行程测试状态机初始化 (IDLE, 不占用电机)*/
     App_MotorTest_Init();
@@ -187,8 +186,6 @@ int main(void)
          * MOVE/TEST 由分发层回 BUSY) */
         App_MotorHoming_Process();
 
-        /* 开锁器业务状态机推进 (硬标签EPC比对/软标解码编排)*/
-        App_Locker_Process();
 
         /* 电机行程测试状态机推进 (仅 TEST 指令触发时占用电机)*/
         App_MotorTest_Process();

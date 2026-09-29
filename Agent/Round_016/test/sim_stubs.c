@@ -6,7 +6,6 @@
 #include "App_UHF.h"
 #include "App_Stepper.h"
 #include "App_MotorHoming.h"
-#include "App_Locker.h"
 #include "App_NewPeriph_HL.h"
 #include "App_SysTick_HL.h"
 #include "App_AM.h"
@@ -232,8 +231,7 @@ uint32_t App_Stepper_GetStepsDone(void) { return s_legSteps; }
 /* ================= 回零/业务状态桩 ================= */
 uint8_t App_MotorHoming_GetStatus(void) { return HOMING_STAT_READY; }
 int  App_MotorHoming_IsReady(void) { return 1; }
-int  App_Locker_IsIdle(void) { return 1; }
-AppLockerState_t App_Locker_GetState(void) { return 0; }
+/* [Round_017] App_Locker 依赖已从解锁流程移除, 桩同步撤除 */
 
 /* ================= 外设桩 ================= */
 uint8_t App_NewPeriph_ReadIr(void) { return ir_blocked(g_ms); }

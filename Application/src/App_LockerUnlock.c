@@ -2,7 +2,6 @@
 #include "App_UHF.h"
 #include "App_Stepper.h"
 #include "App_MotorHoming.h"
-#include "App_Locker.h"
 #include "App_LockerSeek.h"
 #include "App_NewPeriph_HL.h"
 #include "App_SysTick_HL.h"
@@ -207,7 +206,9 @@ static void push_soft(uint8_t done)
 static void fill_busy(LockerUnlockResult_t *out)
 {
     out->err          = UNLK_ERR_BUSY;
-    out->lockerState  = (uint8_t)App_Locker_GetState();
+    /* [Round_017] 老清单业务废除: lockerState 恒 0 (终帧 BUSY 诊断字节
+     * 布局不变, 上位机兼容) */
+    out->lockerState  = 0u;
     out->uhfState     = (uint8_t)App_UHF_GetState();
     out->stepperState = (uint8_t)App_Stepper_GetState();
 }
@@ -359,8 +360,8 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
     if (tmoMs == 0u) tmoMs = UNLK_INVENTORY_TMO_MS;
     if (tmoMs > 10000u) tmoMs = 10000u;
 
-    /* ---- ⑴ 前置检查 ---- */
-    if (App_Locker_IsIdle() == 0)                    { fill_busy(out); return; }
+    /* ---- ⑴ 前置检查 (Round_017: 老清单业务废除, Locker 占用检查移除;
+     * 互斥由本流程 s_busy + Dispatch 门禁承担) ---- */
     if (App_UHF_GetState() == APP_UHF_SCAN)          { fill_busy(out); return; }
     if (App_UHF_IsBusy())                           { fill_busy(out); return; }
     if (App_Stepper_GetState() != APP_STEPPER_IDLE)  { fill_busy(out); return; }
@@ -907,8 +908,8 @@ static void epc_run(uint16_t tmoSec, uint8_t channel, LockerUnlockResult_t *out)
     LockerSeek_BindAbort(&s_abort, &s_immune);
     for (uint8_t i = 0; i < UNLK_MAX_FGN_TAGS; i++) s_fgn[i].len = 0u;
 
-    /* ---- 前置检查 (Locker/UHF/电机占用与回零就绪, 同旧 0x10) ---- */
-    if (App_Locker_IsIdle() == 0)                    { fill_busy(out); return; }
+    /* ---- 前置检查 (UHF/电机占用与回零就绪; Round_017 起 Locker 占用
+     * 检查移除 — 老清单业务废除, 互斥由 s_busy + 门禁承担) ---- */
     if (App_UHF_GetState() == APP_UHF_SCAN)          { fill_busy(out); return; }
     if (App_UHF_IsBusy())                            { fill_busy(out); return; }
     if (App_Stepper_GetState() != APP_STEPPER_IDLE)  { fill_busy(out); return; }
@@ -1194,8 +1195,7 @@ static void am_run(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
     LockerSeek_BindAbort(&s_abort, &s_immune);
     for (uint8_t i = 0; i < UNLK_MAX_FGN_TAGS; i++) s_fgn[i].len = 0u;
 
-    /* ---- 前置检查: 仅业务空闲 (全程不动电机) ---- */
-    if (App_Locker_IsIdle() == 0)                    { fill_busy(out); return; }
+    /* ---- 前置检查: 仅业务空闲 (全程不动电机; Round_017 起 Locker 检查移除) ---- */
 
     /* ---- Round_014 恢复控制: 受理即切消磁模式 (确认进入) ---- */
     uint8_t demagOn = 0u;

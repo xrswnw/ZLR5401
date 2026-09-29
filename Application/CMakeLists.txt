@@ -54,7 +54,8 @@ set(SOURCES
   src/App_UHF_HL.c
   src/App_AM.c
   src/App_AM_HL.c
-  src/App_Locker.c
+  # [Round_017] App_Locker.c (老清单业务) 已废除 — 不再参与编译;
+  # 分发层原实现保留于 App_Dispatch.c #if 0, 恢复时还原此行。
   src/App_LockerSeek.c
   src/App_LockerUnlock.c
   src/App_NewPeriph_HL.c

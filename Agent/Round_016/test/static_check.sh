@@ -35,4 +35,19 @@ else
   echo "  FAIL: 解锁门禁白名单异常"; fail=1
 fi
 
+# ---- Round_017: 老清单业务链整批废除 ----
+ck "Dispatch #if 0 关闭老链"  'Round_017 已关闭. 老清单业务链' Application/src/App_Dispatch.c
+if grep -qE '^\s*src/App_Locker\.c' Application/CMakeLists.txt; then
+  echo "  FAIL: CMakeLists 仍编译 App_Locker.c"; fail=1
+else
+  echo "  ok: App_Locker.c 已退出编译"
+fi
+if grep -rnE 'App_Locker_(IsIdle|GetState|Init|Process)\(' Application/src/App_Dispatch.c Application/src/App_LockerUnlock.c Application/src/main.c 2>/dev/null | grep -vE '[0-9]+:\s*(/\*|//|\*)' | grep -q '(' ; then
+  echo "  FAIL: 解锁/主循环仍活引用 App_Locker"; fail=1
+else
+  echo "  ok: 解锁/主循环无活 App_Locker 引用"
+fi
+ck "0x05 QUERY 废除标注"       'Round_017 已废除. 老清单状态查询'  Application/inc/App_CustomProtocol.h
+ck "IO_DIAG lockerState=0"     'lockerState 恒 0'                 Application/src/App_Dispatch.c
+
 exit $fail

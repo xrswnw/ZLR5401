@@ -823,6 +823,13 @@ void AppDispatch(ProtoFrame_t *f) {
         }
 
         switch (sub) {
+        /* ---- [Round_017 已关闭] 老清单业务链 (0x01 CONFIGURE / 0x02 ADD /
+         * 0x03 START / 0x05 QUERY / 0x06 CONSUME_SOFT / 0x07 GET_EVENT)
+         * 整批废除 (用户裁决 "老清单业务彻底不回归, 现在只有 0x10/0x11"):
+         * 显式回 err=2 PARAM (区别于未知子命令), 实现保留于 #if 0 备恢复;
+         * 处置先例同 0x08/0x0A。业务互斥由 App_LockerUnlock_IsBusy 独立
+         * 承担, 主机不得再下发本组子命令。 */
+#if 0
         case LOCKER_SUB_CONFIGURE: {
             /* [cmd, hardCountL, hardCountH, softCountL, softCountH]
              * v1 精简: 清空清单, 仅设软标数 (hardCount 由随后 ADD 累积).
@@ -882,12 +889,23 @@ void AppDispatch(ProtoFrame_t *f) {
             Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
             break;
         }
+#endif /* [Round_017] 老清单 0x01/0x02/0x03 关闭 */
+        case LOCKER_SUB_CONFIGURE:
+        case LOCKER_SUB_ADD:
+        case LOCKER_SUB_START:
+            /* [Round_017] 老清单业务链废除: 码位显式回 PARAM (同 0x08/0x0A
+             * 处置), 主机不得再下发 */
+            {
+                uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+            }
+            break;
         case LOCKER_SUB_CANCEL:
+            /* [Round_017] 老清单业务链废除后 CANCEL 仅服务解锁流程 (0x10/
+             * 0x11); 解锁空闲时为无操作直回 OK (老链 #if 0 备恢复)。 */
             if (App_LockerUnlock_IsBusy()) {
-                /* 解锁流程 (0x10) 进行中: 打断请求 (立即回 OK, 安全回降后回终帧) */
+                /* 解锁流程进行中: 打断请求 (立即回 OK, 安全回降后回终帧) */
                 App_LockerUnlock_Abort();
-            } else {
-                App_Locker_Cancel();
             }
             {
                 uint8_t r[2] = { sub, LOCKER_ERR_OK };
@@ -916,6 +934,7 @@ void AppDispatch(ProtoFrame_t *f) {
             Proto_TxResponse(ch, FC_LOCKER_CTRL, r, sizeof(r));
             break;
         }
+#if 0   /* [Round_017 已关闭] 老清单业务链整批废除, 见 case LOCKER_SUB_CONFIGURE 前注释 */
         case LOCKER_SUB_QUERY: {
             AppLockerCtx_t c;
             App_Locker_GetCtx(&c);
@@ -959,6 +978,17 @@ void AppDispatch(ProtoFrame_t *f) {
             Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
             break;
         }
+#endif /* [Round_017] 老清单 0x05/0x06/0x07 关闭 */
+        case LOCKER_SUB_QUERY:
+        case LOCKER_SUB_CONSUME_SOFT:
+        case LOCKER_SUB_GET_EVENT:
+            /* [Round_017] 老清单业务链废除: 码位显式回 PARAM (同 0x08/0x0A
+             * 处置), 主机不得再下发 */
+            {
+                uint8_t r[2] = { sub, LOCKER_ERR_PARAM };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+            }
+            break;
         case LOCKER_SUB_ONE_SHOT:
             /* Round_011 用户裁决: 单标签同步流程废除, 统一走 0x0A
              * (epcCnt=1 即单标, W=120000+0)。保留 0x08 码位显式回
@@ -1249,7 +1279,7 @@ void AppDispatch(ProtoFrame_t *f) {
                 Proto_TxResponse(ch, FC_RGB_CTRL, r, 2);
                 break;
             }
-            if (App_Locker_IsIdle() && !App_LockerUnlock_IsBusy() &&
+            if (App_LockerUnlock_IsBusy() == 0u &&
                 !App_MotorTest_IsBusy()) {
                 App_RgbLedPat_Manual(f->data[1], RGB_MANUAL_HOLD_MS);
                 uint8_t r[3] = { sub, RGB_ERR_OK, f->data[1] };
@@ -1302,7 +1332,7 @@ void AppDispatch(ProtoFrame_t *f) {
             break;
         }
         case SELFTEST_SUB_RERUN: {
-            if (App_Locker_IsIdle() && !App_LockerUnlock_IsBusy()) {
+            if (App_LockerUnlock_IsBusy() == 0u) {
                 /* 探测阻塞 ~3s (UHF Open+Query/AM Query 回帧超时), 内部逐段喂狗 */
                 uint16_t bits = App_SelfTest_ProbePeripherals();
                 uint8_t r[4] = { sub, SELFTEST_ERR_OK,
@@ -1354,7 +1384,7 @@ void AppDispatch(ProtoFrame_t *f) {
             ust.antennaOk,
             (uint8_t)App_AM_GetLinkStatus(),
             App_MotorHoming_GetStatus(),
-            (uint8_t)App_Locker_GetState(),
+            0u,   /* [Round_017] 老清单业务废除, lockerState 恒 0 (原 App_Locker_GetState) */
             (uint8_t)App_MotorTest_GetState(),
             /* [10..32] Round_013 调试: 0x21 同步盘点结果计数 (排查流程内
              * 读取失效): ok/notRdy/busy/noTag/timeout/otherCmd + 最后成功

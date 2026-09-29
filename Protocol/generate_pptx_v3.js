@@ -1,4 +1,6 @@
-// ZLR5401 应用层通信协议 — 客户版 PPT (V1.6 · 2026-09-29)
+// ZLR5401 应用层通信协议 — 客户版 PPT (V1.7 · 2026-09-29)
+// V1.7: 老清单业务链 (0x23 01/02/03/05/06/07) 整批废除 — 码位回 PARAM,
+//   状态查询页改"已废除命令组"页; 灯语页 0x05 引用改自检/IO 诊断
 // V1.6: 0x09 进度改 v3 九字节布局 — status 单字节观测位图 (BUSY/IR/TAG/
 //   MOTOR/FGN/ALARM/UHF, bit3-4 电机状态), phase/motorPh/flags 三字段折叠;
 //   0x0F 受理帧字节[2] 同步改 statusBits (0x10=0x01 / 0x11=0x05); 拉模式
@@ -15,7 +17,7 @@ const pptxgen = require("pptxgenjs");
 const pres = new pptxgen();
 pres.layout = "LAYOUT_WIDE";
 pres.author = "ZLR5401";
-pres.title = "ZLR5401 应用层通信协议 V1.6";
+pres.title = "ZLR5401 应用层通信协议 V1.7";
 
 const A = "assets"; // 水彩素材 (相对本脚本目录)
 
@@ -191,7 +193,7 @@ function cmdPage({ head, tag, hex, desc, reqRows, rspRows, note, test, testY, fi
   s.addText("ZLR5401", { x: 4.3, y: 2.0, w: 4.75, h: 0.85, fontSize: 44, bold: true, color: C.green, fontFace: FT, align: "center", margin: 0, charSpacing: 3 });
   s.addText("应用层通信协议", { x: 4.3, y: 2.9, w: 4.75, h: 0.75, fontSize: 32, color: C.ink, fontFace: FT, align: "center", margin: 0 });
   s.addText([
-    { text: "V1.6", options: { bold: true, color: C.gold } },
+    { text: "V1.7", options: { bold: true, color: C.gold } },
     { text: "（2026-09-29）", options: { color: C.muted } },
   ], { x: 4.3, y: 4.0, w: 4.75, h: 0.5, fontSize: 18, fontFace: FT, align: "center", margin: 0 });
   s.addText("帧格式 · 系统层命令 · UHF 控制 · 解锁命令 · 灯控映射", {
@@ -259,6 +261,7 @@ function cmdPage({ head, tag, hex, desc, reqRows, rspRows, note, test, testY, fi
     ["V1.2", "2026-09-19", "增补行程开关异常灯语"],
     ["V1.3", "2026-09-20", "解锁 0x10 / 0x11 双通道；移除 AM 控制章"],
     ["V1.4", "2026-09-29", "0x10 多标签新状态机；0x11 恢复 AM 控制；电机提速 2000"],
+    ["V1.7", "2026-09-29", "老清单业务链 01/02/03/05/06/07 整批废除（回 PARAM），解锁仅 0x10/0x11/0x04/0x09"],
     ["V1.6", "2026-09-29", "0x09 v3 九字节位图布局 + statusBits 速查页 + 0x0F 受理帧同步"],
     ["V1.5", "2026-09-29", "电机保持 2000；解锁态仅 0x04/0x09；外来缓存扩至 10"],
   ];
@@ -364,7 +367,7 @@ IN : 02 53 77 01 00 21 00 FE 00 03 01 1C D9 37 30 38 33 0B 00 39 35 37 39
     ["0x07", "系统层", "设备信息", "读取设备地址与硬件 / 软件版本"],
     ["0x08", "系统层", "软件复位", "设备回 OK 后立即复位重启"],
     ["0x21", "UHF 控制", "超高频读写", "盘点、读写标签、配置、链路状态、自动扫描"],
-    ["0x23", "解锁命令", "开锁业务", "EPC 解锁 0x10 / AM 解锁 0x11、取消、状态与进度查询、事件推送"],
+    ["0x23", "解锁命令", "开锁业务", "EPC 解锁 0x10 / AM 解锁 0x11、取消 0x04、进度查询 0x09、事件推送（01/02/03/05/06/07 已废除）"],
   ];
   const header = ["功能码", "类别", "名称", "用途"].map(t => ({ text: t, options: { bold: true, fill: { color: C.headFill }, color: C.green, fontSize: 13 } }));
   const body = rows.map((r, i) => r.map((c, j) => ({
@@ -647,25 +650,23 @@ cmdPage({
     exp: "取消当前解锁流程；磁块安全回降后回帧。",
     rsp: { hex: "53 77 01 00 07 00 DC 04 00 FD BC 6A 54",
       exp: "err=0（实测，空闲态取消）" } }],
-  desc: "取消当前操作，回到空闲。解锁流程进行中仅允许本命令与 0x09 进度查询；取消立即回 OK，流程由各自终帧（0x10 / 0x11）以 endReason=6 报告（0x10 升起段取消先安全回降再结账；0x11 无机械段，窗内即回）。",
+  desc: "取消当前解锁流程（仅服务 0x10 / 0x11）。解锁流程进行中仅允许本命令与 0x09 进度查询；流程空闲时为无操作直回 OK；取消立即回 OK，流程由各自终帧（0x10 / 0x11）以 endReason=6 报告（0x10 升起段取消先安全回降再结账；0x11 无机械段，窗内即回）。",
   reqRows: [["cmd", "1", "0x04"]],
   rspRows: [["cmd / err", "2", "回显 + 0 = 成功（立即回帧）"]],
 });
 
 cmdPage({
-  head: "状态查询", tag: "解锁 · 0x23 05",
+  head: "已废除命令组", tag: "解锁 · 0x23 01·02·03·05·06·07",
   hex: "0x23\n·05",
-  test: [{ tag: "测试帧（实测）", hex: "53 77 01 00 06 00 23 05 7E 4F 2F 5A",
-    exp: "查询状态机；回帧含 state 与硬 / 软标计数快照。",
-    rsp: { hex: "53 77 01 00 0F 00 DC 05 00 00 00 00 00 00 00 00 00 0A 43 61 7E",
-      exp: "err=0 · state=0 空闲 · 计数全 0（实测）" } }],
-  desc: "查询开锁业务状态机与计数快照。",
-  reqRows: [["cmd", "1", "0x05"]],
+  test: [{ tag: "示例 · 0x05 下发（V1.7）", hex: "53 77 01 00 06 00 23 05 7E 4F 2F 5A",
+    exp: "老清单状态查询 — 已废除，回 err=2 PARAM。",
+    rsp: { hex: "53 77 01 00 07 00 DC 05 02 F3 29 85 E7",
+      exp: "err=2 · 码位保留但拒绝执行" } }],
+  desc: "V1.7 起，老清单业务链整批废除（用户裁决：老清单业务彻底不回归，现在只有 0x10 / 0x11 解锁）。以下六个码位保留但一律回 err=2 PARAM：0x01 配置清单 / 0x02 追加 EPC / 0x03 启动扫描 / 0x05 状态查询 / 0x06 软标上报 / 0x07 事件队列取件。解锁进度统一走 0x09（statusBits 位图），解锁事件统一走推送帧 0x0F / 0x0B / 0x0C / 0x0E。处置先例同 0x08 / 0x0A。",
+  reqRows: [["cmd", "1", "0x01 / 0x02 / 0x03 / 0x05 / 0x06 / 0x07"]],
   rspRows: [
-    ["cmd / err", "2", "回显 + 错误码"],
-    ["state", "1", "0 空闲 / 1 等放标 / 2 校对 / 3 升起 / 4 回降 / 5 软标计数 / 7 保持 / 8 完成"],
-    ["hm / sc / su", "6", "硬标期望 / 软标期望 / 软标已解（各 2 字节）"],
-    ["faultReason", "1", "最近故障原因诊断码，0 = 无"],
+    ["cmd / err", "2", "回显 + 恒 2 = PARAM（码位废除）"],
+    ["—", "—", "无其余字段；主机不得再下发本组命令"],
   ],
 });
 
@@ -1034,7 +1035,7 @@ cmdPage({
     "蜂鸣三处：0x10 异常报警期间红灯 50/50 闪同步每 500 ms 鸣 50 ms（持续至异常解除）、流程结束 ALL_OK 鸣 1 s（伴随绿三连闪）、0x11 达标鸣 1 s；标签确认与每张消磁成功均无蜂鸣，超时 / 取消无鸣。",
     "上位机可以 0x24 手动设置灯色（设备空闲时），10 s 后自动回收，业务灯语优先。",
     "紫 / 黄快闪为行程开关异常诊断灯语（优先级最高）：上行程异常 = 黄快闪、下行程异常 = 紫快闪、两路同错亦显黄快闪；应停机检修并联系厂商。",
-    "红灯常亮表示设备故障（行程开关异常除外，见紫 / 黄快闪），请结合 0x23 05 状态查询定位原因。",
+    "红灯常亮表示设备故障（行程开关异常除外，见紫 / 黄快闪），请结合 0x25 自检 / 0x26 IO 诊断定位原因。",
   ];
   s.addText(notes.map((t, i) => ({ text: t, options: { bullet: { code: "2013", indent: 12 }, breakLine: i < notes.length - 1 } })),
     { x: M + 0.35, y: 2.15, w: 6.9, h: 4.1, fontSize: 13.5, color: C.ink, fontFace: FB, paraSpaceAfter: 14, margin: 0, valign: "top", lineSpacingMultiple: 1.3 });
@@ -1046,10 +1047,10 @@ cmdPage({
   s.background = { color: C.paper };
   s.addImage({ path: `${A}/wash_right.png`, x: W - 4.5, y: H - 2.6, w: 4.5, h: 2.6, transparency: 15, flipH: true, flipV: true });
   s.addShape(pres.shapes.LINE, { x: M, y: 2.95, w: 2.4, h: 0, line: { color: C.goldLine, width: 1.5 } });
-  s.addText("V1.6", { x: M, y: 3.25, w: 8, h: 0.8, fontSize: 38, bold: true, color: C.green, fontFace: FT, margin: 0 });
-  s.addText("V1.6 于 2026-09-29 发布：0x09 进度帧重构为九字节单字节位图布局（status 查表即读：BUSY/红外/标签/电机/外来/报警/UHF），0x0F 受理帧同步，轮询建议 100 ms 拉模式；防踩踏三锁（单腿串行 / 回降免疫 / 门禁）维持。V1.5 门禁收紧、外来缓存 10 张与电机 2000 µ步/s 沿用。历史变更见版本说明。",
+  s.addText("V1.7", { x: M, y: 3.25, w: 8, h: 0.8, fontSize: 38, bold: true, color: C.green, fontFace: FT, margin: 0 });
+  s.addText("V1.7 于 2026-09-29 发布：老清单业务链（0x01 配置 / 0x02 追加 / 0x03 启动 / 0x05 状态查询 / 0x06 软标上报 / 0x07 事件队列）整批废除，码位保留一律回 err=2 PARAM；解锁业务仅剩 0x10 EPC / 0x11 AM 双通道 + 0x04 取消 / 0x09 进度；固件 App_Locker 模块退出编译，互斥由解锁流程独立承担。历史变更见版本说明。",
     { x: M, y: 4.25, w: 9, h: 0.5, fontSize: 14, color: C.muted, fontFace: FB, margin: 0 });
 }
 
-pres.writeFile({ fileName: "/Users/swnw/Documents/Software/ZLR5401/Protocol/App_Protocol_V1.6.pptx" })
+pres.writeFile({ fileName: "/Users/swnw/Documents/Software/ZLR5401/Protocol/App_Protocol_V1.7.pptx" })
   .then(() => console.log("OK"));

@@ -99,23 +99,26 @@
 #define RGB_ERR_BUSY         2
 
 /* ---- FC_LOCKER_CTRL (0x23) 子命令编码 (data[0]) ----
- * 开锁器业务编排状态机 (依《约束/Link.txt》).
  * 所有响应同步: data[0]=cmd, data[1]=err(0=OK). err 值见 LOCKER_ERR_*.
  * 注: 协议帧 data 上限 PROTO_MAX_DATA=1024 且解析器为流式字节重组,
- *     单帧可跨多个 HID report; 多硬标签亦可用 LOCKER_SUB_ADD 累积构建. */
-#define LOCKER_SUB_CONFIGURE  0x01   /* data: [cmd,hardCountL,hardCountH,softCountL,softCountH]
-                                        (v1 精简: 经 ADD 建清单, 此处仅设软标数/清零) */
-#define LOCKER_SUB_ADD        0x02   /* data: [cmd,epcLen,epc..]  追加一条硬标签 EPC */
-#define LOCKER_SUB_START      0x03   /* data: [cmd]  上电UHF+开扫, 进入可开锁 */
-#define LOCKER_SUB_CANCEL     0x04   /* data: [cmd]  取消, 磁块回降回 IDLE */
-#define LOCKER_SUB_QUERY      0x05   /* data: [cmd]  查询状态/计数: [cmd,err,state,hm(2),sc(2),su(2),faultReason]
-                                        state: 0=IDLE 1=CONFIGURED(扫描) 2=UNLOCK_HOLD(已匹配
-                                        升起保持中) 3=SOFT_DECODE 4=DONE 5=FAULT 6=LOWERING;
-                                        faultReason: 最近一次 FAULT 原因诊断码 (0=无, 见
-                                        App_Locker.c locker_enter_fault 注释: 1=UHF链路 2=未回零
-                                        3=seek启动失败 4~6=升寻触失败 7=回降寻触失败 8=回降启动失败) */
-#define LOCKER_SUB_CONSUME_SOFT 0x06 /* data: [cmd]  v1 软标: 上位机上报已解码一次 */
-#define LOCKER_SUB_GET_EVENT  0x07   /* data: [cmd]  取一条上报事件 (见 AppLockerEvent_t) */
+ *     单帧可跨多个 HID report。
+ * [Round_017 已废除] 老清单业务链 (0x01 CONFIGURE / 0x02 ADD / 0x03
+ * START / 0x05 QUERY / 0x06 CONSUME_SOFT / 0x07 GET_EVENT) 整批关闭
+ * (用户裁决 "老清单业务彻底不回归, 现在只有 0x10/0x11"): 码位显式回
+ * err=2 PARAM (区别于未知子命令), 实现保留 #if 0 备恢复, 处置先例同
+ * 0x08/0x0A。业务互斥由解锁流程 (App_LockerUnlock) 独立承担。 */
+#define LOCKER_SUB_CONFIGURE  0x01   /* [Round_017 已废除] 老清单配置 — 回 PARAM */
+#define LOCKER_SUB_ADD        0x02   /* [Round_017 已废除] 老清单追加 EPC — 回 PARAM */
+#define LOCKER_SUB_START      0x03   /* [Round_017 已废除] 老清单启动扫描 — 回 PARAM */
+#define LOCKER_SUB_CANCEL     0x04   /* data: [cmd]  取消解锁流程 (0x10/0x11): 立即
+                                        回 OK, 设备免疫安全回降后终帧 endReason=6;
+                                        流程空闲时为无操作直回 OK */
+#define LOCKER_SUB_QUERY      0x05   /* [Round_017 已废除] 老清单状态查询 — 回 PARAM
+                                        (原 state/hm/sc/su/faultReason 布局废止;
+                                        解锁进度统一走 0x09 statusBits 位图) */
+#define LOCKER_SUB_CONSUME_SOFT 0x06 /* [Round_017 已废除] 老软标上报 — 回 PARAM */
+#define LOCKER_SUB_GET_EVENT  0x07   /* [Round_017 已废除] 老事件队列 — 回 PARAM
+                                        (解锁事件改推送帧 0x0F/0x0B/0x0C/0x0E) */
 #define LOCKER_SUB_ONE_SHOT   0x08   /* [Round_011 已废除] 单标签同步开锁流程整体移除:
                                         单标场景统一走 0x0A (epcCnt=1, W=120000 即 2min)。
                                         保留码位显式回 err=2 PARAM (区别于未知子命令);
