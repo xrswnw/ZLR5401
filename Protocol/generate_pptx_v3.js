@@ -204,7 +204,7 @@ function cmdPage({ head, tag, hex, desc, reqRows, rspRows, note, test, testY, fi
   ornament(s);
   pageHead(s, "概述 · 通信帧格式", "第 1 章");
   const items = [
-    "设备经 UART / USB / 以太网与上位机通信，采用统一的请求—响应帧协议。",
+    "设备经 USB（HID）与上位机通信，采用统一的请求—响应帧协议。",
     "设备从哪个通道收到请求，就在哪个通道返回响应；设备亦会主动推送解锁过程事件帧。",
     "除特别说明外，多字节整数低字节在前（小端）；每帧以 CRC-32 校验结尾。",
   ];
@@ -366,7 +366,7 @@ IN : 02 53 77 01 00 21 00 FE 00 03 01 1C D9 37 30 38 33 0B 00 39 35 37 39
     x: M, y: 1.3, w: W - 2 * M, colW: [1.3, 1.7, 2.2, 6.93],
     border: TB, fontFace: FB, margin: 0.07, valign: "middle", rowH: 0.52,
   });
-  s.addText("本文件仅公开系统层、UHF 与解锁命令；其余功能码（电机、灯、自检、IO、消磁器 0x22 等）为厂商内部接口。消磁器按默认参数自主运行，全程不受设备控制。",
+  s.addText("本文件仅公开系统层、UHF 与解锁命令；其余功能码（电机、灯、自检、IO、消磁器 0x22 等）为厂商内部接口。消磁器不经上位机直接控制，按默认参数自主运行；0x11 流程内由设备自动协调其工作模式（详见 AM 流程图页）。",
     { x: M, y: 6.95, w: W - 2 * M, h: 0.35, fontSize: 11.5, color: C.muted, fontFace: FB, margin: 0 });
 }
 
@@ -636,7 +636,7 @@ cmdPage({
   head: "取消", tag: "解锁 · 0x23 04",
   hex: "0x23\n·04",
   test: [{ tag: "测试帧（实测）", hex: "53 77 01 00 06 00 23 04 C9 52 EE 5E",
-    exp: "取消当前解锁流程；磁块安全回降后回帧。",
+    exp: "取消当前解锁流程；立即回 OK，设备安全回降后以终帧 endReason=6 报告。",
     rsp: { hex: "53 77 01 00 07 00 DC 04 00 FD BC 6A 54",
       exp: "err=0（实测，空闲态取消）" } }],
   desc: "取消当前解锁流程（仅服务 0x10 / 0x11）。解锁流程进行中仅允许本命令与 0x09 进度查询；流程空闲时为无操作直回 OK；取消立即回 OK，流程由各自终帧（0x10 / 0x11）以 endReason=6 报告（0x10 升起段取消先安全回降再结账；0x11 无机械段，窗内即回）。",
@@ -650,7 +650,7 @@ cmdPage({
   hex: "0x23\n·09",
   test: [{ tag: "测试帧（实测）", hex: "53 77 01 00 06 00 23 09 1A D4 23 6F",
     exp: "拉取实时进度：单字节状态位图 + 计数（一问一答，节奏由上位机定，建议 100 ms）。",
-    rsp: { hex: "53 77 01 00 0E 00 DC 09 00 15 02 0C 01 00 01 00 AB 42 2C 83",
+    rsp: { hex: "53 77 01 00 0E 00 DC 09 00 15 02 0C 01 00 01 00 A1 67 37 8B",
       exp: "err=0 · status=0x15 在顶保持 · 2 张确认 · 已 12 s · 升顶 1 次 · 上次循环=升至顶" } }],
   desc: "解锁流程中拉取实时进度（0x10 / 0x11 统一布局，9 字节）；无流程时全零（status=0x00 无歧义）。status 单字节只陈述可观测事实，上位机查表即读，无需理解流程内部相位。",
   reqRows: [["cmd", "1", "0x09"]],
@@ -674,7 +674,7 @@ cmdPage({
 
   kvTable(s, [
     ["bit0", "BUSY — 流程进行中（受理至终帧）"],
-    ["bit1", "IR — 红外遮挡（200 ms 去抖后；仅作升起门，升起后只报不控）"],
+    ["bit1", "IR — 红外遮挡（实时电平；200 ms 去抖仅作用于升起门，升起后只报不控）"],
     ["bit2", "TAG — 0x10：名单存在已确认有效子集 · 0x11：AM 消磁在线"],
     ["bit3-4", "MOTOR — 电机状态/位置：0 静止·底 / 1 上行 / 2 在顶 / 3 下行"],
     ["bit5", "FGN — 外来标签已判介入（累计读到 2 次即置位）"],
@@ -706,10 +706,10 @@ cmdPage({
   test: [
     { tag: "测试帧 · 2 标签名单（tmo=30 s）", hex: "53 77 01 00 17 00 23 10 1E 00 02 06 AA AA AA AA AA AA 06 55 55 55 55 55 55 E1 9A EF FD",
       exp: "流程窗 30 s · 名单 AA×6 + 55×6。",
-      rsp: { hex: "53 77 01 00 12 00 DC 10 00 01 03 21 10 21 10 1E 00 01 00 01 C6 58 BA 66",
+      rsp: { hex: "53 77 01 00 12 00 DC 10 00 01 03 21 10 21 10 1E 00 01 01 01 1A 99 A3 B4",
         exp: "err=0 · 在顶结账 · 升 1 次 · 报警 1 次。" } },
-    { tag: "推送帧 · 0x0B 标签稳定确认", hex: "53 77 01 00 14 00 DC 0B 01 06 AA AA AA AA AA AA 01 02 51 00 03 00 95 EC 03 D5",
-      exp: "第 1 张稳定在场 · 81 ms 判据。" },
+    { tag: "推送帧 · 0x0B 标签稳定确认", hex: "53 77 01 00 14 00 DC 0B 01 06 AA AA AA AA AA AA 01 02 DC 05 03 00 AB 81 2D 2C",
+      exp: "第 1 张稳定在场 · 判据耗时 1500 ms。" },
   ],
   desc: "EPC 解锁：下发超时窗 + 名单 1~10 张变长 EPC；任意非空子集稳定在场 + 红外遮挡 → 升起 → 在场即保持，异常报警快速下行、恢复再升，循环至超窗（详见流程图页）。",
   fieldW: 1.95,
@@ -727,7 +727,7 @@ cmdPage({
     ["elapsed", "2", "自受理至终帧整秒（0xFFFF 封顶）"],
     ["riseCnt / alarmCnt / fgnSeen", "3", "升至顶次数 / 异常报警次数 / 是否出现过外来介入（0/1）"],
   ],
-  note: "名单内 EPC 不得重复（违者 err=2）；外来标签 = 不在名单内的 EPC 累计读到 2 次即介入。蜂鸣仅三处 — 异常报警期间每 500ms 鸣 50ms、流程结束 ALL_OK 鸣 1 s，其余静默；CANCEL 随时安全回降 + 全状态复原。解锁态内仅响应 0x04 取消 / 0x09 进度查询，其余一律 BUSY。",
+  note: "名单内 EPC 不得重复（违者 err=2）；外来标签 = 不在名单内的 EPC 累计读到 2 次即介入。蜂鸣仅两处 — 异常报警期间每 500ms 鸣 50ms、流程结束 ALL_OK 鸣 1 s，其余静默；CANCEL 随时安全回降 + 全状态复原。解锁态内仅响应 0x04 取消 / 0x09 进度查询（0x23 子命令范围），其余一律 BUSY。",
 });
 
 cmdPage({
@@ -746,7 +746,7 @@ cmdPage({
   reqRows: [
     ["cmd", "1", "0x11"],
     ["amCnt", "1", "期望张数 0 ~ 255；0 = 无计数门受理即结账 ALL_OK"],
-    ["tmo", "2", "计数窗秒（u16 小端，>0，上限 16000）"],
+    ["tmo", "2", "计数窗秒（u16 小端，>0，上限 16000 钳位）"],
     ["rsv0 / rsv1", "2", "保留位（设备不解释，终帧原样回显）"],
   ],
   rspRows: [
@@ -797,10 +797,11 @@ cmdPage({
   const steps = [
     ["前置检查（空闲 · 已回零）", 0],
     ["下发 0x10（tmo · epcCnt · len+EPC×n）", 0],
-    ["受理 · 推 0x0F（白慢闪 · status=0x01）", 0],
+    ["受理 · 推 0x0F（白慢闪 · status=0x01 · winMs）", 0],
     ["连续盘点 0x22 多标签（蓝慢闪 · 10 槽）", 0],
+    ["名单标签稳定 1.5 s → 推 0x0B（绿单闪 · 无蜂鸣）", 0],
     ["非空子集稳定 + 红外遮挡 且无介入？", 1],
-    ["升起至顶（2000 微步/s · 绿常亮）", 0],
+    ["升起至顶（2000 微步/s · 绿常亮 · 盘点不停）", 0],
     ["在顶保持：在场即保持 · 盘点监守不停", 0],
     ["外来介入 / 名单全失？", 1],
     ["超窗回降 KEY_DOWN → 终帧（在顶 ALL_OK）", 0],
@@ -828,7 +829,7 @@ cmdPage({
   });
 
   // 右分支: 判定②是 -> 报警 + 快速下行
-  const d1 = centerY(7), inv = centerY(3);
+  const d1 = centerY(8), inv = centerY(3);
   s.addShape(pres.shapes.LINE, { x: bx + bw + 0.35, y: d1, w: 1.35, h: 0, line: { color: C.muted, width: 1.5, endArrowType: "triangle" } });
   s.addText("是", { x: bx + bw + 0.38, y: d1 - 0.32, w: 0.6, h: 0.28, fontSize: 10, color: C.muted, fontFace: FB, margin: 0 });
   s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
@@ -842,21 +843,21 @@ cmdPage({
     { text: "外来稳定消失（1.5 s）且子集恢复 → 经红外门重新升起，循环至超窗", options: { fontSize: 10, color: C.muted } },
   ], { x: 8.98, y: d1 - 0.75, w: 3.6, h: 1.55, valign: "middle", fontFace: FB, margin: 0 });
 
-  s.addText("否", { x: bx + bw / 2 + 0.1, y: centerY(4) + 0.12, w: 0.6, h: 0.26, fontSize: 10, color: C.muted, fontFace: FB, margin: 0 });
+  s.addText("否", { x: bx + bw / 2 + 0.1, y: centerY(5) + 0.12, w: 0.6, h: 0.26, fontSize: 10, color: C.muted, fontFace: FB, margin: 0 });
   s.addText("否 · 继续保持", { x: bx + bw / 2 + 0.12, y: d1 + 0.12, w: 1.5, h: 0.26, fontSize: 10, color: C.muted, fontFace: FB, margin: 0 });
 
   // 判定①否: 未达标 -> 继续盘点 (左回环)
-  s.addShape(pres.shapes.LINE, { x: 3.75, y: inv, w: 0, h: centerY(4) - inv, line: { color: C.muted, width: 1.5 } });
-  s.addShape(pres.shapes.LINE, { x: 3.75, y: centerY(4), w: bx - 3.75, h: 0, line: { color: C.muted, width: 1.5, beginArrowType: "triangle" } });
-  s.addText("否 · 继续盘点", { x: 2.42, y: (inv + centerY(4)) / 2 - 0.2, w: 2.4, h: 0.28, fontSize: 10, color: C.muted, fontFace: FB, align: "right", margin: 0 });
+  s.addShape(pres.shapes.LINE, { x: 3.75, y: inv, w: 0, h: centerY(5) - inv, line: { color: C.muted, width: 1.5 } });
+  s.addShape(pres.shapes.LINE, { x: 3.75, y: centerY(5), w: bx - 3.75, h: 0, line: { color: C.muted, width: 1.5, beginArrowType: "triangle" } });
+  s.addText("否 · 继续盘点", { x: 2.42, y: (inv + centerY(5)) / 2 - 0.2, w: 2.4, h: 0.28, fontSize: 10, color: C.muted, fontFace: FB, align: "right", margin: 0 });
 
   // 左侧异常出口
   const exits = [
     ["前置失败（忙 / 未回零）", "err = 1 / err = 7", centerY(0)],
     ["帧非法（tmo=0 / 张数 / 重复 EPC）", "err = 2", centerY(1)],
-    ["超窗未在顶（未升 / 未恢复）", "endReason = 3 · 黄慢闪", centerY(4)],
-    ["UHF 失联 5 s", "endReason = 4", (centerY(4) + centerY(6)) / 2],
-    ["任意阶段 0x04 取消", "安全回降 · endReason = 6", centerY(8)],
+    ["超窗未在顶（未升 / 未恢复）", "endReason = 3 · 黄慢闪", centerY(5)],
+    ["UHF 失联 5 s", "endReason = 4", (centerY(5) + centerY(7)) / 2],
+    ["任意阶段 0x04 取消", "安全回降 · endReason = 6", centerY(9)],
   ];
   s.addText("异常出口", { x: M, y: 1.0, w: 3.0, h: 0.32, fontSize: 12.5, bold: true, color: C.green, fontFace: FB, margin: 0 });
   exits.forEach((e) => {
@@ -869,10 +870,10 @@ cmdPage({
     s.addShape(pres.shapes.LINE, { x: M + 2.85, y: e[2], w: bx - M - 2.85, h: 0, line: { color: C.goldLine, width: 1, dashType: "dash", endArrowType: "triangle" } });
   });
 
-  s.addText("阶段失败码：err=3/4 UHF 启动或链路 · err=8/9 电机（自动回退安全位）。解锁态内仅受理 0x04 取消 / 0x09 查询，其余命令一律 BUSY。",
-    { x: 8.85, y: 6.15, w: 3.85, h: 0.95, fontSize: 10.5, color: C.muted, fontFace: FB, margin: 0, lineSpacingMultiple: 1.25 });
-  s.addText("判据：稳定在场 = 首读起 1.5 s 内无 1.5 s 级断读；外来介入 = 非名单 EPC 累计读到 2 次，1.5 s 未再读即消失。任意非空子集在场均有效。",
-    { x: M, y: 6.92, w: 12.1, h: 0.45, fontSize: 10.5, color: C.muted, fontFace: FB, margin: 0, valign: "top" });
+  s.addText("阶段失败码：err=3/4 UHF 启动或链路 · err=8/9 电机（自动回退安全位；升起途中异常即时停、就地快降，不抵顶）。外来介入帧 0x0C 逐张推送。解锁态内仅受理 0x04 取消 / 0x09 查询，其余命令一律 BUSY。",
+    { x: 8.85, y: 6.03, w: 3.85, h: 0.9, fontSize: 9.5, color: C.muted, fontFace: FB, margin: 0, lineSpacingMultiple: 1.15, valign: "top" });
+  s.addText("判据：稳定在场 = 首读起 1.5 s 内无 1.5 s 级断读；外来介入 = 非名单 EPC 累计读到 2 次即推 0x0C（绿单闪不鸣，转报警处理）；1.5 s 未再读即视为消失。任意非空子集在场均有效。受理帧 winMs = tmo×1000（ms）。",
+    { x: M, y: 6.92, w: 8.15, h: 0.45, fontSize: 10.5, color: C.muted, fontFace: FB, margin: 0, valign: "top" });
 }
 
 // ───────────────────────── AM 解锁流程图 (0x11) ─────────────────────────
@@ -882,19 +883,21 @@ cmdPage({
   ornament(s);
   pageHead(s, "AM 解锁流程图（0x11 下发至完成）", "解锁 · 0x23 11");
 
-  const bx = 4.42, bw = 3.35, bh = 0.38, pitch = 0.5, y0 = 1.05;
+  const bx = 4.42, bw = 3.35, bh = 0.38, pitch = 0.5, y0 = 0.95;
   const steps = [
     ["下发 0x11（amCnt · tmo · rsv）", 0],
+    ["前置检查：业务空闲（不动电机 · 不碰 UHF）", 0],
+    ["amCnt = 0？", 1],
     ["受理 · 推 0x0F（status=0x05 消磁在线 · winMs=tmo×1000）", 0],
-    ["AM 切消磁模式（回显确认 · 重试 3 次）", 0],
+    ["开启消磁：AM 切消磁模式（回显确认 · 重试 3 次）", 0],
     ["确认成功？", 1],
-    ["计数窗 tmo 秒：逐帧即时入账", 0],
+    ["计数窗 tmo 秒：逐帧即时入账（一条 = 一张）", 0],
     ["每解锁一张 · 推 0x0E（白单闪 · 无蜂鸣）", 0],
     ["已解锁数 ≥ amCnt？", 1],
-    ["AM 挂起切仅检测（失败 amFail=1 上报）", 0],
-    ["蜂鸣 1 s + 绿三闪 · 终帧（rise/lower 恒 0）", 0],
+    ["关闭消磁：AM 挂起切仅检测（失败 deactFail=1 上报）", 0],
+    ["蜂鸣 1 s + 绿三闪 · 终帧 ALL_OK（rise/lower 恒 0）", 0],
   ];
-  const NLAST = 8;
+  const NLAST = 10;
   const centerY = i => y0 + i * pitch + bh / 2;
   steps.forEach((t, i) => {
     const y = y0 + i * pitch;
@@ -906,29 +909,40 @@ cmdPage({
     } else {
       s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
         x: bx, y, w: bw, h: bh, rectRadius: 0.05,
-        fill: { color: i === NLAST ? C.headFill : "FFFFFF" },
-        line: { color: i === NLAST ? C.green : C.border, width: i === NLAST ? 1.5 : 1 },
+        fill: { color: i === NLAST ? C.headFill : (i === 4 || i === 9) ? C.rowFill : "FFFFFF" },
+        line: { color: i === NLAST ? C.green : (i === 4 || i === 9) ? C.goldLine : C.border, width: (i === NLAST || i === 4 || i === 9) ? 1.5 : 1 },
       });
     }
-    s.addText(t[0], { x: bx - 0.35, y: y - (t[1] ? 0.09 : 0), w: bw + 0.7, h: bh + (t[1] ? 0.18 : 0), align: "center", valign: "middle", fontSize: 10.5, bold: t[1] === 1 || i === 0 || i === NLAST, color: C.ink, fontFace: FB, margin: 0 });
+    s.addText(t[0], { x: bx - 0.35, y: y - (t[1] ? 0.09 : 0), w: bw + 0.7, h: bh + (t[1] ? 0.18 : 0), align: "center", valign: "middle", fontSize: 10, bold: t[1] === 1 || i === 0 || i === NLAST || i === 4 || i === 9, color: C.ink, fontFace: FB, margin: 0 });
     if (i < steps.length - 1) s.addShape(pres.shapes.LINE, {
       x: bx + bw / 2, y: y + bh + (t[1] ? 0.09 : 0), w: 0, h: pitch - bh - (t[1] ? 0.18 : 0),
       line: { color: C.muted, width: 1.5, endArrowType: "triangle" },
     });
   });
-  s.addText("是", { x: bx + bw / 2 + 0.1, y: centerY(6) + 0.12, w: 0.6, h: 0.26, fontSize: 10, color: C.muted, fontFace: FB, margin: 0 });
-  s.addText("否 · 继续等（回计数窗）", { x: bx - 3.3, y: centerY(6) - 0.14, w: 3.05, h: 0.28, fontSize: 10, color: C.muted, fontFace: FB, align: "right", margin: 0 });
-  s.addShape(pres.shapes.LINE, { x: bx - 0.25, y: centerY(6), w: 0, h: centerY(4) - centerY(6), line: { color: C.muted, width: 1.5 } });
-  s.addShape(pres.shapes.LINE, { x: bx - 0.25, y: centerY(4), w: 0.25, h: 0, line: { color: C.muted, width: 1.5, endArrowType: "triangle" } });
+  s.addText("是", { x: bx + bw / 2 + 0.1, y: centerY(8) + 0.12, w: 0.6, h: 0.26, fontSize: 10, color: C.muted, fontFace: FB, margin: 0 });
+  s.addText("否 · 继续等（回计数窗）", { x: bx - 3.35, y: centerY(8) - 0.14, w: 3.1, h: 0.28, fontSize: 10, color: C.muted, fontFace: FB, align: "right", margin: 0 });
+  s.addShape(pres.shapes.LINE, { x: bx - 0.25, y: centerY(8), w: 0, h: centerY(6) - centerY(8), line: { color: C.muted, width: 1.5 } });
+  s.addShape(pres.shapes.LINE, { x: bx - 0.25, y: centerY(6), w: 0.25, h: 0, line: { color: C.muted, width: 1.5, endArrowType: "triangle" } });
+  s.addText("否", { x: bx + bw / 2 + 0.1, y: centerY(2) + 0.12, w: 0.6, h: 0.26, fontSize: 10, color: C.muted, fontFace: FB, margin: 0 });
+  s.addShape(pres.shapes.LINE, { x: bx + bw + 0.3, y: centerY(2), w: 0.9, h: 0, line: { color: C.muted, width: 1.5, endArrowType: "triangle" } });
+  s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
+    x: 8.55, y: centerY(2) - 0.38, w: 4.15, h: 0.76, rectRadius: 0.05,
+    fill: { color: C.headFill }, line: { color: C.green, width: 1.5 },
+  });
+  s.addText([
+    { text: "amCnt = 0 支路（右出）\n", options: { bold: true, fontSize: 10.5, color: C.green } },
+    { text: "不耗窗不碰 AM，受理即达标 → 直接关闭消磁（无操作）→ 蜂鸣 1s + 终帧 ALL_OK", options: { fontSize: 9.5, color: C.ink } },
+  ], { x: 8.65, y: centerY(2) - 0.38, w: 3.95, h: 0.76, valign: "middle", fontFace: FB, margin: 0 });
+  s.addShape(pres.shapes.LINE, { x: bx + bw + 0.1, y: centerY(2), w: 0.2, h: 0, line: { color: C.green, width: 1.5 } });
 
   // 左侧异常出口
   const exits = [
-    ["帧长 / tmo=0 非法", "err = 2", 2.2],
-    ["切消磁模式失败（3 次重试）", "err = 10 · 红双闪", 3.6],
-    ["计数窗满未达标", "endReason = 3 · 黄慢闪 2 s", 5.0],
-    ["窗内 0x04 取消", "endReason = 6（尽力挂起 · 无机械段）", 6.4],
+    ["帧长 / tmo=0 非法", "err = 2", 1.7],
+    ["切消磁模式失败（3 次重试）", "err = 10 · 红双闪", 2.9],
+    ["计数窗满未达标", "endReason = 3 · 黄慢闪 2 s", 4.7],
+    ["窗内 0x04 取消", "endReason = 6（尽力挂起 · 无机械段）", 6.3],
   ];
-  s.addText("异常出口", { x: M, y: 1.15, w: 3.0, h: 0.32, fontSize: 12.5, bold: true, color: C.green, fontFace: FB, margin: 0 });
+  s.addText("异常出口", { x: M, y: 1.05, w: 3.0, h: 0.32, fontSize: 12.5, bold: true, color: C.green, fontFace: FB, margin: 0 });
   exits.forEach((e) => {
     const y = e[2] - 0.34;
     s.addShape(pres.shapes.RECTANGLE, { x: M, y, w: 2.85, h: 0.68, fill: { color: "FFFFFF" }, line: { color: C.goldLine, width: 1 } });
@@ -938,30 +952,26 @@ cmdPage({
     ], { x: M + 0.1, y, w: 2.65, h: 0.68, valign: "middle", fontFace: FB, margin: 0 });
   });
 
-  // 右侧要点框
+  // 右侧要点框: 消磁模式时机 (用户裁决详化)
   s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-    x: 8.85, y: 1.5, w: 3.85, h: 2.6, rectRadius: 0.06,
+    x: 8.85, y: 3.85, w: 3.85, h: 1.85, rectRadius: 0.06,
     fill: { color: C.rowFill }, line: { color: C.border, width: 1 },
   });
   s.addText([
-    { text: "AM 消磁控制\n", options: { bold: true, fontSize: 13, color: C.green } },
-    { text: "受理即切消磁模式，达标 / 超窗 / 取消即挂起（切仅检测）\n", options: { fontSize: 11, color: C.ink, breakLine: true } },
-    { text: "模式切换经回显确认，失败重试 3 次\n", options: { fontSize: 11, color: C.ink, breakLine: true } },
-    { text: "每收到一条消磁成功帧立即入账一计（无等待无稳定判定）\n", options: { fontSize: 11, color: C.ink, breakLine: true } },
-    { text: "挂起确认失败不阻塞结账，终帧 deactFail=1 如实上报（解码器自行恢复风险，客户已知）", options: { fontSize: 11, color: C.ink } },
-  ], { x: 8.98, y: 1.62, w: 3.6, h: 2.4, valign: "top", fontFace: FB, margin: 0, lineSpacingMultiple: 1.3 });
+    { text: "AM 消磁模式 · 开关时机\n", options: { bold: true, fontSize: 12.5, color: C.green } },
+    { text: "开启：受理后、计数窗开启前（回显确认 + 3 次重试，全败按 err=10 结账，不进窗）\n", options: { fontSize: 10.5, color: C.ink, breakLine: true } },
+    { text: "关闭：达标 / 超窗 / 取消 三种出口统一挂起（切仅检测；确认失败不阻塞结账，终帧 deactFail=1 如实上报）", options: { fontSize: 10.5, color: C.ink } },
+  ], { x: 8.98, y: 3.97, w: 3.6, h: 1.65, valign: "top", fontFace: FB, margin: 0, lineSpacingMultiple: 1.25 });
   s.addShape(pres.shapes.ROUNDED_RECTANGLE, {
-    x: 8.85, y: 4.4, w: 3.85, h: 1.7, rectRadius: 0.06,
+    x: 8.85, y: 5.9, w: 3.85, h: 1.15, rectRadius: 0.06,
     fill: { color: C.rowFill }, line: { color: C.border, width: 1 },
   });
   s.addText([
-    { text: "全程不动电机\n", options: { bold: true, fontSize: 13, color: C.green } },
-    { text: "达标仅蜂鸣 1 s + 绿三连闪结账\n", options: { fontSize: 11, color: C.ink, breakLine: true } },
-    { text: "rise / lower 恒 0 · 无升起 / 保持 / 回降\n", options: { fontSize: 11, color: C.ink, breakLine: true } },
-    { text: "amCnt=0：受理即达标即时结账 ALL_OK", options: { fontSize: 11, color: C.ink } },
-  ], { x: 8.98, y: 4.52, w: 3.6, h: 1.5, valign: "top", fontFace: FB, margin: 0, lineSpacingMultiple: 1.3 });
-  s.addText("每张消磁成功由 0x0E 推送帧实时上报（done 累计计数）；整体进度经 0x09 进度查询拉取（status=0x05 消磁在线 · tag=已解锁数）。",
-    { x: M, y: 7.05, w: 12.1, h: 0.35, fontSize: 11, color: C.muted, fontFace: FB, margin: 0 });
+    { text: "全程不动电机\n", options: { bold: true, fontSize: 12.5, color: C.green } },
+    { text: "rise / lower 恒 0 · 无升起 / 保持 / 回降", options: { fontSize: 10.5, color: C.ink } },
+  ], { x: 8.98, y: 6.0, w: 3.6, h: 0.95, valign: "top", fontFace: FB, margin: 0, lineSpacingMultiple: 1.25 });
+  s.addText("每张消磁成功由 0x0E 推送帧实时上报（done 累计计数）；整体进度经 0x09 进度查询拉取（status=0x05 消磁在线 · tag=已解锁数）。达标检查优先于窗满（同拍边界）。",
+    { x: M, y: 7.1, w: 12.1, h: 0.35, fontSize: 10.5, color: C.muted, fontFace: FB, margin: 0 });
 }
 
 // ───────────────────────── 灯控映射表 ─────────────────────────
@@ -974,7 +984,6 @@ cmdPage({
     ["FFFFFF", "白 · 慢闪", "0x10 等待名单标签 + 红外遮挡"],
     ["4D7CC7", "蓝 · 慢闪", "0x10 连续盘点进行中"],
     ["3FA34D", "绿 · 单闪", "0x10 名单标签稳定确认（无蜂鸣）"],
-    ["E04545", "红 · 快闪 3 s", "0x10 外来（非名单）标签失配（瞬时）"],
     ["E04545", "红 · 快闪（50/50）", "0x10 异常报警：外来介入 / 名单全失（持续至解除）"],
     ["3FA34D", "绿 · 常亮", "0x10 已开锁（升起 / 在顶保持）"],
     ["FFFFFF", "白 · 常亮", "0x11 AM 计数窗（消磁运行中）"],
@@ -982,7 +991,6 @@ cmdPage({
     ["E8C33C", "黄 · 慢闪 2 s", "超窗未达成（0x10 未在顶 / 0x11 窗满）"],
     ["3FA34D", "绿 · 三连闪", "解锁流程完成（ALL_OK 鸣 1 s）"],
     ["E04545", "红 · 双闪", "链路失败"],
-    ["E04545", "红 · 常亮", "设备故障"],
     ["E8C33C", "黄 · 快闪", "行程开关异常（上行程）"],
     ["C355B5", "紫 · 快闪", "行程开关异常（下行程）"],
     ["E8C33C", "黄 · 慢闪", "回零 / 自检进行中"],
