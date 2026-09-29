@@ -1,6 +1,6 @@
 /* sim_main.c — Round_015 0x10/0x11 状态机宿主机模拟测试。
  * 基于 Round_014 骨架, 增量覆盖:
- *   M1/E1: 电机 4000µ步/s 时序预算 (Round_014 2000 翻倍)
+ *   M1/E1: 电机保持 2000µ步/s 时序预算 (4000 提案被否决回退)
  *   E8:    外来标签缓存 4→10 (5 张外来同时介入, 全部被追踪+上报)
  *   E9:    名单 10 张满载 (EPC_MAX_TAGS 上边界)
  *   A5:    AM 挂起确认失败 -> deactFail 如实上报
@@ -26,7 +26,7 @@ static void reset_scenario(void)
     g_nFrames = 0; g_nBeeps = 0; g_nLeds = 0; g_nLegs = 0;
     g_nAmModes = 0; g_nSamples = 0;
     g_amEventCount = 0; g_amMode = 1u;       /* 常态仅检测 */
-    g_motorPos = 0; g_speedHz = 4000u;       /* Round_015: 4000µ步/s */
+    g_motorPos = 0; g_speedHz = 2000u;       /* Round_015 复核: 保持 2000µ步/s */
     g_ms = 1000u;                            /* 非零起点 (受理时刻基准) */
     sim_reset_hooks();
     App_LockerUnlock_Finish();
@@ -87,9 +87,9 @@ static void e1(void)
     CHECK_EQ(count_legs(LSEEK_DIR_DOWN, 0), 1, "回降至触点 1 次");
     CHECK_EQ(led_count(2, RGBFLASH_DONE_3GREEN), 1, "结束绿三闪");
     CHECK_EQ(beep_count(1000), 1, "结束蜂鸣 1s");
-    /* Round_015: 8170 步 @4000Hz ≈ 2.05s, 上限 2.6s */
-    CHECK(g_legs[0].t1 - g_legs[0].t0 < 2600, "升腿 4000Hz ~2.05s");
-    CHECK_EQ(g_speedHz, 4000, "LSEEK_SPEED_HZ 已下发 4000");
+    /* 8170 步 @2000Hz ≈ 4.1s, 上限 4.6s */
+    CHECK(g_legs[0].t1 - g_legs[0].t0 < 4600, "升腿 2000Hz ~4.1s");
+    CHECK_EQ(g_speedHz, 2000, "LSEEK_SPEED_HZ 已下发 2000");
     printf("   rise leg %lums, elapsed %lds\n",
            (long)(g_legs[0].t1 - g_legs[0].t0), (long)(res.elapsedMs / 1000));
 }
@@ -129,7 +129,7 @@ static void e2b(void)
     reset_scenario();
     printf("== E2b 升起中介入即停 ==\n");
     add_tag(0, 999999, 0xA1);
-    add_tag(4000, 6000, 0xD4);                    /* D 在升起途中进入 (4000Hz 腿 ~2s) */
+    add_tag(4000, 6000, 0xD4);                    /* D 在升起途中进入 (2000Hz 腿 ~4.1s) */
     App_LockerUnlock_EpcRun(pk, 1, (uint16_t)plen, 20, 2u, &res);
     App_LockerUnlock_Finish();
 
@@ -188,7 +188,7 @@ static void e5(void)
     reset_scenario();
     printf("== E5 升起中 CANCEL ==\n");
     add_tag(0, 999999, 0xA1);
-    sim_at(3000, cancel_hook);                     /* 升起始于 ~2.6s (4000Hz) */
+    sim_at(3000, cancel_hook);                     /* 升起始于 ~2.6s (2000Hz) */
     App_LockerUnlock_EpcRun(pk, 1, (uint16_t)plen, 15, 2u, &res);
     App_LockerUnlock_Finish();
     CHECK_EQ(res.err, 0, "err");
@@ -408,21 +408,21 @@ static void p1(void)
     CHECK(g_samples[i].valid && !g_samples[i].fgn, "t=13.5s D 已稳定消失");
 }
 
-/* ============ M1: 4000Hz 时序预算 (全腿逐条, Round_015 翻倍) ============ */
+/* ============ M1: 2000Hz 时序预算 (全腿逐条, Round_015 复核) ============ */
 static void m1(void)
 {
     LockerUnlockResult_t res; uint8_t pk[64];
     int plen = pack1(pk, 1, 0xA1);
     reset_scenario();
-    printf("== M1 时序预算 (4000Hz) ==\n");
+    printf("== M1 时序预算 (2000Hz) ==\n");
     add_tag(0, 999999, 0xA1);
     App_LockerUnlock_EpcRun(pk, 1, (uint16_t)plen, 6, 2u, &res);
     App_LockerUnlock_Finish();
     for (int i = 0; i < g_nLegs; i++) {
         CHECK(g_legs[i].t1 - g_legs[i].t0 < 10000, "每腿 <10s (LSEEK_TIMEOUT)");
-        CHECK(g_legs[i].t1 - g_legs[i].t0 < 2600, "每腿 ~2.05s (8170步@4000Hz)");
+        CHECK(g_legs[i].t1 - g_legs[i].t0 < 4600, "每腿 ~4.1s (8170步@2000Hz)");
     }
-    /* 步数上限路径 9448 步 @4000Hz = 2.36s 仍 < LSEEK_TIMEOUT_MS 10s */
+    /* 步数上限路径 9448 步 @2000Hz = 4.7s 仍 < LSEEK_TIMEOUT_MS 10s */
     CHECK(g_legs[0].steps <= LSEEK_RISE_MAX, "步数在寻触上限内");
 }
 

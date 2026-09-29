@@ -1,5 +1,6 @@
 #!/bin/bash
 # Round_015 静态检查: 固件源码裁决项 (sim 不编译 Dispatch/参数头, 在此逐项校验)
+# 电机保持 2000 (4000 提案被否决回退); 其余为 Round_015 增量裁决项
 cd "$(dirname "$0")/../../.."
 fail=0
 ck() { # ck <描述> <grep 表达式> <文件>
@@ -7,10 +8,10 @@ ck() { # ck <描述> <grep 表达式> <文件>
 }
 
 echo "== Round_015 裁决静态检查 =="
-ck "LSEEK_SPEED_HZ=4000"        'define LSEEK_SPEED_HZ *4000u'   Application/inc/App_LockerSeek.h
-ck "HOMING_SPEED_HZ=4000"       'define HOMING_SPEED_HZ *4000u'  Application/src/App_MotorHoming.c
-ck "MT_TEST_SPEED_HZ=4000"      'define MT_TEST_SPEED_HZ *4000u' Application/src/App_MotorTest.c
-ck "SetSpeedHz 上限注释 4000"   '1~4000'                         Application/inc/App_Stepper.h
+ck "LSEEK_SPEED_HZ=2000"        'define LSEEK_SPEED_HZ *2000u'   Application/inc/App_LockerSeek.h
+ck "HOMING_SPEED_HZ=2000"       'define HOMING_SPEED_HZ *2000u'  Application/src/App_MotorHoming.c
+ck "MT_TEST_SPEED_HZ=2000"      'define MT_TEST_SPEED_HZ *2000u' Application/src/App_MotorTest.c
+ck "SetSpeedHz 上限注释 2000"   '1~2000'                         Application/inc/App_Stepper.h
 ck "外来缓存容量 10"            'define UNLK_MAX_FGN_TAGS *10u'  Application/inc/App_LockerUnlock.h
 ck "EPC 名单容量 10"            'define EPC_MAX_TAGS *10u'        Application/inc/App_LockerUnlock.h
 

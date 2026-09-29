@@ -32,7 +32,7 @@ SimSample g_samples[32]; int g_nSamples;
 uint32_t g_amEventCount;
 uint16_t g_amMode;
 uint32_t g_motorPos;
-uint32_t g_speedHz = 4000u;   /* Round_015: 电机腿统一 4000µ步/s */
+uint32_t g_speedHz = 2000u;   /* Round_015 复核: 电机腿保持 2000µ步/s */
 
 int g_checks, g_fails;
 void CHECK(int cond, const char *msg)
