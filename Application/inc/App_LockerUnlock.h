@@ -108,71 +108,74 @@
 
 /* =====================================================================
  * EPC 解锁流程 (LOCKER_SUB_UNLOCK_EPC 0x10) — Round_013 新增独立通道,
- * 旧 0x0A 多标签流程同步关闭 (灯语槽位 RGBSRC_UNLOCK 与 UNLK_ERR_*
- * 错误码移交本流程):
- *   下发单张 EPC -> IR 门控 (单轮=窗 W 窗满 err=NO_IR) -> EPC 连续
- *   EPC_CONFIRM_READS 次读到且一致即稳定在场 (0x21 逐发 ~27ms/发,
- *   纯计数判据, Round_013 裁决: 流畅迅速; 确认即蜂鸣+绿单闪+0x0B) ->
- *   升起寻触 KEY_UP (期间盘点不停, 移除/更换即停机收起) -> 顶部保持
- *   holdTopMs (连续 EPC_LOST_READS 次未读到即稳定移除) -> 周期末回降
- *   KEY_DOWN (免疫 CANCEL)。
- *   循环模式 (timeoutSec>0, Round_013 裁决③): 受理起 timeoutSec 秒内
- *   周期往复; 每轮回退后须先 标签移走 (连续空射) 且红外回落, 再经
- *   红外触发 + EPC 稳定才开下一轮; 流程窗在周期边界判定。周期失败
- *   (移除/更换) 不推帧, 状态由 GET_PROGRESS 拉取 (softCnt=周期数,
- *   softDone=成功数, lastCycle=上轮结果)。timeoutSec=0 单轮模式:
- *   保持原语义 (周期失败即流程结束)。
- *   无软标/无消磁/无外来标签失配上报; 外来标签仅诊断记账 (终帧)。
- * 帧布局/终帧见 App_CustomProtocol.h LOCKER_SUB_UNLOCK_EPC。
+ * Round_014 (2026-09-29) 按客户联调诉求重设计:
+ *   帧下发 tmo 秒流程窗 + epcCnt 张 EPC ((len,EPC)×n, 1~10 张, 重复拒绝):
+ *   UHF 0x22 多标签连续盘点, 名单内任意非空子集 (A/B/C/AB/AC/BC/ABC 均有效)
+ *   稳定在场 (首读起 EPC_STABLE_MS 无 EPC_ABSENT_MS 级断读) + 红外遮挡
+ *   且无外来标签介入 -> 升起; 顶部不设固定保持时长, 在场即保持。
+ *   期间外来标签介入 (连续 EPC_FGN_MIN_HITS 次读到非名单 EPC) 或 名单
+ *   全部离场 -> 异常报警 (红灯 50ms 亮/50ms 灭闪 + 蜂鸣 50ms/500ms,
+ *   Round_014 裁决) + 电机快速下行; 报警解除 (外来稳定消失 >=EPC_ABSENT_MS
+ *   且有效子集恢复稳定) 后经红外门重新升起, 循环直至 tmo 超窗。
+ *   超窗时在顶 -> 回降后 ALL_OK + 蜂鸣 1s; 未升/非顶 -> TIMEOUT。
+ *   CANCEL: 全状态复原 (在顶则安全回降后复原), 回 ABORTED。
+ *   状态经 GET_PROGRESS 0x09 实时拉取 (v2 布局: motorPh + flags 位图
+ *   见 LockerUnlockProgress_t)。
+ *   无软标/无消磁。帧布局/终帧见 App_CustomProtocol.h LOCKER_SUB_UNLOCK_EPC。
  * ===================================================================== */
 
-/* ---- EPC 解锁可调参数 ---- */
-#define EPC_ONE_TMO_MS              100u    /* 0x21 单发盘点超时缺省 (tmo=0):
-                                             * 命中实测 ~27ms 即返, 空射至多此时长 */
-#define EPC_HOLD_TOP_MS             3000u    /* 顶部保持时长缺省 (holdTop=0) */
-#define EPC_HOLD_TOP_MAX_MS          60000u  /* 顶部保持时长上限 */
-#define EPC_CONFIRM_READS           10u     /* 连续读到且 EPC 一致次数 -> 稳定在场
-                                             * (2026-09-19 用户裁决: 3→10, 抗读区
-                                             * 边缘抖动; ~10×27ms ≈ 270ms 判据) */
-#define EPC_LOST_READS              10u     /* 连续未读到次数 -> 稳定移除 (保持期监守;
-                                             * 2026-09-19 用户裁决: 3→10, 判定延迟
-                                             * ~10×tmo, 1000 微步/s 回退段余量足) */
-#define EPC_BEEP_STABLE_EVERY       3u      /* [已废除 2026-09-19] 解锁期间 EPC
-                                             * 盘点心跳蜂鸣移除: 远距边缘标签
-                                             * 偶发凑齐判据致电机乱跑 */
-#define EPC_BEEP_STABLE_MS          50u     /* [已废除, 见上] */
-#define EPC_BEEP_CYCLE_END_MS       800u    /* 周期成功 (3s 保持满在场) 电机
-                                             * 开始下回才响 800ms — 不等回到底;
-                                             * 失败路径 (移走/更换下回) 不响
-                                             * (2026-09-19 裁决: 蜂鸣只留
-                                             * 保持满回降 + 流程结束两处) */
-#define EPC_BEEP_FLOW_DONE_MS       1000u   /* 总流程结束 (时间到): 1s 持续鸣 */
+/* ---- EPC 解锁容量/判据可调参数 (Round_014) ---- */
+#define EPC_MAX_TAGS                10u    /* 名单容量 (客户裁决: 缓冲 10 张) */
+#define EPC_STABLE_MS               1500u  /* 稳定在场判据: 首读起持续在场时长
+                                             * (期间断读超 EPC_ABSENT_MS 即重新累计) */
+#define EPC_ABSENT_MS               1500u  /* 离场判据: 连续未读到此时长 -> 离场 */
+#define EPC_FGN_MIN_HITS            2u     /* 外来介入判据: 累计读到次数 (要快,
+                                             * 不等 1.5s 稳定窗) */
+#define EPC_ONE_TMO_MS              100u   /* 0x22 每轮盘点超时 (连续盘点接力) */
+#define EPC_CONFIRM_READS           10u    /* [0x0A 保留实现专用] 回退监守连读次数 */
+#define EPC_ALARM_BEEP_PERIOD_MS    500u   /* 异常报警蜂鸣节拍 */
+#define EPC_ALARM_BEEP_MS           50u    /* 异常报警蜂鸣时长 (与红闪 50/50 同步节奏,
+                                             * Round_014 裁决) */
+#define EPC_TMO_MAX_S               600u   /* tmo 秒上限 (10min, 超出钳位) */
+#define EPC_BEEP_FLOW_DONE_MS       1000u  /* 流程结束 (超窗在顶): 1s 持续鸣 */
+
+/* 电机子状态 (GET_PROGRESS v2 motorPh 字节) */
+#define UNLK_MPH_NONE               0u   /* 静止 */
+#define UNLK_MPH_RISING             1u   /* 上行中 */
+#define UNLK_MPH_UP                 2u   /* 顶部保持 */
+#define UNLK_MPH_LOWERING           3u   /* 下行中 (正常回降/异常快降) */
+
+/* GET_PROGRESS v2 flags 位图 (bit=1 有效) */
+#define UNLK_FLG_VALID_STABLE       0x01u /* 有名单标签稳定在场 (有效子集非空) */
+#define UNLK_FLG_FGN_ACTIVE         0x02u /* 外来标签介入中 */
+#define UNLK_FLG_ALARM              0x04u /* 异常报警中 */
+#define UNLK_FLG_IR_BLOCKED         0x08u /* 红外遮挡 (去抖后) */
+#define UNLK_FLG_DEMAG_ON           0x10u /* 0x11: AM 消磁模式运行中 */
 
 /* ---- EPC 解锁结束原因 (err=0 时终帧 endReason 字段) ---- */
-#define EPC_END_ALL_OK              1u   /* 保持期满 EPC 仍在场: 正常回降结账
-                                          * (循环模式: 流程窗满且有成功周期) */
-#define EPC_END_EPC_LOST            2u   /* 单轮: 保持期/升起期 EPC 消失, 回降后结束
-                                          * (循环模式周期失败不以此结束流程) */
-#define EPC_END_TIMEOUT             3u   /* 单轮: W 窗满 EPC 未确认; 循环: 流程窗满
-                                          * 且无成功周期 (磁块未动) */
-#define EPC_END_UHF_LOST            4u   /* UHF 链路失联 (校对期/保持期) */
+#define EPC_END_ALL_OK              1u   /* 超窗时有效子集仍在场 (在顶回降后结账,
+                                          * 蜂鸣 1s; 中途曾升起即视为流程完成) */
+#define EPC_END_EPC_LOST            2u   /* [Round_014 不再单独触发] 名单全离场回降
+                                          * 并不再恢复; 由 TIMEOUT 兜底, 码位保留 */
+#define EPC_END_TIMEOUT             3u   /* 超窗时不在顶 (未升起 / 异常回降后未恢复) */
+#define EPC_END_UHF_LOST            4u   /* UHF 链路失联 (任意阶段) */
 #define EPC_END_ABORTED             6u   /* CANCEL 打断 (安全回降后回帧) */
 
 /* =====================================================================
- * AM 标签解锁流程 (LOCKER_SUB_UNLOCK_AM 0x11) — Round_013 新增独立通道:
- *   受理起 tmo 秒窗内被动计数 AM 消磁成功事件 (cmd17 突发结算,
- *   deactCount 增量), 达标 (>=amCnt) 即结账 — 全程不动电机
- *   (2026-09-19 裁决 "AM 解锁完成后不要动作电机, 直接蜂鸣器动作
- *   即可"): 蜂鸣 1s + 绿三闪, rise/lower 恒 0; 窗满未达标按超时结账。
- *   amCnt=0 支路: 无计数门受理即达标, 不耗窗直接结账 ALL_OK。
- *   AM 解码器零控制 (2026-09-19 裁决 "AM 设备从上电到结束不要控制,
- *   按照默认参数即可, 仅在解锁期间监控解锁帧"): 不探链/不切模式/
- *   不下发参数 (main.c 上电零下发), 流程仅被动收 cmd17; 解码器静默
- *   (含挂起/自锁) 按窗满结账, 不报 AM_LINK。
- *   CANCEL: 窗内即回 ABORTED (无电机, 无安全回落问题)。
- *   无 IR 门控/无循环/无升起段监守 (已消磁标签必静默); 全程不碰 UHF。
- *   窗末 cmd17 突发未结算时宽限至多 AM_BURST_GAP_MS 等其入账 (cmd17
- *   成功事件须静默 3s 才结算, 窗末消磁的标签不得漏计)。
+ * AM 标签解锁流程 (LOCKER_SUB_UNLOCK_AM 0x11) — Round_013 新增独立通道;
+ * Round_014 (2026-09-29) 恢复 AM 控制逻辑 (客户裁决 "AM 开启消磁,
+ * 标签达标后 AM 挂起关闭消磁, 以收到几个标签完成的消磁帧为主"):
+ *   受理 -> SET_MODE(mode 0 消磁, 回显确认; 失败重试 AM_MODE_RETRY 次,
+ *   全败按 AM_LINK 结账) -> 计数窗 tmo 秒: 每收到一条 cmd17 消磁帧
+ *   立即入账一计 (Round_014 裁决 "收到一个消磁帧立马更新状态, 无需
+ *   等待无需稳定, 它只有一次" — 改按帧计数, 不再等 3s 突发静默结算;
+ *   每计推 0x0E + 绿闪) -> 达标 (>=amCnt) 或超窗 -> SET_MODE(mode 1
+ *   仅检测, 回显确认, 重试同上; 确认失败不阻塞结账, 终帧 amFail=1
+ *   如实上报 — 解码器自行恢复消磁的风险客户已知情, 无法根除)。
+ *   全程不动电机 (2026-09-19 裁决维持): 蜂鸣 1s + 绿三闪,
+ *   rise/lower 恒 0; 窗满未达标按超时结账 (部分完成数如实上报)。
+ *   amCnt=0 支路: 无计数门受理即结账 ALL_OK (不耗窗不碰 AM)。
+ *   CANCEL: 立即尽力挂起 + ABORTED。无 IR 门控; 全程不碰 UHF。
  * 帧布局/终帧见 App_CustomProtocol.h LOCKER_SUB_UNLOCK_AM。
  * ===================================================================== */
 
@@ -180,28 +183,36 @@
 #define AM_TMO_MAX_S                16000u  /* 超时秒钳位: 受理帧 winMs 为
                                              * 3 字节 (上限 16777215ms),
                                              * 16000s*1000 仍在界内 */
+#define AM_MODE_RETRY               3u      /* SET_MODE 回显确认重试次数 */
 
 /* ---- AM 解锁结束原因 (err=0 时终帧 endReason 字段) ---- */
 #define AM_END_ALL_OK               1u   /* 计数达标 (蜂鸣+绿闪结账, 电机不动) */
 #define AM_END_TIMEOUT              3u   /* 窗满未达标 */
-#define AM_END_ABORTED              6u   /* CANCEL 打断 (窗内即回, 电机未动) */
+#define AM_END_ABORTED              6u   /* CANCEL 打断 (尽力挂起后回帧) */
 
-/* 终帧出参: 由分发层组 0x0A (关闭, 备恢复) / 0x10 EPC 回显帧, 字段随 err 取用 */
+/* 终帧出参: 由分发层组 0x0A (关闭, 备恢复) / 0x10 EPC / 0x11 AM 回显帧,
+ * 字段随 err 取用 */
 typedef struct {
     uint8_t  err;             /* UNLK_ERR_* */
     uint8_t  endReason;       /* UNLK_END_* (err=0 有效) */
-    uint8_t  total;           /* m */
-    uint8_t  confirmed;       /* n */
-    uint8_t  confirmedBitmap;  /* bit i = 清单第 i 张已确认 */
+    uint8_t  total;           /* m (0x10: 名单张数; 0x11: amCnt) */
+    uint8_t  confirmed;       /* n (0x10: 最终稳定在场的名单标签数;
+                              * 0x11: 实际解锁数) */
+    uint8_t  confirmedBitmap;  /* bit i = 清单第 i 张确认 (0x10 最终快照) */
     uint16_t riseSteps;
     uint16_t lowerSteps;
     uint8_t  softCnt;
     uint8_t  softDone;
-    uint8_t  amFail;             /* 0x11: 消磁失败事件数 (判据证伪后恒 0, 保留) */
-    uint32_t elapsedMs;       /* IR 触发 -> 终帧 ms (组帧统一 u16 秒, 封顶) */
-    uint8_t  tagsFound;       /* 校对期读到的外来标签累计 (诊断) */
+    uint8_t  amFail;             /* 0x11: 挂起确认失败标志 (Round_014:
+                                  * 1=SET_MODE(mode1) 重试全败, 解码器
+                                  * 可能仍在消磁; 其余恒 0) */
+    uint32_t elapsedMs;       /* 受理 -> 终帧 ms (组帧统一 u16 秒, 封顶) */
+    uint8_t  tagsFound;       /* 读到的外来标签累计 (诊断) */
     uint8_t  fgnEpcLen;       /* 最后外来 EPC (失配帧/终帧诊断) */
     uint8_t  fgnEpc[UNLK_EPC_MAX];
+    uint8_t  riseCnt;         /* 0x10 (Round_014): 累计升至顶部次数 */
+    uint8_t  alarmCnt;        /* 0x10 (Round_014): 异常报警触发次数 */
+    uint8_t  fgnSeen;         /* 0x10 (Round_014): 全程是否出现过外来介入 */
     uint8_t  fault, diag1, diag2;   /* MOTOR_*: DRV8434S 原样 */
     uint32_t steps;                 /* MOTOR_*: 出错段已走微步数 */
     uint8_t  motorPhase;            /* MOTOR_*: 1=升段 2=降段 */
@@ -211,16 +222,22 @@ typedef struct {
     int      uhfRawErr;             /* UHF_*: App_UHF 原始错误码 */
 } LockerUnlockResult_t;
 
-/* 流程进行中进度快照 (GET_PROGRESS 0x09, 统一布局; 0x10 EPC 流程时
- * total=1, softCnt=周期数, softDone=成功周期数, lastCycle=上轮结果,
- * phase 含 UNLK_PH_HOLD=7 顶部保持) */
+/* 流程进行中进度快照 (GET_PROGRESS 0x09 v2, 0x10/0x11 统一; Round_014):
+ *   0x10: total=名单张数, confirmed/bitmap=当前 CONFIRMED 位图,
+ *         softCnt=累计升至顶部次数, softDone=异常报警次数,
+ *         lastCycle=最近一次电机事件 (0=无 1=升至顶 2=名单全失回降
+ *         3=外来介入回降), motorPh=UNLK_MPH_*, flags 见 UNLK_FLG_*。
+ *   0x11: total/softCnt=amCnt, confirmed/softDone=已解锁数 (逐帧即时),
+ *         motorPh 恒 0, flags 仅 DEMAG_ON。 */
 typedef struct {
     uint8_t  phase;           /* UNLK_PH_* */
     uint8_t  total, confirmed, confirmedBitmap;
     uint8_t  softCnt, softDone;
-    uint32_t holdMs;          /* 自 IR 触发 (循环模式=受理) 已过 ms (3 字节回填) */
-    uint8_t  tagPresent;      /* 有待确认期望标签在场 */
-    uint8_t  lastCycle;       /* 0x10: 上轮结果 0=无/进行中 1=成功 2=移除 3=更换 */
+    uint32_t holdMs;          /* 自受理已过 ms (3 字节回填) */
+    uint8_t  tagPresent;      /* 有名单标签在场 (TRACKING/CONFIRMED) */
+    uint8_t  lastCycle;       /* 0x10: 最近电机事件 0/1升至顶/2全失回降/3外来回降 */
+    uint8_t  motorPhase;      /* UNLK_MPH_* (Round_014 v2 新增) */
+    uint8_t  flags;           /* UNLK_FLG_* 位图 (Round_014 v2 新增) */
 } LockerUnlockProgress_t;
 
 /* 阻塞执行整个多标签解锁流程 (FC_LOCKER_CTRL 分发上下文调用)。
@@ -230,23 +247,23 @@ void App_LockerUnlock_Run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
                           uint16_t tmoMs, uint16_t holdMaxMs, uint8_t softCnt,
                           uint8_t channel, LockerUnlockResult_t *out);
 
-/* EPC 解锁 (LOCKER_SUB_UNLOCK_EPC 0x10, Round_013 新): 阻塞自治执行
- * IR 门控 + 单张 EPC 计数稳定确认 -> 升起寻触 KEY_UP (期间盘点监守) ->
- * 顶部保持 -> 周期末回降; timeoutSec=0 单轮 / >0 循环模式 (受理起
- * timeoutSec 秒内周期往复, 周期失败不推帧, 状态由 GET_PROGRESS 拉取)。
- * 结果字段 err / EPC_END_* / riseSteps / lowerSteps / softCnt(周期数) /
- * softDone(成功数) 已填好, 调用方组 0x10 终帧 (布局见 App_CustomProtocol.h)。 */
-void App_LockerUnlock_EpcRun(const uint8_t *epc, uint8_t epcLen, uint16_t tmoMs,
-                             uint16_t winMaxMs, uint16_t holdTopMs, uint8_t timeoutSec,
+/* EPC 解锁 (LOCKER_SUB_UNLOCK_EPC 0x10, Round_014 重设计): 阻塞自治执行
+ * 名单子集稳定确认 (EPC_STABLE_MS) + IR 门控 -> 升起 (监守) -> 在场即保持
+ * -> 异常 (外来介入/名单全失) 报警快降 -> 恢复再升 ... 直至 tmoSec 超窗。
+ * packed 为 epcCnt 个变长条目 (len, EPC...), 由 EpcRun 内部校验
+ * (len 1~12 / 不重复 / 数据长度吻合), 非法回 PARAM。
+ * 结果字段 err / EPC_END_* / riseSteps / lowerSteps / riseCnt /
+ * alarmCnt / fgnSeen 已填好, 调用方组 0x10 终帧 (布局见 App_CustomProtocol.h)。 */
+void App_LockerUnlock_EpcRun(const uint8_t *packed, uint8_t epcCnt,
+                             uint16_t packedLen, uint16_t tmoSec,
                              uint8_t channel, LockerUnlockResult_t *out);
 
-/* AM 标签解锁 (LOCKER_SUB_UNLOCK_AM 0x11, Round_013 新): 阻塞自治执行
- * 计数窗 (受理起 tmoSec 秒内被动数消磁成功事件) -> 达标 (>=amCnt) 即
- * 蜂鸣+绿闪结账 (不动电机, rise/lower 恒 0); 窗满未达标按超时结账。
- * amCnt=0: 无计数门受理即达标, 不耗窗直接结账 ALL_OK。
- * AM 零控制 (2026-09-19 裁决): 不探链/不切模式/不下发参数, 仅被动收
- * cmd17。结果字段 err / AM_END_* / softCnt(amCnt) / softDone(实际解锁数) /
- * amFail (判据证伪后恒 0, 保留) 已填好, 调用方组 0x11 终帧。 */
+/* AM 标签解锁 (LOCKER_SUB_UNLOCK_AM 0x11, Round_014 恢复控制): 受理 ->
+ * AM 切消磁 (确认) -> 逐帧计数 (每条 cmd17 立即入账一计) -> 达标/超窗 ->
+ * AM 挂起切仅检测 (确认, 失败 amFail=1 如实上报) -> 蜂鸣+绿闪结账
+ * (不动电机, rise/lower 恒 0)。amCnt=0: 不耗窗不碰 AM 直接 ALL_OK。
+ * 结果字段 err / AM_END_* / softCnt(amCnt) / softDone(实际解锁数) /
+ * amFail (1=挂起确认失败) 已填好, 调用方组 0x11 终帧。 */
 void App_LockerUnlock_AmRun(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
                             LockerUnlockResult_t *out);
 

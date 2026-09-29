@@ -38,11 +38,12 @@ static uint32_t s_wrongMs    = 0;     /* 错触触点持续起始时刻 (防抖)
 static uint8_t  s_wrongActive = 0;    /* 错触触点当前是否保持触发 */
 static uint8_t  s_brokeAway  = 1;     /* 已脱离起点进入自由行程 (两触点均释放过) */
 
-#define MT_TEST_SPEED_HZ    1000u   /* 2026-09-19 用户统一裁决: 上电自测/行程测试/解锁腿全 1000 微步/s (≈150RPM) */
+#define MT_TEST_SPEED_HZ    2000u   /* Round_014 用户裁决 (2026-09-29): 全电机腿统一 2000 微步/s (1000 翻倍, ≈300RPM) */
 #define MT_TEST_TORQUE_PCT  90u    /* 2026-09-19 全电机腿统一 90% (20%/40% 实测失步区, 与回零同源定稿) */
 
-/* 测试速度1000(1/2档, 400步/转, 2.5转/s=150RPM) + 转矩90%: 0.9°/步.
- * 行程基准 10.7圈×400=4288/程 (单程 ~4.3s, MT_TEST_TIMEOUT_MS 10s 余量充足).
+/* 测试速度2000(1/2档, 400步/转, 5转/s=300RPM) + 转矩90%: 0.9°/步.
+ * 行程基准 10.7圈×400=4288/程 (单程 ~2.1s, MT_TEST_TIMEOUT_MS 10s 余量充足).
+ * 挣脱窗为时间基准 (MT_TEST_TIMEOUT_MS), 提速后更快离出触点, 无需重标.
  * STEP 由 TIM4 硬件定时器产生. */
 static void set_test_params(void)
 {

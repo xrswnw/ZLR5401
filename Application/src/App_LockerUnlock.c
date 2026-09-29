@@ -51,20 +51,28 @@ static volatile uint8_t s_abort;
 static volatile uint8_t s_immune;     /* 回退/回降段免疫 CANCEL */
 static volatile uint8_t s_phase;
 static uint8_t  s_channel;
-static UnlkTagRec_t s_tag[UNLK_MAX_TAGS];
+static UnlkTagRec_t s_tag[EPC_MAX_TAGS];   /* Round_014: 名单容量 10 (0x0A 上限仍 4) */
 static FgnTagRec_t  s_fgn[UNLK_MAX_FGN_TAGS];
 static uint8_t  s_total, s_confirmed, s_bitmap;
 static uint8_t  s_softCnt, s_softDone;
-static uint32_t s_irMs;               /* IR 触发时刻 (W 计时基准) */
+static uint32_t s_irMs;               /* 流程计时基准 (受理时刻) */
 static uint32_t s_demagBase;           /* 消磁计数基线 (softCnt>0) */
 static uint8_t  s_amDemagOn;           /* 软标段已切消磁模式 (Run 出口切回检测) */
 static uint8_t  s_risen;
-/* ---- EPC 解锁 (0x10) 循环周期记账 ---- */
-static uint8_t  s_cycle, s_cycleOk, s_lastCyc; /* 周期数/成功数/上轮结果(1成功2移除3更换) */
-static uint16_t s_oneTmo;                      /* 0x21 单发超时 (监守钩子用) */
-static uint8_t  s_msMiss, s_msFgn;              /* 升起/保持期监守: 连续丢失计数 / 外来EPC标志 */
-static uint8_t  s_vMiss;                        /* 调试: 校对段 rec 未命中计数 (IO_DIAG 带出) */
-static uint8_t  s_reHits;                       /* 回退段监守: 期望标签回归连击计数 */
+/* ---- 0x0A 保留实现专用 (unlk_run 监守路径; 流程已关闭) ---- */
+static uint8_t  s_cycle, s_cycleOk, s_lastCyc;
+static uint16_t s_oneTmo;
+static uint8_t  s_msMiss, s_msFgn;
+static uint8_t  s_vMiss;
+static uint8_t  s_reHits;
+/* ---- EPC 解锁 (0x10) Round_014 新状态机 ---- */
+static volatile uint8_t s_mph;        /* UNLK_MPH_* 电机子状态 */
+static uint8_t  s_validCnt;           /* 当前 CONFIRMED 名单标签数 (有效子集大小) */
+static uint8_t  s_fgnActive;          /* 外来标签介入中 */
+static uint8_t  s_alarmActive;        /* 异常报警中 */
+static uint32_t s_alarmBeepMs;        /* 报警蜂鸣上次触发时刻 */
+static uint8_t  s_riseCnt, s_alarmCnt, s_fgnSeen, s_tagsFound;
+static volatile uint8_t s_amDemagFlag;  /* 0x11: 消磁模式运行中 (进度 flags) */
 
 /* 调试: 校对段匹配状态快照 (IO_DIAG 带出) */
 void App_LockerUnlock_GetEpcDbg(uint8_t *v)
@@ -98,21 +106,25 @@ void App_LockerUnlock_GetProgress(LockerUnlockProgress_t *p)
     p->confirmedBitmap = s_bitmap;
     p->softCnt = s_softCnt;
     p->softDone = s_softDone;
-    p->lastCycle = s_lastCyc;   /* 0x10: 上轮结果 1成功/2移除/3更换 */
+    p->lastCycle = s_lastCyc;
+    p->motorPhase = s_mph;                 /* Round_014 v2: 电机子状态 */
     if (s_irMs != 0u) {
-        uint32_t h = SysTickHl_GetMs() - s_irMs;
-        p->holdMs = h;
+        p->holdMs = SysTickHl_GetMs() - s_irMs;
     }
     uint32_t now = SysTickHl_GetMs();
     for (uint8_t i = 0; i < s_total; i++) {
-        /* Round_013: 0x10 保持期 CONFIRMED 仍刷 lastSeen (在场监守),
-         * 在场位一并覆盖之; 0x0A (关闭) 语义不变。 */
         if ((s_tag[i].state == UTAG_TRACKING || s_tag[i].state == UTAG_CONFIRMED) &&
-            (now - s_tag[i].lastSeen) <= UNLK_PRESENT_WINDOW_MS) {
+            (now - s_tag[i].lastSeen) <= EPC_ABSENT_MS) {
             p->tagPresent = 1u;
             break;
         }
     }
+    /* Round_014 v2 flags 位图 (0x10: 全量; 0x11: 仅 DEMAG_ON 由 am_run 维护) */
+    if (s_total != 0u && s_validCnt > 0u)  p->flags |= UNLK_FLG_VALID_STABLE;
+    if (s_fgnActive)                       p->flags |= UNLK_FLG_FGN_ACTIVE;
+    if (s_alarmActive)                     p->flags |= UNLK_FLG_ALARM;
+    if (App_NewPeriph_ReadIr() != 0u)      p->flags |= UNLK_FLG_IR_BLOCKED;
+    if (s_amDemagFlag)                     p->flags |= UNLK_FLG_DEMAG_ON;
 }
 
 /* ---- 推送帧 (阻塞期间随时经原通道直发, func=FC_LOCKER_CTRL^0xFF) ---- */
@@ -683,40 +695,8 @@ void App_LockerUnlock_Run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
     App_RgbLedPat_Clear(RGBSRC_UNLOCK);
 }
 
-/* =====================================================================
- * EPC 解锁流程 (LOCKER_SUB_UNLOCK_EPC 0x10) — Round_013 新增独立通道。
- * 单周期: IR 门控 -> 0x21 逐发 EPC 稳定确认 (计数判据, Round_013 裁决) ->
- * 升起寻触 KEY_UP (期间盘点不停, 移除/更换即收起) -> 顶部保持 holdTopMs
- * -> 回降。周期失败不推帧, 状态由 GET_PROGRESS 拉取 (Round_013 裁决)。
- *
- * 循环模式 (帧 rsv0=timeoutSec>0): 受理起 timeoutSec 秒内周期往复; 每轮
- * 回退后须先观察到 标签移走 (连续 EPC_LOST_READS 发空射) 且红外回落,
- * 再经红外触发 + EPC 稳定才开下一轮; 流程窗在周期边界判定 (进行中的
- * 周期跑完)。timeoutSec=0 单轮模式: 周期失败即流程结束 (原语义)。
- * 无软标/无消磁; 旧 0x0A 关闭后灯语槽位 (RGBSRC_UNLOCK) 与 UNLK_ERR_*
- * 错误码由本流程接管。
- * ===================================================================== */
-
-/* 升起段监守 (LockerSeek 泵拍回调): 0x21 逐发, 连续 EPC_LOST_READS 发
- * 未读到期望 EPC -> 返回 1 请求停机收起; 读到外来 EPC 记更换语义。 */
-static int epc_monitor(void)
-{
-    AppUHFTag_t tag;
-    uint8_t hit = (App_UHF_InventoryOneSync(s_oneTmo, &tag, NULL)
-                  == APP_UHF_ERR_OK) ? 1u : 0u;
-    if (hit && rec_find(&tag) != NULL) {
-        s_msMiss = 0u;
-        return 0;
-    }
-    if (hit) s_msFgn = 1u;              /* 读到外来: 更换 */
-    return (++s_msMiss >= EPC_LOST_READS) ? 1 : 0;
-}
-
-/* 回退段监守 (周期失败回退): 期望标签连续 EPC_CONFIRM_READS 发读回 ->
- * 返回 1 请求中停回退, 跳过再入场闸直接再升起 (Round_013 用户裁决:
- * 回退中标签放回即再升)。空射/外来清零 — 外来标签不得触发再升。
- * 2026-09-19 收紧 (乱跑实测): 计数仅在红外遮挡 (标签在门上) 时累积
- * — 远距边缘标签的偶发读回爆发不得驱动电机; 合法放回必然挡光。 */
+/* 回退段监守 (0x0A 保留实现专用, 流程已关闭): 期望标签连续
+ * EPC_CONFIRM_READS 发读回 -> 中停回退; 红外未遮挡不计回归。 */
 static int retract_monitor(void)
 {
     if (App_NewPeriph_ReadIr() == 0u) {   /* 红外未遮挡: 不计回归 */
@@ -725,23 +705,187 @@ static int retract_monitor(void)
     }
     AppUHFTag_t tag;
     uint8_t hit = (App_UHF_InventoryOneSync(s_oneTmo, &tag, NULL)
-                  == APP_UHF_ERR_OK) ? 1u : 0u;
+                   == APP_UHF_ERR_OK) ? 1u : 0u;
     if (hit && rec_find(&tag) != NULL)
         return (++s_reHits >= EPC_CONFIRM_READS) ? 1 : 0;
     s_reHits = 0u;
     return 0;
 }
 
-static void epc_run(const uint8_t *epc, uint8_t epcLen, uint16_t tmoMs,
-                    uint32_t winMs, uint32_t holdTopMs, uint8_t timeoutSec,
-                    uint8_t channel, LockerUnlockResult_t *out)
+/* =====================================================================
+ * EPC 解锁流程 (LOCKER_SUB_UNLOCK_EPC 0x10) — Round_013 独立通道,
+ * Round_014 (2026-09-29) 按客户联调诉求整体重设计:
+ *   受理 (tmo 秒流程窗 + 名单 1~10 张) -> 0x22 多标签连续盘点 ->
+ *   名单任意非空子集稳定在场 (EPC_STABLE_MS) + 红外遮挡 + 无外来介入
+ *   -> 升起 (监守) -> 在场即保持 (不设固定时长) ->
+ *   异常 (外来介入 / 名单全离场): 报警 (红 50/50 闪 + 蜂鸣 50ms/500ms)
+ *   + 快速下行 -> 恢复后经红外门再升, 循环直至超窗。
+ *   超窗在顶 -> 回降 + ALL_OK + 蜂鸣 1s; 否则 TIMEOUT。
+ *   CANCEL -> 安全回降 + 全状态复原 + ABORTED。
+ * ===================================================================== */
+
+/* 名单标签记录: PENDING -> TRACKING (首读起持续在场 EPC_STABLE_MS)
+ * -> CONFIRMED (计入有效子集); 断读超 EPC_ABSENT_MS 回 PENDING (离场)。
+ * CONFIRMED 非单向掩码 (Round_014): 离场即撤销, 重新稳定再计入。 */
+static void epc2_tag_update(uint32_t now)
+{
+    /* ---- 收割本轮盘点结果, 刷新在读记录 ---- */
+    AppUHFTag_t tag;
+    while (App_UHF_TagTake(&tag) == 0) {
+        UnlkTagRec_t *t = rec_find(&tag);
+        if (t != NULL) {
+            if (t->state == UTAG_PENDING) {
+                t->state = UTAG_TRACKING;
+                t->trackStart = now;
+                t->hits = 0u;
+            }
+            t->hits++;
+            t->lastSeen = now;
+        } else {
+            if (s_tagsFound < 255u) s_tagsFound++;
+            FgnTagRec_t *g = fgn_track(&tag, now);
+            if (g != NULL) {
+                g->hits++;
+                g->lastSeen = now;
+                if (g->reported == 0u && g->hits >= EPC_FGN_MIN_HITS) {
+                    /* 外来介入成立: 一事件一帧 0x0C (槽释放后再次介入重报) */
+                    g->reported = 1u;
+                    push_mismatch(g->epc, g->len, g->hits);
+                    s_fgnSeen = 1u;
+                }
+            }
+        }
+    }
+
+    /* ---- 名单状态推进 + 有效子集统计 ---- */
+    s_validCnt = 0u;
+    s_confirmed = 0u;
+    s_bitmap = 0u;
+    for (uint8_t i = 0; i < s_total; i++) {
+        UnlkTagRec_t *t = &s_tag[i];
+        if (t->state == UTAG_TRACKING) {
+            if ((now - t->lastSeen) > EPC_ABSENT_MS) {   /* 断读: 重新累计 */
+                t->state = UTAG_PENDING;
+                t->hits = 0u;
+            } else if ((now - t->trackStart) >= EPC_STABLE_MS) {
+                t->state = UTAG_CONFIRMED;               /* 稳定在场 */
+                s_confirmed++;
+                s_bitmap |= (uint8_t)(1u << i);
+                push_tag(t);                             /* 0x0B 确认帧 */
+                App_RgbLedPat_Flash(RGBFLASH_MATCH_OK);
+            }
+        }
+        if (t->state == UTAG_CONFIRMED) {
+            if ((now - t->lastSeen) > EPC_ABSENT_MS) {   /* 离场: 撤销确认 */
+                t->state = UTAG_PENDING;
+                t->hits = 0u;
+            } else {
+                s_validCnt++;                            /* 有效子集成员 */
+                s_bitmap |= (uint8_t)(1u << i);
+            }
+        }
+    }
+
+    /* ---- 外来介入判定 (槽释放 = 稳定消失) ---- */
+    s_fgnActive = 0u;
+    for (uint8_t i = 0; i < UNLK_MAX_FGN_TAGS; i++) {
+        FgnTagRec_t *g = &s_fgn[i];
+        if (g->len == 0u) continue;
+        if ((now - g->lastSeen) > EPC_ABSENT_MS) {      /* 稳定消失: 释放槽 */
+            g->len = 0u;
+            continue;
+        }
+        if (g->hits >= EPC_FGN_MIN_HITS) s_fgnActive = 1u;
+    }
+
+    /* ---- 盘点接力: 本函数在每个泵拍路径 (主循环/电机腿监守) 都被调用,
+     * 在此处接力保证升起/回降腿期间盘点不停 (0x22 一轮结束 -> 下一轮) ---- */
+    if (!App_UHF_IsBusy() && App_UHF_GetState() == APP_UHF_READY)
+        (void)App_UHF_InventoryTimeout(EPC_ONE_TMO_MS);
+}
+
+/* 异常报警节奏 (Round_014 裁决): 触发即红 50/50 闪 (RGBPAT_ALARM_BLINK
+ * 稳态声明, 高于一切常规图样) + 蜂鸣 50ms 每 500ms; 解除即恢复阶段稳态。
+ * 名单全失仅在电机升起/在顶时构成报警 (未升起时不算)。 */
+static void epc2_steady_led(uint8_t flowPh, uint8_t irStable)
+{
+    if (flowPh != 0u)
+        App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_RISE_HOLD_GREEN);   /* 在顶: 绿常亮 */
+    else
+        App_RgbLedPat_Set(RGBSRC_UNLOCK,
+                          irStable ? RGBPAT_SCAN_ACTIVE : RGBPAT_IR_WAIT);
+}
+
+static void epc2_alarm_poll(uint32_t now)
+{
+    uint8_t alarmLost = (s_mph == UNLK_MPH_RISING || s_mph == UNLK_MPH_UP)
+                        && s_validCnt == 0u;
+    uint8_t alarmNow = (s_fgnActive || alarmLost) ? 1u : 0u;
+    if (alarmNow != s_alarmActive) {
+        s_alarmActive = alarmNow;
+        if (alarmNow) {
+            s_alarmCnt++;
+            App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_ALARM_BLINK);
+        } else {
+            s_alarmBeepMs = 0u;                          /* 解除: 停蜂鸣 */
+        }
+    }
+    if (s_alarmActive) {
+        if (s_alarmBeepMs == 0u || (now - s_alarmBeepMs) >= EPC_ALARM_BEEP_PERIOD_MS) {
+            App_NewPeriph_BeepPulse(EPC_ALARM_BEEP_MS);
+            s_alarmBeepMs = now;
+        }
+    }
+}
+
+/* 升起段监守: 收割标签 + 报警节奏; 外来介入或名单全失即停机收起。 */
+static int epc2_rise_monitor(void)
+{
+    uint32_t now = SysTickHl_GetMs();
+    epc2_tag_update(now);
+    epc2_alarm_poll(now);
+    return (s_fgnActive || s_validCnt == 0u) ? 1 : 0;
+}
+
+/* 回降段监守: 只收割/报警 (恢复判定交回主循环), 不中停回降。 */
+static int epc2_passive_monitor(void)
+{
+    uint32_t now = SysTickHl_GetMs();
+    epc2_tag_update(now);
+    epc2_alarm_poll(now);
+    return 0;
+}
+
+/* 异常快降: 免疫 CANCEL, 到底后回 WAIT (报警解除由主循环判定)。 */
+static int epc2_alarm_lower(uint32_t *lower, LockerUnlockResult_t *out)
+{
+    s_mph = UNLK_MPH_LOWERING;
+    s_phase = UNLK_PH_LOWER;
+    s_lastCyc = s_fgnActive ? 3u : 2u;      /* 3=外来介入回降 2=名单全失回降 */
+    s_immune = 1u;
+    LockerSeek_SetMonitor(epc2_passive_monitor);
+    int r = LockerSeek_RunRetry(LSEEK_DIR_DOWN, LSEEK_LOWER_MAX, lower);
+    LockerSeek_SetMonitor(NULL);
+    s_immune = 0u;
+    s_risen = 0u;
+    s_mph = UNLK_MPH_NONE;
+    if (r != 0u) {
+        motor_fail((App_Stepper_GetFault() != 0u) ? UNLK_ERR_MOTOR_FAULT
+                                                  : UNLK_ERR_MOTOR_TIMEOUT,
+                   2u, out);
+        return -1;
+    }
+    return 0;
+}
+
+/* EpcRun 已完成名单展开 (s_tag/s_total) 与参数校验 */
+static void epc_run(uint16_t tmoSec, uint8_t channel, LockerUnlockResult_t *out)
 {
     s_busy = 1u;
     s_abort = 0u;
     s_immune = 0u;
     s_phase = UNLK_PH_WAIT_TAG;
     s_channel = channel;
-    s_total = 1u;
     s_confirmed = 0u;
     s_bitmap = 0u;
     s_softCnt = 0u;
@@ -750,30 +894,26 @@ static void epc_run(const uint8_t *epc, uint8_t epcLen, uint16_t tmoMs,
     s_irMs = 0u;
     s_demagBase = 0u;
     s_amDemagOn = 0u;
-    s_cycle = 0u;
-    s_cycleOk = 0u;
     s_lastCyc = 0u;
-    s_oneTmo = tmoMs;
-    s_msMiss = 0u;
-    s_msFgn = 0u;
-    s_vMiss = 0u;
-    s_reHits = 0u;
+    s_mph = UNLK_MPH_NONE;
+    s_validCnt = 0u;
+    s_fgnActive = 0u;
+    s_alarmActive = 0u;
+    s_alarmBeepMs = 0u;
+    s_riseCnt = 0u;
+    s_alarmCnt = 0u;
+    s_fgnSeen = 0u;
+    s_tagsFound = 0u;
     LockerSeek_BindAbort(&s_abort, &s_immune);
-    s_tag[0].len = epcLen;
-    s_tag[0].state = UTAG_PENDING;
-    s_tag[0].hits = 0u;
-    s_tag[0].trackStart = 0u;
-    s_tag[0].lastSeen = 0u;
-    for (uint8_t k = 0; k < epcLen; k++) s_tag[0].epc[k] = epc[k];
     for (uint8_t i = 0; i < UNLK_MAX_FGN_TAGS; i++) s_fgn[i].len = 0u;
 
-    /* ---- 前置检查 (同 0x0A ⑴: Locker/UHF/电机占用与回零就绪) ---- */
+    /* ---- 前置检查 (Locker/UHF/电机占用与回零就绪, 同旧 0x10) ---- */
     if (App_Locker_IsIdle() == 0)                    { fill_busy(out); return; }
     if (App_UHF_GetState() == APP_UHF_SCAN)          { fill_busy(out); return; }
     if (App_UHF_IsBusy())                            { fill_busy(out); return; }
     if (App_Stepper_GetState() != APP_STEPPER_IDLE)  { fill_busy(out); return; }
     if (App_MotorHoming_GetStatus() == HOMING_STAT_RUNNING) {
-        fill_busy(out);                 /* 后台回零进行中 -> BUSY */
+        fill_busy(out);
         return;
     }
     if (App_MotorHoming_IsReady() == 0) {
@@ -782,392 +922,237 @@ static void epc_run(const uint8_t *epc, uint8_t epcLen, uint16_t tmoMs,
         return;
     }
 
-    /* ---- UHF 就绪 + 开盘 (ERROR 态彻底下电重上, 同 0x0A ⑷; 循环模式全程需要) ---- */
+    /* ---- UHF 就绪 + 开盘 (ERROR 态彻底下电重上) ---- */
     if (App_UHF_GetState() == APP_UHF_ERROR) {
         (void)App_UHF_Close();
         out->uhfRawErr = App_UHF_Open();
         if (out->uhfRawErr != APP_UHF_ERR_OK) {
             out->err = UNLK_ERR_UHF_OPEN;
-            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);
             return;
         }
     } else if (App_UHF_GetState() != APP_UHF_READY) {
         out->uhfRawErr = App_UHF_Open();
         if (out->uhfRawErr != APP_UHF_ERR_OK) {
             out->err = UNLK_ERR_UHF_OPEN;
-            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);
             return;
         }
     }
-    App_UHF_ClearTags();                     /* 任务边界: 清陈旧标签 */
+    App_UHF_ClearTags();
     if (s_abort) { out->err = UNLK_ERR_OK; out->endReason = EPC_END_ABORTED; return; }
 
-    /* ---- 受理: 循环窗 timeoutSec / 单轮窗 W (回显实际窗) ---- */
-    uint8_t  repeat = (timeoutSec != 0u);
-    uint32_t flowMs = (uint32_t)timeoutSec * 1000u;
+    uint32_t flowMs = (uint32_t)tmoSec * 1000u;
     uint32_t flowT0 = SysTickHl_GetMs();
-    push_start(repeat ? flowMs : winMs, UNLK_PH_WAIT_TAG);   /* 受理帧 0x0F */
-    App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_IR_WAIT);   /* 待放标: 白慢闪 */
-    (void)App_Stepper_SetSpeedHz(LSEEK_SPEED_HZ);
+    s_irMs = flowT0;                     /* 流程耗时基准 = 受理时刻 */
+    push_start(flowMs, UNLK_PH_WAIT_TAG);            /* 受理帧 0x0F */
+    (void)App_Stepper_SetSpeedHz(LSEEK_SPEED_HZ);   /* Round_014: 2000µ步/s */
     (void)App_Stepper_SetTorquePercent(LSEEK_TORQUE_PCT);
-    if (repeat) s_irMs = flowT0;           /* 循环模式: 流程耗时基准 = 受理 */
+    (void)App_UHF_InventoryTimeout(EPC_ONE_TMO_MS); /* 常态连续多标签盘点 */
 
     uint32_t rise = 0u, lower = 0u;
-    uint8_t  endErr = UNLK_ERR_OK;          /* 非0: err 出口 (NO_IR) */
-    uint8_t  endR = 0u;                     /* 流程结束码 EPC_END_* */
-    uint8_t  firstCycle = 1u;
-    uint8_t  skipGate = 0u;  /* 回退中标签放回中停: 下一轮跳再入场闸直接再升 */
-    uint8_t  lastFail = 0u;  /* 上一周期失败: 下轮免"移走+红外回落"手势,
-                              * 标签重新稳定在场 (校对段) 即直接开下一轮 */
+    uint8_t  endR = 0u;                   /* EPC_END_* (0=未结束) */
+    uint8_t  flowPh = 0u;                 /* 0=WAIT 1=UP */
+    uint32_t irHighSince = 0u;
+    uint32_t lostStart = 0u;
+    App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_IR_WAIT);   /* 待放标: 白慢闪 */
 
-    while (endErr == UNLK_ERR_OK && endR == 0u) {
+    while (endR == 0u) {
+        LockerSeek_Pump();
+        if (s_abort) { endR = EPC_END_ABORTED; break; }
+        uint32_t now = SysTickHl_GetMs();
 
-        /* ---- (a) 再入场闸 (非首轮): 标签移走 + 红外回落 ----
-         * 用户裁决: 必须标签移走 (连续 EPC_LOST_READS 发空射) 且红外
-         * 回落, 才允许下一轮触发; 否则停在白闪等待。防搁置标签无限
-         * 自动循环。
-         * 例外 (Round_013 裁决): ① 再升路径 (skipGate, 回退中标签放回
-         * 中停); ② 上一周期失败 (lastFail) — 移走已发生过, 期望标签
-         * 重新稳定在场 (校对段判定) 即直接开下一轮, 与再升语义连成
-         * 一体。 */
-        if (!firstCycle && skipGate == 0u && lastFail == 0u) {
-            s_phase = UNLK_PH_WAIT_TAG;   /* 再入场闸: 等待标签移走+红外回落 */
-            App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_IR_WAIT);
-            uint8_t absent = 0u, irLow = 0u, miss = 0u;
-            uint32_t lostStart = 0u;
-            while (!absent || !irLow) {
-                LockerSeek_Pump();
-                if (s_abort) { endR = EPC_END_ABORTED; break; }
-                AppUHFTag_t tag;
-                uint8_t hit = (App_UHF_InventoryOneSync(tmoMs, &tag, NULL)
-                              == APP_UHF_ERR_OK) ? 1u : 0u;
-                uint32_t now = SysTickHl_GetMs();
-                if (hit && rec_find(&tag) != NULL) miss = 0u;
-                else if (++miss >= EPC_LOST_READS) absent = 1u;
-                if (App_NewPeriph_ReadIr() == 0u) irLow = 1u;
-                if ((now - flowT0) >= flowMs) {
-                    endR = (s_cycleOk > 0u) ? EPC_END_ALL_OK : EPC_END_TIMEOUT;
-                    break;
-                }
-                if (App_UHF_GetState() == APP_UHF_ERROR || App_UHF_GetLinkStatus() != 0) {
-                    if (lostStart == 0u) lostStart = now;
-                    if ((now - lostStart) >= UNLK_UHF_LOST_CONFIRM_MS) {
-                        endR = EPC_END_UHF_LOST;
-                        break;
-                    }
-                } else {
-                    lostStart = 0u;
-                }
+        epc2_tag_update(now);
+
+        /* IR 去抖 (仅 WAIT 升起门控; 在顶不作为回降条件 — 客户实测
+         * "标签遮不全光电"痛点, 以标签为准) */
+        uint8_t irStable = 0u;
+        if (App_NewPeriph_ReadIr() != 0u) {
+            if (irHighSince == 0u) irHighSince = now;
+            if ((now - irHighSince) >= UNLK_IR_CONFIRM_MS) irStable = 1u;
+        } else {
+            irHighSince = 0u;
+        }
+        epc2_alarm_poll(now);
+        if (!s_alarmActive) epc2_steady_led(flowPh, irStable);  /* 解除后恢复 */
+
+        /* UHF 失联 5s 确认 -> UHF_LOST */
+        if (App_UHF_GetState() == APP_UHF_ERROR || App_UHF_GetLinkStatus() != 0) {
+            if (lostStart == 0u) lostStart = now;
+            if ((now - lostStart) >= UNLK_UHF_LOST_CONFIRM_MS) {
+                endR = EPC_END_UHF_LOST;
+                App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);
+                break;
             }
-            if (endR != 0u) break;
+        } else {
+            lostStart = 0u;
         }
 
-        /* ---- (b) 红外门控: 等待放标 (PC11 去抖; 单轮=窗 W, 循环=流程窗) ----
-         * 再升路径 (skipGate, 回退中标签放回) 免红外触发 — 回归监守已
-         认证稳定在场且红外遮挡 (Round_013 裁决: 标签放回即再升)。
-         上轮失败后再入场 (lastFail) **必须重新过红外门** (2026-09-19
-         收紧): 失败免的只是"移走"手势, 开盘仍由红外触发 — 远距边缘
-         标签偶发凑齐判据不得驱动电机乱跑 (乱跑实测修正)。 */
-        if (skipGate == 0u) {
-            uint32_t irHighSince = 0u;
-            for (;;) {
-                LockerSeek_Pump();
-                if (s_abort) { endR = EPC_END_ABORTED; break; }
-                uint32_t now = SysTickHl_GetMs();
-                if (App_NewPeriph_ReadIr() != 0u) {
-                    if (irHighSince == 0u) irHighSince = now;
-                    if ((now - irHighSince) >= UNLK_IR_CONFIRM_MS) break;   /* 放标触发 */
-                } else {
-                    irHighSince = 0u;
-                }
-                if (repeat) {
-                    if ((now - flowT0) >= flowMs) {
-                        endR = (s_cycleOk > 0u) ? EPC_END_ALL_OK : EPC_END_TIMEOUT;
-                        break;
-                    }
-                } else if ((now - flowT0) >= winMs) {
-                    endErr = UNLK_ERR_NO_IR;
-                    App_RgbLedPat_Flash(RGBFLASH_WARN_2S);   /* 未放标: 黄慢闪 2s */
-                    break;
-                }
-            }
-            if (endR != 0u || endErr != UNLK_ERR_OK) break;
-            if (!repeat) s_irMs = SysTickHl_GetMs();   /* 单轮: W 计时基准 = IR 触发 */
-        }
-        skipGate = 0u;                     /* 闸/红外跳过仅生效一轮 (再升路径) */
-
-        /* ---- (c) EPC 稳定确认 (蓝慢闪; 计数判据, Round_013 裁决) ----
-         * 0x21 单标签逐发轮询 (~27ms/发, 命中即返): 连续 EPC_CONFIRM_READS
-         * 次读到且 EPC 一致 -> 稳定在场; 空射/读到外来 EPC 打断连续计数;
-         * 单轮模式 W 窗与 UHF 失联窗兜底, 循环模式以流程窗兜底。 */
-        s_phase = UNLK_PH_VERIFY;
-        App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_SCAN_ACTIVE);
-        {
-            uint32_t lostStart = 0u;
-            uint8_t  consec = 0u;               /* 连续命中 (读到且 EPC 一致) */
-            uint8_t  cycConfirmed = 0u;
-            s_tag[0].state = UTAG_TRACKING;
-            s_tag[0].trackStart = SysTickHl_GetMs();   /* 确认帧判据耗时基准 */
-            while (cycConfirmed == 0u) {
-                LockerSeek_Pump();
-                if (s_abort) { endR = EPC_END_ABORTED; break; }
-                AppUHFTag_t tag;
-                uint8_t hit = (App_UHF_InventoryOneSync(tmoMs, &tag, NULL)
-                              == APP_UHF_ERR_OK) ? 1u : 0u;
-                uint32_t now = SysTickHl_GetMs();
-                if (hit && rec_find(&tag) != NULL) {
-                    s_tag[0].lastSeen = now;
-                    if (++consec >= EPC_CONFIRM_READS) {   /* 连续一致: 稳定在场 */
-                        cycConfirmed = 1u;
-                        break;
-                    }
-                } else {
-                    consec = 0u;                   /* 空射/读到外来: 计数打断 */
-                    s_vMiss++;                    /* 调试: rec 未命中计数 */
-                    if (hit) {                      /* 外来标签: 仅诊断记账 */
-                        if (out->tagsFound < 255u) out->tagsFound++;
-                        out->fgnEpcLen = (tag.epcLen > UNLK_EPC_MAX) ? UNLK_EPC_MAX : tag.epcLen;
-                        for (uint8_t k = 0; k < out->fgnEpcLen; k++) out->fgnEpc[k] = tag.epc[k];
-                    }
-                }
-                if (repeat) {
-                    if ((now - flowT0) >= flowMs) {
-                        endR = (s_cycleOk > 0u) ? EPC_END_ALL_OK : EPC_END_TIMEOUT;
-                        break;
-                    }
-                } else if ((now - s_irMs) >= winMs) {   /* W 窗满未确认 */
-                    endR = EPC_END_TIMEOUT;
-                    App_RgbLedPat_Flash(RGBFLASH_WARN_2S);
-                    break;
-                }
-                if (App_UHF_GetState() == APP_UHF_ERROR || App_UHF_GetLinkStatus() != 0) {
-                    if (lostStart == 0u) lostStart = now;
-                    if ((now - lostStart) >= UNLK_UHF_LOST_CONFIRM_MS) {
-                        endR = EPC_END_UHF_LOST;
-                        App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);
-                        break;
-                    }
-                } else {
-                    lostStart = 0u;
-                }
-            }
-            if (endR != 0u) break;
-
-            /* 稳定确认 (每周期): 0x0B 确认帧 + 蜂鸣 + 绿单闪 (裁决②) */
-            s_tag[0].state = UTAG_CONFIRMED;
-            if (s_confirmed == 0u) {           /* 首周期: 流程级确认位 */
-                s_confirmed = 1u;
-                s_bitmap = 1u;
-            }
-            s_cycle++;
-            s_softCnt = s_cycle;               /* GET_PROGRESS 位: 周期数 */
-            push_tag(&s_tag[0]);              /* 0x0B 确认帧 (无蜂鸣: 确认鸣
-                                               * 已废除, 反馈集中到收回 800ms +
-                                               * 流程结束 1s, 2026-09-19 裁决) */
-            App_RgbLedPat_Flash(RGBFLASH_MATCH_OK);
-        }
-
-        /* ---- (d) 升起: 寻触 KEY_UP (全确认才动磁块, 蓝转绿常亮) ----
-         * 期间盘点不停 (监守钩子): 标签移除/更换即停机收起 (裁决①)。 */
-        s_risen = 1u;
-        s_phase = UNLK_PH_RISE;
-        App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_RISE_HOLD_GREEN);
-        s_msMiss = 0u;
-        s_msFgn = 0u;
-        LockerSeek_SetMonitor(epc_monitor);
-        int r = LockerSeek_RunRetry(LSEEK_DIR_UP, LSEEK_RISE_MAX, &rise);
-        LockerSeek_SetMonitor(NULL);
-        uint8_t cycFail = 0u;
-        if (r == 3u) {           /* 标签移除/更换: 收起, 状态由拉取获知 */
-            cycFail = 1u;
-            s_lastCyc = s_msFgn ? 3u : 2u;   /* 3=更换 2=移除 */
-        } else if (r == 2u) {    /* 升起中 CANCEL: 免疫回降交统一出口 */
-            endR = EPC_END_ABORTED;
+        /* 超窗: 在顶 (含升起中腿完成) -> ALL_OK (统一出口回降);
+         * 未升起 -> TIMEOUT (磁块未动/异常回降后未恢复) */
+        if ((now - flowT0) >= flowMs) {
+            endR = s_risen ? EPC_END_ALL_OK : EPC_END_TIMEOUT;
             break;
-        } else if (r != 0u) {
-            (void)App_UHF_Stop();
-            motor_fail((App_Stepper_GetFault() != 0u) ? UNLK_ERR_MOTOR_FAULT
-                                                      : UNLK_ERR_MOTOR_TIMEOUT,
-                       1u, out);
-            return;
         }
 
-        /* ---- (e) 顶部保持: EPC 在场监守 (默认 holdTopMs) ----
-         * 移除判据 (Round_013 裁决): 连续 EPC_LOST_READS 次未读到一致的
-         * EPC 即稳定移除; 读到即清零计数 (0x21 命中即返, 保持期监守粒度
-         * ~27ms/发)。保持期满 EPC 仍在场 -> 周期成功。 */
-        if (cycFail == 0u) {
-            s_phase = UNLK_PH_HOLD;
-            uint32_t hold0 = SysTickHl_GetMs();
-            uint32_t lostStart = 0u;
-            uint8_t  holdDone = 0u;
-            while (1) {
-                LockerSeek_Pump();
-                if (s_abort) { endR = EPC_END_ABORTED; break; }
-                AppUHFTag_t tag;
-                uint8_t hit = (App_UHF_InventoryOneSync(tmoMs, &tag, NULL)
-                              == APP_UHF_ERR_OK) ? 1u : 0u;
-                uint32_t now = SysTickHl_GetMs();
-                if (hit && rec_find(&tag) != NULL) {
-                    s_msMiss = 0u;               /* 读到且一致: 计数清零 */
-                    s_tag[0].lastSeen = now;
-                } else {
-                    if (hit) s_msFgn = 1u;       /* 读到外来: 更换 */
-                    if (++s_msMiss >= EPC_LOST_READS) {   /* 稳定移除/更换 */
-                        cycFail = 1u;
-                        s_lastCyc = s_msFgn ? 3u : 2u;
-                        break;
-                    }
-                }
-                if (App_UHF_GetState() == APP_UHF_ERROR || App_UHF_GetLinkStatus() != 0) {
-                    if (lostStart == 0u) lostStart = now;
-                    if ((now - lostStart) >= UNLK_UHF_LOST_CONFIRM_MS) {
-                        endR = EPC_END_UHF_LOST;
-                        App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);
-                        break;
-                    }
-                } else {
-                    lostStart = 0u;
-                }
-                if ((now - hold0) >= holdTopMs) { holdDone = 1u; break; }   /* 保持期满 */
-            }
-            if (endR != 0u) break;
-            if (holdDone != 0u) {           /* 周期成功: 状态可拉取 (无蜂鸣,
-                s_lastCyc = 1u;              * 收回完成时统一 800ms, 2026-09-19 裁决) */
-                s_cycleOk++;
-                s_softDone = s_cycleOk;     /* GET_PROGRESS 位: 成功周期数 */
-            }
-        }
-
-        /* ---- (f) 周期末回退 (免疫), 流程窗在回退后判定 ----
-         * 周期失败 (循环模式): 回退挂"标签回归"监守 — 期望标签放回
-         * (连续 EPC_CONFIRM_READS 发) 即中停回退, 免再入场闸直接
-         * 再升 (Round_013 用户裁决); 回退到底则由 lastFail 免下轮
-         * "移走"手势, 校对段等稳定回归即开下一轮。 */
-        lastFail = cycFail;               /* 下轮闸条件: 失败免移走手势 */
-        if (cycFail != 0u) {
-            App_RgbLedPat_Flash(RGBFLASH_WARN_2S);       /* 周期失败: 黄慢闪 */
-            if (!repeat) endR = EPC_END_EPC_LOST;        /* 单轮: 失败即结束 */
-        }
-        uint8_t reRise = 0u;
-        if (cycFail != 0u && repeat && endR == 0u) {
-            /* 周期失败下回不鸣 (2026-09-19 用户裁决: 蜂鸣只留
-             * 保持满回降 + 流程结束两处, 移走/更换静默回退) */
-            int lr = lower_if_risen_watched(&lower, out);  /* 带回归监守回退 */
-            if (lr < 0) { (void)App_UHF_Stop(); return; }
-            if (lr > 0) {                  /* 标签放回: 周期末窗检, 未满即再升 */
-                if ((SysTickHl_GetMs() - flowT0) >= flowMs) {
-                    endR = (s_cycleOk > 0u) ? EPC_END_ALL_OK : EPC_END_TIMEOUT;
-                    /* 窗已满: 从中停位回退到底再结 */
-                    if (lower_if_risen(&lower, out) != 0) {
+        if (flowPh == 0u) {
+            /* ---- WAIT: 有效子集 + IR 遮挡 + 无介入 -> 升起 ---- */
+            if (!s_alarmActive && s_validCnt > 0u && irStable) {
+                s_risen = 1u;
+                s_mph = UNLK_MPH_RISING;
+                s_phase = UNLK_PH_RISE;
+                App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_RISE_HOLD_GREEN);
+                LockerSeek_SetMonitor(epc2_rise_monitor);
+                int r = LockerSeek_RunRetry(LSEEK_DIR_UP, LSEEK_RISE_MAX, &rise);
+                LockerSeek_SetMonitor(NULL);
+                s_mph = UNLK_MPH_NONE;
+                if (r == 3u) {           /* 升起中介入/全失: 报警快降回 WAIT */
+                    if (epc2_alarm_lower(&lower, out) != 0) {
                         (void)App_UHF_Stop();
                         return;
                     }
-                    s_risen = 0u;
-                } else {
-                    reRise = 1u;           /* 保持半程, 跳闸直接下一轮 */
+                } else if (r == 2u) {    /* 升起中 CANCEL: 免疫回降交统一出口 */
+                    endR = EPC_END_ABORTED;
+                    break;
+                } else if (r != 0u) {
+                    (void)App_UHF_Stop();
+                    motor_fail((App_Stepper_GetFault() != 0u) ? UNLK_ERR_MOTOR_FAULT
+                                                              : UNLK_ERR_MOTOR_TIMEOUT,
+                               1u, out);
+                    return;
+                } else {                 /* 到顶: 在场即保持 */
+                    s_riseCnt++;
+                    s_softCnt = s_riseCnt;
+                    s_lastCyc = 1u;      /* 1=升至顶 */
+                    s_mph = UNLK_MPH_UP;
+                    s_phase = UNLK_PH_HOLD;
+                    flowPh = 1u;
+                    App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_RISE_HOLD_GREEN);
                 }
-            } else {
-                s_risen = 0u;              /* 回退到底 */
             }
         } else {
-            if (cycFail == 0u) {
-                App_NewPeriph_BeepPulse(EPC_BEEP_CYCLE_END_MS);  /* 周期成功
-                    * (保持满在场) 开始下回才鸣 — 2026-09-19 裁决:
-                    * 失败路径 (单轮 EPC_LOST 下回) 一律不鸣 */
+            /* ---- UP: 在场即保持; 异常 (外来/全失) 快降回 WAIT ---- */
+            if (s_alarmActive) {
+                if (epc2_alarm_lower(&lower, out) != 0) {
+                    (void)App_UHF_Stop();
+                    return;
+                }
+                flowPh = 0u;
+                s_phase = UNLK_PH_WAIT_TAG;
             }
-            if (lower_if_risen(&lower, out) != 0) {      /* 回退失败: 电机出口 */
-                (void)App_UHF_Stop();
-                return;
-            }
-            s_risen = 0u;                  /* 已回退: 统一出口不再重复降 */
         }
-        if (reRise != 0u) { skipGate = 1u; continue; }    /* 跳闸: 直接再升 */
-        if (endR != 0u) break;
-        if (!repeat) { endR = EPC_END_ALL_OK; break; }   /* 单轮: 成功即结束 */
-        if ((SysTickHl_GetMs() - flowT0) >= flowMs) {    /* 回退后窗满 */
-            endR = (s_cycleOk > 0u) ? EPC_END_ALL_OK : EPC_END_TIMEOUT;
-            break;
-        }
-        firstCycle = 0u;                   /* 循环模式: 等待再入场 */
+
     }
 
-    /* ---- 流程统一出口 ---- */
+    /* ---- 统一出口 ---- */
     (void)App_UHF_Stop();
-    if (endErr != UNLK_ERR_OK) {           /* NO_IR: err 出口 */
-        out->err = endErr;
-        return;
-    }
     out->err = UNLK_ERR_OK;
     out->endReason = endR;
-    if (lower_if_risen(&lower, out) != 0) return;   /* CANCEL/UHF 断链中断时回降 */
+    s_phase = UNLK_PH_DONE;
+    s_mph = UNLK_MPH_NONE;
+    if (s_risen) {                       /* ABORTED/UHF_LOST/超窗在顶: 回降 */
+        if (lower_if_risen(&lower, out) != 0) return;
+        s_risen = 0u;
+    }
     out->riseSteps  = (rise  > 0xFFFFu) ? 0xFFFFu : (uint16_t)rise;
     out->lowerSteps = (lower > 0xFFFFu) ? 0xFFFFu : (uint16_t)lower;
     if (endR == EPC_END_ALL_OK) {
-        App_NewPeriph_BeepPulse(EPC_BEEP_FLOW_DONE_MS);    /* 流程结束 (时间到): 1s */
+        App_NewPeriph_BeepPulse(EPC_BEEP_FLOW_DONE_MS);    /* 结束: 1s */
         App_RgbLedPat_Flash(RGBFLASH_DONE_3GREEN);
-    } else if (endR == EPC_END_TIMEOUT && repeat) {
-        App_RgbLedPat_Flash(RGBFLASH_WARN_2S);   /* 流程窗满无成功周期 */
+    } else if (endR == EPC_END_TIMEOUT) {
+        App_RgbLedPat_Flash(RGBFLASH_WARN_2S);   /* 超窗未达成升起: 黄慢闪 */
     }
 }
 
-void App_LockerUnlock_EpcRun(const uint8_t *epc, uint8_t epcLen, uint16_t tmoMs,
-                             uint16_t winMaxMs, uint16_t holdTopMs, uint8_t timeoutSec,
+void App_LockerUnlock_EpcRun(const uint8_t *packed, uint8_t epcCnt,
+                             uint16_t packedLen, uint16_t tmoSec,
                              uint8_t channel, LockerUnlockResult_t *out)
 {
-    if (!out || !epc || epcLen == 0u || epcLen > UNLK_EPC_MAX) {
+    /* 参数校验: epcCnt 1~10, 每张 len 1~12 且数据长度吻合, 名单不重复,
+     * tmo>0 (上限 EPC_TMO_MAX_S 钳位) */
+    if (!out || !packed || epcCnt == 0u || epcCnt > EPC_MAX_TAGS || tmoSec == 0u) {
         if (out) { Memset8((void*)out, 0, sizeof(*out)); out->err = UNLK_ERR_PARAM; }
         return;
     }
+    uint16_t pos = 0u;
+    for (uint8_t i = 0; i < epcCnt; i++) {
+        uint8_t len = packed[pos++];     /* 长度前缀 */
+        if (len == 0u || len > UNLK_EPC_MAX || (uint16_t)(pos + len) > packedLen) {
+            Memset8((void*)out, 0, sizeof(*out));
+            out->err = UNLK_ERR_PARAM;
+            return;
+        }
+        s_tag[i].len = len;
+        for (uint8_t k = 0; k < len; k++) s_tag[i].epc[k] = packed[pos + k];
+        pos = (uint16_t)(pos + len);
+    }
+    for (uint8_t i = 0; i < epcCnt; i++)             /* 重复 EPC 拒绝 */
+        for (uint8_t j = (uint8_t)(i + 1u); j < epcCnt; j++) {
+            if (s_tag[i].len != s_tag[j].len) continue;
+            uint8_t k;
+            for (k = 0; k < s_tag[i].len; k++)
+                if (s_tag[i].epc[k] != s_tag[j].epc[k]) break;
+            if (k >= s_tag[i].len) {
+                Memset8((void*)out, 0, sizeof(*out));
+                out->err = UNLK_ERR_PARAM;
+                return;
+            }
+        }
+    for (uint8_t i = 0; i < epcCnt; i++) {           /* 记录复位 */
+        s_tag[i].state = UTAG_PENDING;
+        s_tag[i].hits = 0u;
+        s_tag[i].trackStart = 0u;
+        s_tag[i].lastSeen = 0u;
+    }
     Memset8((void*)out, 0, sizeof(*out));
     out->retreat = UNLK_RETREAT_NONE;
-    /* 参数缺省/钳位 (tmo 为 0x21 单发超时, 缺省 EPC_ONE_TMO_MS; timeoutSec
-     * =0 单轮 / >0 循环模式流程窗; winMs 仅单轮模式生效) */
-    if (tmoMs == 0u) tmoMs = EPC_ONE_TMO_MS;
-    if (tmoMs > 10000u) tmoMs = 10000u;
-    uint32_t winMs = (winMaxMs == 0u) ? UNLK_HOLD_BASE_MS : winMaxMs;
-    if (winMs > UNLK_HOLD_MAX_MS) winMs = UNLK_HOLD_MAX_MS;
-    uint32_t holdMs = (holdTopMs == 0u) ? EPC_HOLD_TOP_MS : holdTopMs;
-    if (holdMs > EPC_HOLD_TOP_MAX_MS) holdMs = EPC_HOLD_TOP_MAX_MS;
+    if (tmoSec > EPC_TMO_MAX_S) tmoSec = EPC_TMO_MAX_S;
+    s_total = epcCnt;
 
-    /* 保持期连续盘存强制会话 S0 (同 0x0A, Round_098 #21) */
-    (void)App_UHF_ScanSessionBegin();
-    epc_run(epc, epcLen, tmoMs, winMs, holdMs, timeoutSec, channel, out);
-    out->total = 1u;
-    out->confirmed = s_confirmed;
+    (void)App_UHF_ScanSessionBegin();    /* 连续盘存强制 S0 (Round_098 #21) */
+    epc_run(tmoSec, channel, out);
+    out->total = s_total;
+    out->confirmed = s_confirmed;        /* 最终稳定在场名单标签数 */
     out->confirmedBitmap = s_bitmap;
-    out->softCnt = s_cycle;                 /* 终帧: 周期数 */
-    out->softDone = s_cycleOk;              /* 终帧: 成功周期数 */
+    out->riseCnt = s_riseCnt;
+    out->alarmCnt = s_alarmCnt;
+    out->fgnSeen = s_fgnSeen;
+    out->tagsFound = s_tagsFound;
+    out->softCnt = s_riseCnt;            /* 终帧: 升至顶部次数 */
+    out->softDone = s_alarmCnt;          /* 终帧: 报警次数 */
     if (out->elapsedMs == 0u && s_irMs != 0u)
         out->elapsedMs = SysTickHl_GetMs() - s_irMs;
     App_UHF_ScanSessionEnd();
-    /* 流程返回即撤销灯语声明 (含全部提前失败出口), Finish 再做终清 */
     App_RgbLedPat_Clear(RGBSRC_UNLOCK);
 }
 
 /* =====================================================================
- * AM 标签解锁流程 (LOCKER_SUB_UNLOCK_AM 0x11) — Round_013 新增独立通道。
- * 受理起 tmo 秒窗内被动计数 AM 消磁成功事件 (cmd17 突发结算,
- * deactCount 增量), 达标 (>=amCnt) 即结账 — 全程不动电机 (2026-09-19
- * 裁决 "AM 解锁完成后不要动作电机, 直接蜂鸣器动作即可"): 蜂鸣 1s +
- * 绿三闪, rise/lower 恒 0; 窗满未达标按超时结账 (部分完成数如实上报)。
- * amCnt=0 支路: 无计数门 (窗循环 0>=0 立即出窗), 受理即达标结账 ALL_OK
- * (不耗窗, tmo 仅作格式合法校验)。
- * AM 解码器零控制 (2026-09-19 裁决 "AM 设备从上电到结束不要控制, 按照
- * 默认参数即可, 仅在解锁期间监控解锁帧"): 受理不探链/不切模式/不下发
- * 参数, 流程仅被动收 cmd17 (LockerSeek_Pump 内 App_AM_Process)。
- * 解码器静默 (含挂起/自锁) 只能按窗满结账, 不再报 AM_LINK。
- * CANCEL: 窗内即回 ABORTED (无电机, 无安全回落问题)。
- * 全程不触碰 UHF (前置检查不含 UHF, 无 ScanSession/失联监测)。
- * cmd17 事件须静默 AM_BURST_GAP_MS(3s) 才结算入账: 窗满时若有
- * 突发未结算, 宽限至多 3s 等其入账 (窗末消磁的标签不得漏计)。
+ * AM 标签解锁流程 (LOCKER_SUB_UNLOCK_AM 0x11) — Round_013 独立通道,
+ * Round_014 (2026-09-29) 恢复 AM 控制逻辑 (客户裁决):
+ *   受理 -> AM 切消磁 (SET_MODE 回显确认, 重试 AM_MODE_RETRY 次,
+ *   全败 AM_LINK 结账) -> tmo 秒计数窗: 每条 cmd17 消磁帧立即入账一计
+ *   ("收到一个消磁帧立马更新状态, 无需等待无需稳定, 它只有一次" —
+ *   Round_014 裁决, 改按帧计数, 不再等 3s 突发静默结算) -> 达标/超窗 ->
+ *   AM 挂起切仅检测 (确认失败不阻塞结账, amFail=1 如实上报) -> 终帧。
+ *   全程不动电机 (2026-09-19 裁决维持): 蜂鸣 1s + 绿三闪,
+ *   rise/lower 恒 0。amCnt=0: 不耗窗不碰 AM 直接 ALL_OK。
+ *   CANCEL: 立即尽力挂起 + ABORTED。无 IR 门控; 全程不碰 UHF。
  * ===================================================================== */
 
-/* 计数入账: deactCount 增量超过已入账数 -> 逐张推 0x0E + 绿闪
- * (识别蜂鸣 2026-09-19 裁决取消, 用户 "不用了") */
-static void am_count_take(uint32_t deactBase)
+/* SET_MODE 回显确认 (重试 AM_MODE_RETRY 次) */
+static uint8_t am_set_mode_confirm(uint16_t mode)
 {
-    uint32_t k = App_AM_GetDeactCount() - deactBase;
+    for (uint8_t i = 0; i < AM_MODE_RETRY; i++) {
+        if (App_AM_SetParam(AM_CMD_MODE, mode) == APP_AM_ERR_OK) return 1u;
+    }
+    return 0u;
+}
+
+/* 计数入账 (Round_014 逐帧): cmd17 帧计数增量超过已入账数 -> 逐张推 0x0E
+ * + 绿闪; 无需等待突发静默结算 */
+static void am_count_take(uint32_t frameBase)
+{
+    uint32_t k = App_AM_GetEventCount() - frameBase;
     if (k > 255u) k = 255u;
     if ((uint8_t)k > s_softDone) {
         uint8_t before = s_softDone;
@@ -1194,7 +1179,11 @@ static void am_run(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
     s_softDone = 0u;
     s_risen = 0u;
     s_irMs = 0u;
-    s_cycle = 0u; s_cycleOk = 0u; s_lastCyc = 0u;
+    s_lastCyc = 0u;
+    s_mph = UNLK_MPH_NONE;
+    s_validCnt = 0u;
+    s_fgnActive = 0u;
+    s_alarmActive = 0u;
     /* 0x10 记录残留清零 (GET_PROGRESS tagPresent / IO_DIAG 读这些槽) */
     s_tag[0].len = 0u;
     s_tag[0].state = UTAG_PENDING;
@@ -1204,78 +1193,77 @@ static void am_run(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
     LockerSeek_BindAbort(&s_abort, &s_immune);
     for (uint8_t i = 0; i < UNLK_MAX_FGN_TAGS; i++) s_fgn[i].len = 0u;
 
-    /* ---- 前置检查: 仅业务空闲 (2026-09-19 裁决全程不动电机 — 不再
-     * 要求步进空闲/已回零, 电机状态与本流程无耦合) ---- */
+    /* ---- 前置检查: 仅业务空闲 (全程不动电机) ---- */
     if (App_Locker_IsIdle() == 0)                    { fill_busy(out); return; }
 
-    /* ---- AM 基线 (2026-09-19 裁决 "AM 设备从上电到结束不要控制"):
-     * 不探链/不切模式/不下发任何参数 — 解码器按自身默认参数运行,
-     * 流程仅被动监控 cmd17 结算 (LockerSeek_Pump 内 App_AM_Process
-     * 收帧入账)。基线取受理时刻计数, 流程外自发消磁不入账。 ---- */
-    uint32_t deactBase = App_AM_GetDeactCount();
-    uint32_t failBase  = App_AM_GetFailCount();
+    /* ---- Round_014 恢复控制: 受理即切消磁模式 (确认进入) ---- */
+    uint8_t demagOn = 0u;
+    if (amCnt > 0u) {
+        if (am_set_mode_confirm(AM_MODE_DEACTIVATE) == 0u) {
+            (void)am_set_mode_confirm(AM_MODE_DETECT_ONLY);   /* 尽力复原 */
+            out->err = UNLK_ERR_AM_LINK;
+            App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);       /* 链路断: 红双闪 */
+            return;
+        }
+        demagOn = 1u;
+        s_amDemagFlag = 1u;           /* GET_PROGRESS flags.DEMAG_ON */
+    }
 
-    /* ---- 受理: 计时基准=受理时刻, 窗=tmo 秒; 计数窗白常亮 (0x0A 软标先例) ---- */
+    /* ---- 计数窗 (逐帧即时入账, 无窗末宽限) ---- */
+    uint32_t frameBase = App_AM_GetEventCount();   /* cmd17 帧计数基线 */
     uint32_t winMs = (uint32_t)tmoSec * 1000u;
     uint32_t t0 = SysTickHl_GetMs();
     s_irMs = t0;                     /* 流程耗时基准 = 受理时刻 */
-    push_start(winMs, UNLK_PH_SOFT); /* 受理帧 0x0F (纯软标同款 phase=SOFT) */
+    push_start(winMs, UNLK_PH_SOFT); /* 受理帧 0x0F */
     App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_SOFT_WAIT_WHITE);
 
-    uint8_t endR = 0u;               /* 流程结束码 AM_END_* (0=未结束) */
-
-    /* ---- 计数窗: 达标 (>=) 优先于窗满; 窗满时若有 cmd17 突发未结算,
-     * 宽限至多 AM_BURST_GAP_MS 等其入账 (成功事件须静默 3s 才结算,
-     * 窗末消磁的标签不得漏计; 无突发在途则立即按超时结账)。
-     * amCnt=0: 0>=0 首查即出窗 (直接完成支路, 不耗窗) ---- */
+    uint8_t endR = 0u;               /* AM_END_* (0=未结束) */
     while (endR == 0u) {
         LockerSeek_Pump();
         if (s_abort) { endR = AM_END_ABORTED; break; }
-        am_count_take(deactBase);
+        am_count_take(frameBase);
         if (s_softDone >= amCnt) break;              /* >=: 达标即触发 (超量亦然) */
-        uint32_t el = SysTickHl_GetMs() - t0;
-        if (el >= winMs &&
-            (el >= winMs + AM_BURST_GAP_MS || App_AM_BurstActive() == 0u)) {
+        if ((SysTickHl_GetMs() - t0) >= winMs) {
             endR = AM_END_TIMEOUT;
             break;
         }
     }
 
     if (endR == 0u) {
-        /* ---- 达标: 不动作电机 (2026-09-19 裁决 "直接蜂鸣器动作
-         * 即可") — 蜂鸣 1s + 绿三闪即结账 ---- */
         endR = AM_END_ALL_OK;
-        App_NewPeriph_BeepPulse(EPC_BEEP_FLOW_DONE_MS);
+        App_NewPeriph_BeepPulse(EPC_BEEP_FLOW_DONE_MS);   /* 蜂鸣 1s */
         App_RgbLedPat_Flash(RGBFLASH_DONE_3GREEN);
     } else if (endR == AM_END_TIMEOUT) {
         App_RgbLedPat_Flash(RGBFLASH_WARN_2S);   /* 窗满未收齐: 黄慢闪 2s */
     }
 
-    /* ---- 统一结账: err=0 + endReason; 全程未动电机 rise/lower=0 ---- */
+    /* ---- Round_014: 挂起切仅检测 (确认挂起; 失败 amFail=1 如实上报,
+     * 解码器自行恢复消磁的风险客户已知, 无法根除) ---- */
+    if (demagOn) {
+        s_amDemagFlag = 0u;
+        if (am_set_mode_confirm(AM_MODE_DETECT_ONLY) == 0u)
+            out->amFail = 1u;        /* 挂起确认失败 (终帧带出) */
+    }
+
     s_phase = UNLK_PH_DONE;
     out->err = UNLK_ERR_OK;
     out->endReason = endR;
     out->riseSteps  = 0u;
     out->lowerSteps = 0u;
-    {   /* 消磁失败事件数 (连发突发; 仅 err=0 终帧带出) */
-        uint32_t f = App_AM_GetFailCount() - failBase;
-        if (f > 255u) f = 255u;
-        out->amFail = (uint8_t)f;
-    }
 }
 
 void App_LockerUnlock_AmRun(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
                             LockerUnlockResult_t *out)
 {
-    /* 入口语义: amCnt 0~255 (0=直接完成支路: 0>=0 首查即达标结账
-     * ALL_OK, 不耗窗), tmo u16 秒 (>0) */
+    /* 入口语义: amCnt 0~255 (0=直接完成支路: 不耗窗不碰 AM), tmo u16 秒 (>0) */
     if (!out || tmoSec == 0u) {
         if (out) { Memset8((void*)out, 0, sizeof(*out)); out->err = UNLK_ERR_PARAM; }
         return;
     }
     Memset8((void*)out, 0, sizeof(*out));
     out->retreat = UNLK_RETREAT_NONE;
-    if (tmoSec > AM_TMO_MAX_S) tmoSec = AM_TMO_MAX_S;   /* winMs 3 字节界内 */
+    s_amDemagFlag = 0u;
+    if (tmoSec > AM_TMO_MAX_S) tmoSec = AM_TMO_MAX_S;
     am_run(amCnt, tmoSec, channel, out);
     out->total = amCnt;                 /* 终帧: 目标数 */
     out->confirmed = s_softDone;        /* 终帧: 实际解锁数 */
@@ -1283,8 +1271,6 @@ void App_LockerUnlock_AmRun(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
     out->softDone = s_softDone;
     if (out->elapsedMs == 0u && s_irMs != 0u)
         out->elapsedMs = SysTickHl_GetMs() - s_irMs;
-    /* 2026-09-19 裁决 "AM 设备从上电到结束不要控制": 出口不再切回
-     * 仅检测 — 解码器全程按自身默认参数/自主状态运行。 */
     /* 流程返回即撤销灯语声明 (含全部提前失败出口), Finish 再做终清 */
     App_RgbLedPat_Clear(RGBSRC_UNLOCK);
 }

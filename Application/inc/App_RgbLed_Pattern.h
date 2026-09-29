@@ -26,7 +26,9 @@ typedef enum {
     RGBPAT_SOFT_WAIT_WHITE = 5,   /* 软标等待(红外/消磁): 白常亮 (降级黄慢闪) */
     RGBPAT_HOMING_SLOW     = 6,   /* 回零: 黄慢闪 */
     RGBPAT_TEST_FAST       = 7,   /* 行程测试/安全回退: 黄快闪 */
-    RGBPAT_FAULT_SOLID     = 8    /* 故障: 红常亮 */
+    RGBPAT_FAULT_SOLID     = 8,   /* 故障: 红常亮 */
+    RGBPAT_ALARM_BLINK     = 9    /* 异常报警 (Round_014 0x10 外来介入/名单全失):
+                                      红 50ms 亮/50ms 灭闪, 持续至报警解除 */
 } AppRgbPat_t;
 
 /* 一次性闪显 (叠加在当前稳态上, 到期自动回落稳态) */

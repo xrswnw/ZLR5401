@@ -895,18 +895,23 @@ void AppDispatch(ProtoFrame_t *f) {
             }
             break;
         case LOCKER_SUB_GET_PROGRESS: {
-            /* [cmd] 进度快照, 统一多标签布局 (非流程时 phase=0)。
-             * Round_011: 0x08 单标签流程已废除, 单标即 0x0A epcCnt=1,
-             * 本布局成为唯一进度布局; Round_013 0x10 EPC 流程追加第 12
-             * 字节 lastCycle (softCnt/softDone=周期数/成功数)。 */
+            /* [cmd] 进度快照 v2 (Round_014, 0x10/0x11 统一; 非流程时
+             * phase=0 全零):
+             * [cmd,err,phase,holdMs(3 LE),total,confirmed,bitmap,softCnt,
+             *  softDone,lastCycle,motorPh,flags]
+             * 0x10: softCnt=升至顶部次数, softDone=报警次数, lastCycle=
+             * 0无/1升至顶/2全失回降/3外来回降, motorPh=UNLK_MPH_*,
+             *  flags 见 UNLK_FLG_* (VALID_STABLE/FGN_ACTIVE/ALARM/
+             *  IR_BLOCKED); 0x11: confirmed/softDone=已解锁数 (逐帧即时),
+             *  flags 仅 DEMAG_ON。 */
             LockerUnlockProgress_t up;
             App_LockerUnlock_GetProgress(&up);
-            uint8_t r[12];
+            uint8_t r[14];
             uint16_t pos = 0;
             r[pos++] = sub;
             r[pos++] = LOCKER_ERR_OK;
             r[pos++] = up.phase;
-            /* holdMs 3 字节 (Round_011): W=2min+30s/EPC 超 16bit, 2 字节回填会截断 */
+            /* holdMs 3 字节 (Round_011): 长 10min 窗仍超 16bit */
             r[pos++] = (uint8_t)(up.holdMs & 0xFF);
             r[pos++] = (uint8_t)((up.holdMs >> 8) & 0xFF);
             r[pos++] = (uint8_t)((up.holdMs >> 16) & 0xFF);
@@ -915,7 +920,9 @@ void AppDispatch(ProtoFrame_t *f) {
             r[pos++] = up.confirmedBitmap;
             r[pos++] = up.softCnt;
             r[pos++] = up.softDone;
-            r[pos++] = up.lastCycle;   /* Round_013 0x10: 上轮 0无/1成功/2移除/3更换 */
+            r[pos++] = up.lastCycle;
+            r[pos++] = up.motorPhase;   /* Round_014 v2: 电机子状态 */
+            r[pos++] = up.flags;        /* Round_014 v2: 状态位图 */
             Proto_TxResponse(ch, FC_LOCKER_CTRL, r, pos);
             break;
         }
@@ -1068,31 +1075,33 @@ void AppDispatch(ProtoFrame_t *f) {
 #endif  /* ---- Round_013 关闭的 0x0A 原实现结束 ---- */
 
         case LOCKER_SUB_UNLOCK_EPC: {
-            /* [cmd, epcLen, tmoL,tmoH, winL,winH, holdTopL,holdTopH, rsv0..3, epc..]
-             * EPC 解锁 (Round_013 新, 阻塞自治, App_LockerUnlock.c EpcRun):
-             * 单周期: IR 门控 + EPC 计数稳定确认 -> 升起寻触 KEY_UP (期间
-             * 盘点监守: 移除/更换即收起) -> 顶部保持 holdTopMs -> 周期末回降。
-             * rsv0=流程超时秒 (0=单轮, >0=循环模式至超时, 周期失败不推帧,
-             * 状态经 GET_PROGRESS 拉取); win 仅单轮模式生效; rsv1..3 保留
-             * 位原样回显。流程态仅放行 QUERY/CANCEL/GET_PROGRESS (case 头)。 */
-            if (f->dataLen < 12u || f->data[1] == 0u || f->data[1] > UNLK_EPC_MAX ||
-                (uint16_t)(12u + (uint16_t)f->data[1]) > f->dataLen) {
+            /* [cmd, tmoL,tmoH, epcCnt, (epcLen, epc...)×epcCnt, rsv...]
+             * EPC 解锁 (Round_014 重设计, 阻塞自治, App_LockerUnlock.c
+             * EpcRun): tmo 秒流程窗 + 名单 1~10 张变长 EPC; 名单任意
+             * 非空子集稳定在场 + 红外遮挡 -> 升起, 在场即保持; 外来
+             * 介入/名单全失 -> 报警 (红 50/50 闪 + 蜂鸣 50ms/500ms) +
+             * 快速下行, 恢复后再升, 直至超窗。帧内逐条长度与重复校验
+             * 在 EpcRun (回 PARAM); rsv 尾随字节忽略。流程态仅放行
+             * QUERY/CANCEL/GET_PROGRESS (case 头)。 */
+            if (f->dataLen < 4u || f->data[3] == 0u || f->data[3] > EPC_MAX_TAGS) {
                 uint8_t r[2] = { sub, UNLK_ERR_PARAM };
                 Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
                 break;
             }
-            uint16_t tmoMs     = (uint16_t)(f->data[2] | ((uint16_t)f->data[3] << 8));
-            uint16_t winMs     = (uint16_t)(f->data[4] | ((uint16_t)f->data[5] << 8));
-            uint16_t holdTopMs = (uint16_t)(f->data[6] | ((uint16_t)f->data[7] << 8));
-            uint8_t  timeoutSec = f->data[8];   /* rsv0: 0=单轮 / >0=循环窗 (秒) */
-            uint8_t  epcLen    = f->data[1];
+            uint16_t tmoSec  = (uint16_t)(f->data[1] | ((uint16_t)f->data[2] << 8));
+            uint8_t  epcCnt  = f->data[3];
+            if (tmoSec == 0u || (uint16_t)(4u + epcCnt) > f->dataLen) {
+                uint8_t r[2] = { sub, UNLK_ERR_PARAM };
+                Proto_TxResponse(ch, FC_LOCKER_CTRL, r, 2);
+                break;
+            }
 
             LockerUnlockResult_t res;
-            App_LockerUnlock_EpcRun(&f->data[12], epcLen, tmoMs, winMs, holdTopMs,
-                                    timeoutSec, ch, &res);
+            App_LockerUnlock_EpcRun(&f->data[4], epcCnt,
+                                    (uint16_t)(f->dataLen - 4u), tmoSec, ch, &res);
             App_LockerUnlock_Finish();   /* 清 busy/abort/phase (含 CANCEL 路径) */
 
-            uint8_t r[23];
+            uint8_t r[20];
             uint16_t pos = 0;
             r[pos++] = sub;
             r[pos++] = res.err;
@@ -1102,18 +1111,16 @@ void AppDispatch(ProtoFrame_t *f) {
                 r[pos++] = res.confirmedBitmap;
                 r[pos++] = (uint8_t)(res.riseSteps  & 0xFF); r[pos++] = (uint8_t)((res.riseSteps  >> 8) & 0xFF);
                 r[pos++] = (uint8_t)(res.lowerSteps & 0xFF); r[pos++] = (uint8_t)((res.lowerSteps >> 8) & 0xFF);
-                {   /* elapsed 单位秒, 0xFFFF 封顶 (2026-09-19 统一裁决:
-                     * 原 u16 ms 在长窗 4min 已封顶失真) */
+                {   /* elapsed 单位秒, 0xFFFF 封顶 (2026-09-19 统一裁决) */
                     uint32_t es = res.elapsedMs / 1000u;
                     if (es > 0xFFFFu) es = 0xFFFFu;
                     r[pos++] = (uint8_t)(es & 0xFF);
                     r[pos++] = (uint8_t)(es >> 8);
                 }
-                for (uint8_t i = 0; i < 4u; i++) r[pos++] = f->data[8 + i];   /* rsv 保留位回显 */
-                /* Round_013: 周期计数 (循环模式核心读数; 单轮 1/x/x) */
-                r[pos++] = res.softCnt;                    /* cycles */
-                r[pos++] = res.softDone;                   /* okCycles */
-                r[pos++] = (res.softCnt > res.softDone) ? (uint8_t)(res.softCnt - res.softDone) : 0u;   /* failCycles */
+                /* Round_014: 升至顶部次数 / 报警次数 / 外来介入出现过 */
+                r[pos++] = res.riseCnt;
+                r[pos++] = res.alarmCnt;
+                r[pos++] = res.fgnSeen;
                 break;
             case UNLK_ERR_BUSY:
                 r[pos++] = res.lockerState;
@@ -1152,14 +1159,14 @@ void AppDispatch(ProtoFrame_t *f) {
         }
         case LOCKER_SUB_UNLOCK_AM: {
             /* [cmd, amCnt, tmoL, tmoH, rsv0, rsv1]  AM 标签解锁 (Round_013 新,
-             * 阻塞自治, App_LockerUnlock.c AmRun): 受理起 tmo 秒窗内被动计数 AM
-             * 消磁成功事件 (cmd17 突发结算), 达标 (>=amCnt) 即蜂鸣+绿闪结账 —
-             * 全程不动电机 (2026-09-19 裁决), rise/lower 恒 0; 窗满未达标按超时
-             * 结账 (部分完成数上报)。
-             * amCnt=0 支路: 无计数门, 不耗窗直接结账 ALL_OK。
-             * AM 解码器零控制 (2026-09-19 裁决 "从上电到结束不要控制, 按照
-             * 默认参数即可, 仅在解锁期间监控解锁帧"): 不探链/不切模式/不下发
-             * 参数。rsv0/rsv1 保留位原样回显。流程态仅放行
+             * Round_014 恢复 AM 控制, 阻塞自治, App_LockerUnlock.c AmRun):
+             * 受理即 AM 切消磁模式 (SET_MODE 回显确认, 全败 AM_LINK 结账) ->
+             * tmo 秒计数窗: 每条 cmd17 消磁帧立即入账一计 (Round_014 裁决,
+             * 逐帧即时, 不等突发静默) -> 达标/超窗 -> AM 挂起切仅检测
+             * (确认失败 amFail=1 如实上报, 解码器自行恢复风险客户已知) ->
+             * 蜂鸣 1s + 绿三闪结账, rise/lower 恒 0 (不动电机, 2026-09-19
+             * 裁决维持)。amCnt=0 支路: 不耗窗不碰 AM 直接 ALL_OK。
+             * rsv0/rsv1 保留位原样回显。流程态仅放行
              * QUERY/CANCEL/GET_PROGRESS (case 头)。 */
             uint16_t tmoSec = (f->dataLen >= 4u)
                               ? (uint16_t)(f->data[2] | ((uint16_t)f->data[3] << 8)) : 0u;
@@ -1192,7 +1199,8 @@ void AppDispatch(ProtoFrame_t *f) {
                 }
                 r[pos++] = amCnt;               /* 目标数回显 */
                 r[pos++] = res.softDone;        /* 实际解锁数 */
-                r[pos++] = res.amFail;          /* 消磁失败事件数 (判据证伪后恒 0, 保留) */
+                r[pos++] = res.amFail;          /* 1=挂起确认失败 (解码器可能仍消磁,
+                                                  * Round_014); 其余恒 0 */
                 r[pos++] = f->data[4];          /* rsv 保留位回显 */
                 r[pos++] = f->data[5];
                 break;

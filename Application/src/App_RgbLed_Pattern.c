@@ -53,6 +53,8 @@ static const PatDesc_t s_pat[] = {
     [RGBPAT_HOMING_SLOW]     = { C_YELLOW, RGB_PAT_BLINK_MS, RGB_PAT_BLINK_MS / 2u },
     [RGBPAT_TEST_FAST]       = { C_YELLOW, RGB_PAT_FAST_MS, RGB_PAT_FAST_MS / 2u },
     [RGBPAT_FAULT_SOLID]     = { C_RED, 0u, 0u },
+    [RGBPAT_ALARM_BLINK]     = { C_RED, 100u, 50u },   /* Round_014: 异常报警
+                                                          * 红 50ms 亮/50ms 灭闪 */
 };
 
 /* 一次性闪显: 有限时长窗口, 到期回落稳态 */
@@ -99,7 +101,7 @@ void App_RgbLedPat_Init(void)
 void App_RgbLedPat_Set(uint8_t src, uint8_t pat)
 {
     if (src >= RGBSRC_COUNT) return;
-    if (pat > RGBPAT_FAULT_SOLID) return;
+    if (pat > RGBPAT_ALARM_BLINK) return;
     s_claim[src] = pat;
 }
 
