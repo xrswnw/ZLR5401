@@ -112,10 +112,12 @@
  *   帧下发 tmo 秒流程窗 + epcCnt 张 EPC ((len,EPC)×n, 1~10 张, 重复拒绝):
  *   UHF 0x22 多标签连续盘点, 名单内任意非空子集 (A/B/C/AB/AC/BC/ABC 均有效)
  *   稳定在场 (首读起 EPC_STABLE_MS 无 EPC_ABSENT_MS 级断读) + 红外遮挡
- *   且无外来标签介入 -> 升起; 顶部不设固定保持时长, 在场即保持。
- *   期间外来标签介入 (连续 EPC_FGN_MIN_HITS 次读到非名单 EPC) 或 名单
- *   全部离场 -> 异常报警 (红灯 50ms 亮/50ms 灭闪 + 蜂鸣 50ms/500ms,
- *   Round_014 裁决) + 电机快速下行; 报警解除 (外来稳定消失 >=EPC_ABSENT_MS
+ *   且无外来标签介入 -> 升起; 顶部保持须 在场+红外遮挡 (Round_020 裁决:
+ *   红外丢失立马下降; 双向共用 200ms 去抖)。
+ *   期间外来标签介入 (连续 EPC_FGN_MIN_HITS 次读到非名单 EPC) -> 异常
+ *   报警 (红灯 50ms 亮/50ms 灭闪 + 蜂鸣 50ms/500ms, Round_014 裁决)
+ *   + 电机快速下行; 名单全部离场 -> 静默快降 (Round_020 裁决: 红闪
+ *   蜂鸣仅非法标签触发); 报警解除 (外来稳定消失 >=EPC_ABSENT_MS
  *   且有效子集恢复稳定) 后经红外门重新升起, 循环直至 tmo 超窗。
  *   超窗时在顶 -> 回降后 ALL_OK + 蜂鸣 1s; 未升/非顶 -> TIMEOUT。
  *   CANCEL: 全状态复原 (在顶则安全回降后复原), 回 ABORTED。
@@ -126,11 +128,15 @@
 
 /* ---- EPC 解锁容量/判据可调参数 (Round_014) ---- */
 #define EPC_MAX_TAGS                10u    /* 名单容量 (客户裁决: 缓冲 10 张) */
-#define EPC_STABLE_MS               1500u  /* 稳定在场判据: 首读起持续在场时长
-                                             * (期间断读超 EPC_ABSENT_MS 即重新累计) */
+#define EPC_STABLE_MS               1000u  /* 稳定在场判据: 首读起持续在场时长
+                                             * (期间断读超 EPC_ABSENT_MS 即重新累计)
+                                             * Round_020 现场调参 (2026-09-30): 1500→700→1000,
+                                             * 需大于介入耗时上界 (3 次命中含 1/4 漏读
+                                             * 约 400~600ms), 保住"介入先于稳定"余量 */
 #define EPC_ABSENT_MS               1500u  /* 离场判据: 连续未读到此时长 -> 离场 */
-#define EPC_FGN_MIN_HITS            2u     /* 外来介入判据: 累计读到次数 (要快,
-                                             * 不等 1.5s 稳定窗) */
+#define EPC_FGN_MIN_HITS            3u     /* 外来介入判据: 累计读到次数 (要快,
+                                             * 不等稳定窗) Round_020 (2026-09-30):
+                                             * 2→3, 挡 1~2 次偶发误读假报警 */
 #define EPC_ONE_TMO_MS              100u   /* 0x22 每轮盘点超时 (连续盘点接力) */
 #define EPC_CONFIRM_READS           10u    /* [0x0A 保留实现专用] 回退监守连读次数 */
 #define EPC_ALARM_BEEP_PERIOD_MS    500u   /* 异常报警蜂鸣节拍 */
@@ -181,6 +187,11 @@
  *   每计推 0x0E + 绿闪) -> 达标 (>=amCnt) 或超窗 -> SET_MODE(mode 1
  *   仅检测, 回显确认, 重试同上; 确认失败不阻塞结账, 终帧 amFail=1
  *   如实上报 — 解码器自行恢复消磁的风险客户已知情, 无法根除)。
+ *   Round_020 (2026-09-30) AM 开关时机定稿 + 模式看门狗:
+ *   开 = 受理时 SET_MODE(消磁) 回显确认成功后才开窗;
+ *   关 = 三出口 (达标/超窗/CANCEL) 结账时挂起切仅检测, 全程仅此两处;
+ *   窗内解码器自退消磁模式 (热保护/自恢复) -> 模式看门狗静默自愈
+ *   (BurstActive=0 且每 AM_MODE_WATCH_MS 重发 SET_MODE 幂等保场)。
  *   全程不动电机 (2026-09-19 裁决维持): 蜂鸣 1s + 绿三闪,
  *   rise/lower 恒 0; 窗满未达标按超时结账 (部分完成数如实上报)。
  *   amCnt=0 支路: 无计数门受理即结账 ALL_OK (不耗窗不碰 AM)。
@@ -193,6 +204,8 @@
                                              * 3 字节 (上限 16777215ms),
                                              * 16000s*1000 仍在界内 */
 #define AM_MODE_RETRY               3u      /* SET_MODE 回显确认重试次数 */
+#define AM_MODE_WATCH_MS            2000u   /* Round_020 模式看门狗周期: 窗内静默
+                                             * (无进行中消磁突发) 重发 SET_MODE 保场 */
 
 /* ---- AM 解锁结束原因 (err=0 时终帧 endReason 字段) ---- */
 #define AM_END_ALL_OK               1u   /* 计数达标 (蜂鸣+绿闪结账, 电机不动) */
@@ -257,7 +270,7 @@ void App_LockerUnlock_Run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
 
 /* EPC 解锁 (LOCKER_SUB_UNLOCK_EPC 0x10, Round_014 重设计): 阻塞自治执行
  * 名单子集稳定确认 (EPC_STABLE_MS) + IR 门控 -> 升起 (监守) -> 在场即保持
- * -> 异常 (外来介入/名单全失) 报警快降 -> 恢复再升 ... 直至 tmoSec 超窗。
+ * -> 异常: 外来介入报警快降 / 名单全失静默快降 -> 恢复再升 ... 直至 tmoSec 超窗。
  * packed 为 epcCnt 个变长条目 (len, EPC...), 由 EpcRun 内部校验
  * (len 1~12 / 不重复 / 数据长度吻合), 非法回 PARAM。
  * 结果字段 err / EPC_END_* / riseSteps / lowerSteps / riseCnt /

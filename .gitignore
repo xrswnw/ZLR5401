@@ -40,3 +40,9 @@ __pycache__/
 sim
 sim_asan
 *.png
+
+# Node deps (Protocol doc tools)
+Protocol/node_modules/
+
+# ZCode session dir
+.zcode/

@@ -35,8 +35,8 @@ typedef struct {
     uint8_t  reserved;
 } AppUHFConfig_t;
 
-/* 默认配置 */
-#define APP_UHF_CONFIG_DEFAULT { 20u, 0u, 1u, 0u, 0u, 0u, 0x01u, 0u }
+/* 默认配置 (Round_020 2026-09-30: 功率 20→30dBm, 小天线读距不足现场裁决) */
+#define APP_UHF_CONFIG_DEFAULT { 30u, 0u, 1u, 0u, 0u, 0u, 0x01u, 0u }
 
 /* ---- 单条标签记录 (数据面) ---- */
 typedef struct {

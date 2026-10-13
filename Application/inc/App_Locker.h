@@ -83,7 +83,7 @@ typedef struct {
 
 /* ---- 寻触升降工况 (与 App_MotorHoming 实测一致) ----
  * 定步数 4800 旧方案已废弃: 实测行程 4287/4280, 超程会硬顶挡块。 */
-#define APP_LOCKER_SEEK_SPEED_HZ     2000u
+#define APP_LOCKER_SEEK_SPEED_HZ     4000u   /* Round_020 (2026-09-30): 2000→4000 微步/s, 全电机腿统一提速 */
 #define APP_LOCKER_SEEK_TORQUE_PCT   90u    /* 2026-09-19 全电机腿统一 90% (与回零/寻触/行程测试同源定稿) */
 #define APP_LOCKER_SEEK_RISE_MAX     (4085u * 2u + 800u)  /* 上行超步兜底 */
 #define APP_LOCKER_SEEK_LOWER_MAX    (4324u * 2u + 800u)  /* 下行超步兜底 */

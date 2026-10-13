@@ -22,9 +22,9 @@
 #define LSEEK_LOWER_MAX     (4324u * 2u + 800u)
 #define LSEEK_TIMEOUT_MS    10000u
 #define LSEEK_STALL_MS      400u    /* 步数停滞判丢步 */
-#define LSEEK_SPEED_HZ      2000u   /* Round_015 用户裁决 (2026-09-29): 保持 2000 微步/s
-                                      * (Round_014 定稿值, 4000 提案被否决回退;
-                                      * ≈300RPM, 全行程 ~2.1s; 2000 > STEP_RAMP_MIN
+#define LSEEK_SPEED_HZ      4000u   /* Round_020 用户裁决 (2026-09-30): 2000→4000 微步/s
+                                      * (Round_015 曾回退 2000, 现重新提速;
+                                      * ≈600RPM, 全行程 ~1.05s; 4000 > STEP_RAMP_MIN
                                       * 1000, 起步进入斜坡段) */
 #define LSEEK_TORQUE_PCT    90u    /* 2026-09-19 全电机腿统一 90%: 20%/40% 实测失步堵转,
                                       * 60%/80% 通过, 与回零 HOMING_TORQUE_PCT 同源定稿 */

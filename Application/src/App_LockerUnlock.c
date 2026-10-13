@@ -807,7 +807,8 @@ static void epc2_tag_update(uint32_t now)
 
 /* 异常报警节奏 (Round_014 裁决): 触发即红 50/50 闪 (RGBPAT_ALARM_BLINK
  * 稳态声明, 高于一切常规图样) + 蜂鸣 50ms 每 500ms; 解除即恢复阶段稳态。
- * 名单全失仅在电机升起/在顶时构成报警 (未升起时不算)。 */
+ * Round_020 (2026-09-30) 用户裁决: 报警 (红闪+蜂鸣) 仅外来介入触发;
+ * 名单全离场 = 静默正常回降, 不再闪红。 */
 static void epc2_steady_led(uint8_t flowPh, uint8_t irStable)
 {
     if (flowPh != 0u)
@@ -819,9 +820,8 @@ static void epc2_steady_led(uint8_t flowPh, uint8_t irStable)
 
 static void epc2_alarm_poll(uint32_t now)
 {
-    uint8_t alarmLost = (s_mph == UNLK_MPH_RISING || s_mph == UNLK_MPH_UP)
-                        && s_validCnt == 0u;
-    uint8_t alarmNow = (s_fgnActive || alarmLost) ? 1u : 0u;
+    /* Round_020: 红闪+蜂鸣仅外来介入; 名单全失静默 (由 UP 段独立判全失快降) */
+    uint8_t alarmNow = s_fgnActive ? 1u : 0u;
     if (alarmNow != s_alarmActive) {
         s_alarmActive = alarmNow;
         if (alarmNow) {
@@ -839,13 +839,35 @@ static void epc2_alarm_poll(uint32_t now)
     }
 }
 
-/* 升起段监守: 收割标签 + 报警节奏; 外来介入或名单全失即停机收起。 */
+/* IR 双向去抖 (Round_020 裁决: 红外丢失立马下降, 红外回归+稳定标签才升;
+ * 双向共用 UNLK_IR_CONFIRM_MS 去抖挡毛刺) */
+static uint32_t s_irHighSince;     /* 遮挡持续起点 (0=无) */
+static uint32_t s_irLowSince;      /* 丢失持续起点 (0=无) */
+static uint8_t  s_irStable;        /* 遮挡去抖成立 (升起门) */
+static uint8_t  s_irLost;          /* 丢失去抖成立 (回降门) */
+static void epc2_ir_poll(uint32_t now)
+{
+    if (App_NewPeriph_ReadIr() != 0u) {
+        if (s_irHighSince == 0u) s_irHighSince = now;
+        s_irLowSince = 0u;
+        s_irStable = ((now - s_irHighSince) >= UNLK_IR_CONFIRM_MS) ? 1u : 0u;
+        s_irLost = 0u;
+    } else {
+        if (s_irLowSince == 0u) s_irLowSince = now;
+        s_irHighSince = 0u;
+        s_irLost = ((now - s_irLowSince) >= UNLK_IR_CONFIRM_MS) ? 1u : 0u;
+        s_irStable = 0u;
+    }
+}
+
+/* 升起段监守: 收割标签 + 报警节奏; 外来介入/名单全失/红外丢失即停机收起。 */
 static int epc2_rise_monitor(void)
 {
     uint32_t now = SysTickHl_GetMs();
     epc2_tag_update(now);
     epc2_alarm_poll(now);
-    return (s_fgnActive || s_validCnt == 0u) ? 1 : 0;
+    epc2_ir_poll(now);
+    return (s_fgnActive || s_validCnt == 0u || s_irLost) ? 1 : 0;
 }
 
 /* 回降段监守: 只收割/报警 (恢复判定交回主循环), 不中停回降。 */
@@ -862,7 +884,8 @@ static int epc2_alarm_lower(uint32_t *lower, LockerUnlockResult_t *out)
 {
     s_mph = UNLK_MPH_LOWERING;
     s_phase = UNLK_PH_LOWER;
-    s_lastCyc = s_fgnActive ? 3u : 2u;      /* 3=外来介入回降 2=名单全失回降 */
+    /* 回降原因: 3=外来介入 2=名单全失 4=红外丢失 (Round_020 新增) */
+    s_lastCyc = s_fgnActive ? 3u : ((s_validCnt == 0u) ? 2u : 4u);
     s_immune = 1u;
     LockerSeek_SetMonitor(epc2_passive_monitor);
     int r = LockerSeek_RunRetry(LSEEK_DIR_DOWN, LSEEK_LOWER_MAX, lower);
@@ -901,6 +924,10 @@ static void epc_run(uint16_t tmoSec, uint8_t channel, LockerUnlockResult_t *out)
     s_fgnActive = 0u;
     s_alarmActive = 0u;
     s_alarmBeepMs = 0u;
+    s_irHighSince = 0u;
+    s_irLowSince = 0u;
+    s_irStable = 0u;
+    s_irLost = 0u;
     s_riseCnt = 0u;
     s_alarmCnt = 0u;
     s_fgnSeen = 0u;
@@ -954,7 +981,6 @@ static void epc_run(uint16_t tmoSec, uint8_t channel, LockerUnlockResult_t *out)
     uint32_t rise = 0u, lower = 0u;
     uint8_t  endR = 0u;                   /* EPC_END_* (0=未结束) */
     uint8_t  flowPh = 0u;                 /* 0=WAIT 1=UP */
-    uint32_t irHighSince = 0u;
     uint32_t lostStart = 0u;
     App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_IR_WAIT);   /* 待放标: 白慢闪 */
 
@@ -965,15 +991,9 @@ static void epc_run(uint16_t tmoSec, uint8_t channel, LockerUnlockResult_t *out)
 
         epc2_tag_update(now);
 
-        /* IR 去抖 (仅 WAIT 升起门控; 在顶不作为回降条件 — 客户实测
-         * "标签遮不全光电"痛点, 以标签为准) */
-        uint8_t irStable = 0u;
-        if (App_NewPeriph_ReadIr() != 0u) {
-            if (irHighSince == 0u) irHighSince = now;
-            if ((now - irHighSince) >= UNLK_IR_CONFIRM_MS) irStable = 1u;
-        } else {
-            irHighSince = 0u;
-        }
+        /* IR 双向去抖 (Round_020 裁决: 丢失 -> 回降门; 回归+稳定标签 -> 升起门) */
+        epc2_ir_poll(now);
+        uint8_t irStable = s_irStable;
         epc2_alarm_poll(now);
         if (!s_alarmActive) epc2_steady_led(flowPh, irStable);  /* 解除后恢复 */
 
@@ -1032,8 +1052,9 @@ static void epc_run(uint16_t tmoSec, uint8_t channel, LockerUnlockResult_t *out)
                 }
             }
         } else {
-            /* ---- UP: 在场即保持; 异常 (外来/全失) 快降回 WAIT ---- */
-            if (s_alarmActive) {
+            /* ---- UP: 在场+IR 遮挡即保持; 外来介入报警快降, 名单全失/
+             * 红外丢失静默快降 (Round_020: IR 丢失立马下降) ---- */
+            if (s_alarmActive || s_validCnt == 0u || s_irLost) {
                 if (epc2_alarm_lower(&lower, out) != 0) {
                     (void)App_UHF_Stop();
                     return;
@@ -1219,6 +1240,11 @@ static void am_run(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
     App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_SOFT_WAIT_WHITE);
 
     uint8_t endR = 0u;               /* AM_END_* (0=未结束) */
+    /* Round_020 模式看门狗: 解码器可自退消磁模式 (热保护/自恢复, 真机证实
+     * "计 2/3 后消磁场消失"), 窗内静默自愈 — 每逢无进行中消磁突发
+     * (BurstActive=0 即距上一 cmd17 >=3s 结算静默) 重发 SET_MODE 保场。
+     * 静默门控防 SetParam 的 RxFlush 吞活跃解码期的 cmd17 帧。 */
+    uint32_t wdNextMs = SysTickHl_GetMs() + AM_MODE_WATCH_MS;
     while (endR == 0u) {
         LockerSeek_Pump();
         if (s_abort) { endR = AM_END_ABORTED; break; }
@@ -1227,6 +1253,12 @@ static void am_run(uint8_t amCnt, uint16_t tmoSec, uint8_t channel,
         if ((SysTickHl_GetMs() - t0) >= winMs) {
             endR = AM_END_TIMEOUT;
             break;
+        }
+        if (demagOn && s_softDone < amCnt &&
+            (int32_t)(SysTickHl_GetMs() - wdNextMs) >= 0 &&
+            App_AM_BurstActive() == 0u) {
+            (void)am_set_mode_confirm(AM_MODE_DEACTIVATE);   /* 幂等重申 */
+            wdNextMs = SysTickHl_GetMs() + AM_MODE_WATCH_MS;
         }
     }
 

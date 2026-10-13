@@ -195,7 +195,7 @@ int RAMCODE ParamSave(const DeviceParam_t *p) {
 void UhfParam_Default(UHFUserCfg_t *cfg)
 {
     if (!cfg) return;
-    cfg->powerDbm   = 20u;
+    cfg->powerDbm   = 30u;   /* Round_020 (2026-09-30): 20→30, 小天线读距不足, 现场裁决拉满 */
     cfg->antenna    = 0u;
     cfg->checksumEn = 1u;
     cfg->session    = 0u;
