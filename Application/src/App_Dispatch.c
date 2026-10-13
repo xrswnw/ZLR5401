@@ -608,14 +608,26 @@ void AppDispatch(ProtoFrame_t *f) {
     }
 
     case FC_AM_CTRL: {
-        /* AM 解码器. data[0]=子命令. 响应 data[0]=cmd, data[1]=err, 其余随 cmd.
-         * 0x0A 解锁流程进行中: 仅放行 AM_SUB_GET_STATUS (本地读, 无总线动作;
-         * QUERY 等会 RxFlush 冲掉流程正在等的 cmd17), 其余回 BUSY. */
+        /* 解码器控制 (Round_021 双模: AM/RF 按 decoderType 互斥单选).
+         * data[0]=子命令. 响应 data[0]=cmd, data[1]=err, 其余随 cmd.
+         * 0x10/0x11 解锁流程进行中: 仅放行本地读 (GET_STATUS/GET_DECODER,
+         * 无总线动作; QUERY 等会 RxFlush 冲掉流程正在等的解码上报帧),
+         * 其余回 BUSY。 */
         uint8_t sub = (f->dataLen >= 1u) ? f->data[0] : 0u;
 
         if (App_LockerUnlock_IsBusy() &&
-            sub != AM_SUB_GET_STATUS) {
+            sub != AM_SUB_GET_STATUS && sub != AM_SUB_GET_DECODER) {
             uint8_t r[2] = { sub, AM_ERR_BUSY };
+            Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
+            break;
+        }
+
+        /* AM 专属能力 (配置批量/波形) 在 RF 模式下码位显式回 PARAM —
+         * RF 参数走 0x03/0x04 命令字透传 (双表并列, 不做值域翻译) */
+        if (App_AM_GetDecoderType() == APP_DECODER_RF &&
+            (sub == AM_SUB_GET_CONFIG || sub == AM_SUB_SET_CONFIG ||
+             sub == AM_SUB_GET_WAVE || sub == AM_SUB_GET_WAVE_PAGE)) {
+            uint8_t r[2] = { sub, AM_ERR_PARAM };
             Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
             break;
         }
@@ -687,13 +699,16 @@ void AppDispatch(ProtoFrame_t *f) {
             uint8_t r[1 + 1 + 2 + 1] = { sub, AM_ERR_OK,
                 (uint8_t)(f->data[1]),
                 (uint8_t)((val >> 8) & 0xFF), (uint8_t)(val & 0xFF) };
+            /* err 映射保持 Round_020 形态 (PARAM 落空为 OK+值0):
+             * Round_098 p5_am AM4a 对非法 amCmd 断言 err==0 已固化,
+             * AM 全量回归红线 — 不收紧 (RF 模式同口径, 双表文档约束) */
             if (e == APP_AM_ERR_LINK) r[1] = AM_ERR_LINK;
             else if (e == APP_AM_ERR_TIMEOUT) r[1] = AM_ERR_TIMEOUT;
             Proto_TxResponse(ch, FC_AM_CTRL, r, sizeof(r));
             break;
         }
         case AM_SUB_SET_PARAM: {
-            /* [sub, amCmd, valH, valL] */
+            /* [sub, amCmd, valH, valL]  命令字为当前模式原生表 (透传不翻译) */
             if (f->dataLen < 4u) {
                 uint8_t r[2] = { sub, AM_ERR_PARAM };
                 Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
@@ -740,24 +755,56 @@ void AppDispatch(ProtoFrame_t *f) {
             break;
         }
         case AM_SUB_SET_MODE: {
-            /* [cmd, mode]  仅切工作模式 + 持久化 */
+            /* [cmd, mode]  仅切工作模式 (逻辑值域 0-2 两族一致: AM 0x50 /
+             * RF 0x06 原生命令由后端下发); AM 模式同步持久化 */
             if (f->dataLen < 2u || f->data[1] > 2u) {
                 uint8_t r[2] = { sub, AM_ERR_PARAM };
                 Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
                 break;
             }
-            int e = App_AM_SetParam(AM_CMD_MODE, f->data[1]);
+            int e = App_AM_SetMode(f->data[1]);
             uint8_t r[2] = { sub, AM_ERR_OK };
             if (e == APP_AM_ERR_LINK) { r[1] = AM_ERR_LINK; Proto_TxResponse(ch, FC_AM_CTRL, r, 2); break; }
-            /* 同步持久化: 读当前缓存改 mode 后存回 */
-            AppAMConfig_t c;
-            App_AM_GetConfig(&c);
-            c.mode = f->data[1];
-            AMUserCfg_t pc = { c.threshold, c.hitCount, c.freqRange,
-                               c.recvDelay, c.recvLength, c.phaseInvert,
-                               c.phaseSync, c.decodeVolt, c.mode, c.mainsFreq };
-            (void)AmParam_Save(&pc);
+            else if (e == APP_AM_ERR_PARAM) { r[1] = AM_ERR_PARAM; Proto_TxResponse(ch, FC_AM_CTRL, r, 2); break; }
+            /* 同步持久化 (仅 AM: 读当前缓存改 mode 后存回; RF 参数存于
+             * 解码器自身, 固件不持久化 — 与上电零下发裁决一致) */
+            if (App_AM_GetDecoderType() == APP_DECODER_AM) {
+                AppAMConfig_t c;
+                App_AM_GetConfig(&c);
+                c.mode = f->data[1];
+                AMUserCfg_t pc = { c.threshold, c.hitCount, c.freqRange,
+                                   c.recvDelay, c.recvLength, c.phaseInvert,
+                                   c.phaseSync, c.decodeVolt, c.mode, c.mainsFreq };
+                (void)AmParam_Save(&pc);
+            }
             Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
+            break;
+        }
+        case AM_SUB_GET_DECODER: {
+            /* [cmd]  查询当前解码器类型 (本地读, 无总线动作) */
+            uint8_t r[3] = { sub, AM_ERR_OK, App_AM_GetDecoderType() };
+            Proto_TxResponse(ch, FC_AM_CTRL, r, sizeof(r));
+            break;
+        }
+        case AM_SUB_SET_DECODER: {
+            /* [cmd, type]  空闲切换 (busy 门禁已挡流程态): 重建后端 +
+             * 帧头 + 持久化, 随即联动探链把新链路结果带回 — 接错外设
+             * = 探链失败如实上报 (link!=0), 不自适应。 */
+            if (f->dataLen < 2u || f->data[1] > APP_DECODER_RF) {
+                uint8_t r[2] = { sub, AM_ERR_PARAM };
+                Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
+                break;
+            }
+            int e = App_AM_SetDecoderType(f->data[1]);
+            uint8_t r[4] = { sub, AM_ERR_OK, App_AM_GetDecoderType(), 0u };
+            if (e == APP_AM_ERR_PARAM) {
+                r[1] = AM_ERR_PARAM;
+                Proto_TxResponse(ch, FC_AM_CTRL, r, 2);
+                break;
+            }
+            (void)App_AM_Query();   /* 联动探链: AM 0x63 (阻塞~1.2s) / RF 0x01 单帧 */
+            r[3] = (uint8_t)App_AM_GetLinkStatus();
+            Proto_TxResponse(ch, FC_AM_CTRL, r, sizeof(r));
             break;
         }
         case AM_SUB_GET_WAVE: {

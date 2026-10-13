@@ -138,14 +138,17 @@ static uint16_t probe_uhf(int verbose)
     return bits;
 }
 
-/* ---- AM 探测: 总查询只读探测链路, 返回错误位 ----
- * AM→RS232 经 App_AM_Query (2A A2 查询帧 + 回帧), 校验失败/超时 => AM_COMM.
+/* ---- 解码器探测: 总查询只读探测链路, 返回错误位 ----
+ * 探测经 App_AM_Query (分发层按 decoderType 走 AM 0x63 / RF 0x01 原生
+ * 查询), 校验失败/超时 => AM_COMM (错误位语义 = 解码器链路, 两族共用)。
  * 解码器对半截帧会失步 (如前次复位停在 TX 半途), 首查无应答时重试一次. */
 static uint16_t probe_am(int verbose)
 {
     uint16_t bits = 0u;
+    const char *name =
+        (App_AM_GetDecoderType() == APP_DECODER_RF) ? "RF" : "AM";
 
-    if (verbose) putstr("[POST] AM    ");
+    if (verbose) { putstr("[POST] "); putstr(name); putstr("    "); }
     int r = App_AM_Query();
     if (r != 0) {
         IwdgHl_Feed();               /* 首查最坏耗尽 1.2s 窗口, 先喂狗再重试 */
@@ -159,9 +162,9 @@ static uint16_t probe_am(int verbose)
     }
     if (r != 0) {
         bits |= SELF_ERR_AM_COMM;
-        if (verbose) putstr(" --AM(RS232) COMM FAIL\r\n");
+        if (verbose) { putstr(" --"); putstr(name); putstr("(RS232) COMM FAIL\r\n"); }
     } else if (verbose) {
-        putstr(" --AM(RS232) OK\r\n");
+        putstr(" --"); putstr(name); putstr("(RS232) OK\r\n");
     }
     return bits;
 }

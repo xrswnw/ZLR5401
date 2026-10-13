@@ -52,8 +52,12 @@ set(SOURCES
   src/App_Stepper_Tim4.c
   src/App_UHF.c
   src/App_UHF_HL.c
+  # 解码器 (Round_021 双模): App_AM=分发层 / App_AM_Backend=AM 后端 /
+  # App_AM_RF=RF 后端 (互斥单选, 见 App_AM_Backend.h)
   src/App_AM.c
+  src/App_AM_Backend.c
   src/App_AM_HL.c
+  src/App_AM_RF.c
   # [Round_017] App_Locker.c (老清单业务) 已废除 — 不再参与编译;
   # 分发层原实现保留于 App_Dispatch.c #if 0, 恢复时还原此行。
   src/App_LockerSeek.c

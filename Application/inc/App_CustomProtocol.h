@@ -372,23 +372,39 @@
 #define UHF_ERR_TIMEOUT        6
 
 /* ---- FC_AM_CTRL (0x22) 子命令编码 (data[0]) ----
- * AM 消磁器经 USART1 RS232 (PA9/PA10, 2A A2 帧) 通信. 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd.
- * 值用 16bit (高字节在后) 表示: (dataH<<8)|dataL. */
-#define AM_SUB_GET_CONFIG   0x01   /* data: [cmd]  读取当前配置 */
+ * 解码器经 USART1 RS232 (PA9/PA10) 通信. 帧族按 decoderType 单选 (Round_021):
+ * AM 消磁解码器 (2A A2) / RF 解码器 (B5 A1), 互斥不并存.
+ * 响应 data[0]=cmd, data[1]=err(0=OK), 其余随 cmd.
+ * 值用 16bit (高字节在后) 表示: (dataH<<8)|dataL.
+ * 参数命令字为当前模式原生命令字透传 (AM: 0x11~0x67/0x50…; RF: 0x05~0x20/0x06…),
+ * 双命令表并列见协议文档, 固件不做值域翻译。 */
+#define AM_SUB_GET_CONFIG   0x01   /* data: [cmd]  读取当前配置 (AM 专属; RF 模式回 PARAM) */
 #define AM_SUB_SET_CONFIG   0x02   /* data: [cmd, thrH,thrL, hitH,hitL, freq, delayH,delayL,
-                                               len, invert, syncH,syncL, volt, mode, mains]  设置配置 */
-#define AM_SUB_GET_PARAM    0x03   /* data: [cmd, amCmd]  读单个参数 (amCmd 为 AM 命令字, 返回本地缓存) */
-#define AM_SUB_SET_PARAM    0x04   /* data: [cmd, amCmd, valH, valL]  写单个参数 */
-#define AM_SUB_QUERY        0x05   /* data: [cmd]  探测链路 */
+                                               len, invert, syncH,syncL, volt, mode, mains]  设置配置
+                                        (AM 专属; RF 模式回 PARAM — RF 参数走 0x03/0x04 透传) */
+#define AM_SUB_GET_PARAM    0x03   /* data: [cmd, amCmd]  读单个参数 (amCmd 为当前模式原生命令字:
+                                        AM 经 0x63 真读回; RF 经 0x01 单帧查询后按命令序抽取) */
+#define AM_SUB_SET_PARAM    0x04   /* data: [cmd, amCmd, valH, valL]  写单个参数 (回显式确认;
+                                        RF 值仅低 8 位有效, 参数均为单字节) */
+#define AM_SUB_QUERY        0x05   /* data: [cmd]  探测链路 (AM 0x63 总查询 / RF 0x01 查询) */
 #define AM_SUB_GET_STATUS   0x06   /* data: [cmd]  读监控 (无 err 字段):
                                         [cmd,link,evt(4),lastEvtMs(4),deact,deactCnt(4),failCnt(4)]
                                         deact 0=空闲/1=消磁成功/2=消磁失败(判据证伪后不可达);
-                                        cmd17 突发静默超 3s 结算即一次成功 (帧数不限,
-                                        2026-09-19 真机证伪 ">=2帧=失败"; 真失败持续
-                                        连发永不结算; failCnt 恒 0 保留) */
-#define AM_SUB_SET_MODE     0x07   /* data: [cmd, mode]  仅切工作模式 (0检测消磁/1仅检测/2待机), 持久化 */
-#define AM_SUB_GET_WAVE     0x08   /* data: [cmd]  触发一次同步波形采集 (0x64, 阻塞~1s): 回 [cmd,err,pointsH,pointsL] */
-#define AM_SUB_GET_WAVE_PAGE 0x09  /* data: [cmd, page]  取一页波形 (48 点/页): 回 [cmd,page,err,pointsH,pointsL,w(≤48)] */
+                                        AM cmd17 / RF 0x3A 突发静默超 3s 结算即一次成功
+                                        (帧数不限, 2026-09-19 真机证伪 ">=2帧=失败"; 真失败
+                                        持续连发永不结算; failCnt 恒 0 保留) */
+#define AM_SUB_SET_MODE     0x07   /* data: [cmd, mode]  仅切工作模式 (0检测消磁/1仅检测/2待机;
+                                        RF 对应 0检测解码/1只检测/2休眠, 值域一致), AM 模式持久化 */
+#define AM_SUB_GET_WAVE     0x08   /* data: [cmd]  触发一次同步波形采集 (0x64, 阻塞~1s):
+                                        回 [cmd,err,pointsH,pointsL] (AM 专属; RF 回 PARAM) */
+#define AM_SUB_GET_WAVE_PAGE 0x09  /* data: [cmd, page]  取一页波形 (48 点/页): 回 [cmd,page,err,pointsH,pointsL,w(≤48)]
+                                        (AM 专属; RF 回 PARAM) */
+#define AM_SUB_GET_DECODER  0x0A   /* data: [cmd]  查询解码器类型 (本地读, 无总线动作):
+                                        回 [cmd,err,type]  type: 0=AM 消磁解码器 1=RF 解码器 */
+#define AM_SUB_SET_DECODER  0x0B   /* data: [cmd, type]  切换解码器类型 (type 0/1; 空闲立即生效,
+                                        重建后端+帧头+持久化+联动探链; 解锁流程中回 BUSY):
+                                        回 [cmd,err,type,link]  link=切换后新链路探测结果
+                                        (接错外设=探链失败如实上报, 不自适应; 幂等: 同类型直回) */
 /* 运行错误码 (data[1]) */
 #define AM_ERR_OK           0
 #define AM_ERR_PARAM        1

@@ -1,346 +1,121 @@
 #include "App_AM.h"
+#include "App_AM_Backend.h"
 #include "App_AM_HL.h"
-#include "App_SysTick_HL.h"
+#include "App_CustomProtocol.h"   /* Memset8 */
+#include "App_Param.h"
 
 /* =====================================================================
- * AM 解码器 控制/配置层 (AMS 消磁器)
- *  经 RS232/USART1 (App_AM_HL) 与消磁器通信。
+ * 解码器分发层 (Round_021 参数双模) — App_AM 公共 API 的唯一属主
  *
- * 通信事实 (live 实测):
- *  - 参数命令为"回显式"写, 无真读回; 发空数据 = 写 0(危险)。
- *    但存在真读回通道 = 总查询 0x63: 发 2A A2 63 01 01 02 00 00 回 12 帧,
- *    写→总查闭环已实锤 0x63 读到的是真实存储值。
- *  - 设备自身 ID 可读写: 写ID 0x5F(5字节: 年月日+序列), 读ID 0x5E; 实测可写可持久化。
- *  - 标签 ID 仅读 0x5E(默认 FF×5), 该消磁器不解码唯一标签 ID。
- *  - cmd17 为"消磁结果"主动上报: 帧内容无信息, 成败只能按突发形态推断。
- *  - 0x88 解码指令: 实测无作用(即使正确校验也无效), 已移除。
+ *  App_AM_Init/Process/... 全部按 s_decoderType 单选一个后端转发:
+ *    0=AM 消磁解码器 (AMS, 帧 2A A2, g_amBkOps — 原 App_AM.c 平移)
+ *    1=RF 解码器 (帧 B5 A1, g_rfBkOps — 新写)
+ *  二者互斥不并存: 同一时刻只初始化/泵一个后端 (接错外设 = 探链
+ *  失败如实上报, 不自适应 — 用户裁决 2026-10-13)。
+ *
+ *  物理层 (USART1 RS232 115200) 两族共用, 归本层持有 (AM_HL_Init);
+ *  帧头差异由各后端 Init 时注入 AM_HL_SetHeader。
+ *
+ *  配置 (Get/SetConfig) 与波形为 AM 专属能力, RF 后端无此 ops,
+ *  本层回 APP_AM_ERR_PARAM (协议层对相应子命令已按模式门禁)。
  * ===================================================================== */
 
-#define AM_CMD_TIMEOUT_MS  500u
-/* 无链路空闲衰减: AM 空闲时静默 (仅消磁事件主动发帧), 与 UHF 对齐,
- * s_link 仅反映最近一次总线事务结果 (查询/参数写/波形采集). */
+static const DecoderBkOps_t *s_bk;     /* 当前后端 (按 decoderType 单选) */
+static uint8_t s_decoderType;          /* APP_DECODER_AM / APP_DECODER_RF */
 
-/* cmd17 消磁结果判定 (2026-08-29 直连串口实测 + 2026-09-19 真机复验修订):
- *  - 帧内容恒 FF FF FF FF FF 00 00 (datalen=7), 成功帧与失败帧内容完全相同,
- *    内容无信息, 唯一判据是突发模式。
- *  - 2026-08-29 初判: 成功 = 恰好 1 帧后永久静默; 失败 = 持续连发
- *    (实测 ≈800ms 周期, 帧距 0.8~1.4s) 直到标签离开。
- *  - 2026-09-19 0x11 真机证伪 ">=2 帧=失败": 场内 3 标签出 1 单帧 +
- *    2 多帧事件, 事后复窗全静默 -> 3 张全消死。帧数不预示标签死活
- *    (多帧 = 补杀重试, 结局仍是死)。
- *  现判据: 相邻帧间隔 > AM_BURST_GAP_MS (定义在 App_AM.h) 视为不同
- *  消磁事件; 事件静默超 GAP 结算即一次成功消磁 (多帧照计)。真失败
- *  标签持续连发永不静默 -> 永不结算 -> 不计入 (由 0x11 窗满正确排除)。
- *  s_failCount 失去来源恒 0, 保留字段待新形态再立。
- *  结算后状态保持 (供 GET_STATUS 轮询), 下一事件首帧时回到 IDLE。 */
+uint8_t App_AM_GetDecoderType(void) { return s_decoderType; }
 
-static AppAMConfig_t s_cfg;
-static int           s_link;          /* 0=正常 */
-static uint32_t      s_evtCount;      /* cmd17 上报帧累计 (兼容保留, 不参与状态判定) */
-static uint32_t      s_lastEvtMs;     /* 最近一次 cmd17 相对上电 ms */
-
-/* cmd17 消磁事件状态机 */
-static uint16_t            s_burstFrames;   /* 当前消磁事件已收 cmd17 帧数, 0=无进行中事件 */
-static uint32_t            s_lastCmd17Ms;  /* 最近一次 cmd17 时刻 */
-static AppAMDeactState_t   s_deact;        /* 当前/最近结算结果 (0空闲/1成功; 2失败判据证伪后不可达, 保留) */
-static uint32_t            s_deactCount;   /* 成功消磁累计 (每结算突发一计, 帧数不限) */
-static uint32_t            s_failCount;    /* 消磁失败累计 (判据证伪后无来源, 恒 0, 保留) */
-
-/* Round_098 #10: 链路瞬断自动探测 (App_AM_Process 尾部) */
-static uint32_t            s_probeNextMs;  /* 下次探链时刻 (0=未调度) */
-static uint8_t             s_probeBackoff; /* 退避级数 0~3 (2s/4s/8s) */
-
-/* 波形缓存 (cmd 0x64 采集结果, 供上位机分页取回) */
-static uint8_t       s_wave[AM_WAVE_POINTS];
-static uint16_t      s_waveCount;     /* 已收集点数 (可能 <400, 实时背靠背丢包已知) */
-
-/* 按命令字把写入值同步到本地缓存 */
-static void am_cache_by_cmd(uint8_t cmd, uint16_t val)
+/* 切换后端: 注入帧头 + 重建后端状态机 (计数清零 — 两族计数不可混账) */
+static void bk_apply(uint8_t type)
 {
-    uint8_t b = (uint8_t)(val & 0xFF);
-    switch (cmd) {
-    case AM_CMD_THRESHOLD:   s_cfg.threshold   = val; break;
-    case AM_CMD_HIT_COUNT:   s_cfg.hitCount    = val; break;
-    case AM_CMD_FREQ_RANGE:  s_cfg.freqRange   = b;   break;
-    case AM_CMD_RECV_DELAY:  s_cfg.recvDelay   = val; break;
-    case AM_CMD_RECV_LENGTH: s_cfg.recvLength  = b;   break;
-    case AM_CMD_PHASE_INVERT:s_cfg.phaseInvert = b;   break;
-    case AM_CMD_PHASE_SYNC:  s_cfg.phaseSync   = val; break;
-    case AM_CMD_DECODE_VOLT: s_cfg.decodeVolt  = b;   break;
-    case AM_CMD_MODE:        s_cfg.mode        = b;   break;
-    case AM_CMD_MAINS_FREQ:  s_cfg.mainsFreq   = b;   break;
-    default: break;
-    }
+    if (type == APP_DECODER_RF) s_bk = &g_rfBkOps;
+    else                        s_bk = &g_amBkOps;
+    s_decoderType = type;
+    s_bk->Init();
 }
 
 void App_AM_Init(void)
 {
+    uint8_t type = APP_DECODER_AM;
+    (void)DecParam_Load(&type);   /* 旧参数区无记录 -> AM, 现网零回归锚点 */
+    AM_HL_Init();                 /* 物理层共用: USART1 RS232 115200 */
+    bk_apply((type <= APP_DECODER_RF) ? type : APP_DECODER_AM);
+}
+
+/* ---- 类型切换 (空闲时调用, busy 门禁在协议层 Dispatch) ----
+ * 幂等: 同类型直回。切换 = 重建物理层 (清半收帧) + 重建后端 + 持久化;
+ * 切换后新链路状态由随后 Query 探测 (协议层 SET_DECODER 已联动探链)。 */
+int App_AM_SetDecoderType(uint8_t type)
+{
+    if (type > APP_DECODER_RF) return APP_AM_ERR_PARAM;
+    if (type == s_decoderType) return APP_AM_ERR_OK;
+
+    AM_HL_DeInit();
     AM_HL_Init();
-    s_cfg = (AppAMConfig_t)APP_AM_CONFIG_DEFAULT;
-    s_link = 0;
-    s_evtCount = 0;
-    s_lastEvtMs = 0;
-
-    s_burstFrames  = 0;
-    s_lastCmd17Ms  = 0;
-    s_deact        = AM_DEACT_IDLE;
-    s_deactCount   = 0;
-    s_failCount    = 0;
-}
-
-void App_AM_Process(void)
-{
-    /* 轮询被动上报帧 (cmd17 等): 取到任何合法帧都刷新链路活动时间戳 */
-    uint8_t rcmd, rdata[AM_HL_PAYLOAD_MAX];
-    uint8_t rlen;
-    uint32_t now;
-    while (AM_HL_TryRecvFrame(&rcmd, rdata, &rlen) == 0) {
-        now = SysTickHl_GetMs();
-        if (rcmd == AM_CMD_ATAG_REPORT) {
-            s_evtCount++;
-            s_lastEvtMs = now;
-
-            /* 帧距 > GAP: 上一事件已结算 (静默分支), 本帧开新事件 */
-            if (s_burstFrames == 0u || (now - s_lastCmd17Ms) > AM_BURST_GAP_MS) {
-                s_burstFrames = 1u;
-                s_deact      = AM_DEACT_IDLE;
-            } else {
-                s_burstFrames++;
-            }
-            s_lastCmd17Ms = now;
-        }
-    }
-
-    /* 消磁事件结束结算: 静默超 GAP 即一次成功消磁 (2026-09-19 真机证伪
-     * ">=2 帧=失败" — 多帧=补杀重试, 结局仍是死; 真失败持续连发永不
-     * 结算, 由窗满正确排除。s_failCount 无来源恒 0, 保留。) */
-    if (s_burstFrames != 0u && (SysTickHl_GetMs() - s_lastCmd17Ms) > AM_BURST_GAP_MS) {
-        s_deact = AM_DEACT_SUCCESS;
-        s_deactCount++;
-        s_burstFrames = 0u;
-    }
-
-    /* Round_098 优化 #10: 链路瞬断自动恢复. 复位/UHF 大电流动作后 AM 链路
-     * 常断开数秒, 原实现 s_link 保持错误直到下一条主机命令才恢复.
-     * 断链且无消磁事件结算在进行时, 轻量探链 (0x63 单帧确认, 150ms
-     * 预算 — 不取全 12 帧), 成功即恢复就绪; 失败按 2s/4s/8s 退避重试,
-     * 避免 AM 缺席时长期占用主循环节拍. */
-    if (s_link != 0 && s_burstFrames == 0u) {
-        uint32_t now = SysTickHl_GetMs();
-        if (s_probeNextMs == 0u || (int32_t)(now - s_probeNextMs) >= 0) {
-            uint32_t period = 2000u << ((s_probeBackoff > 2u) ? 2u : s_probeBackoff);
-            s_probeNextMs = now + period;
-            static const uint8_t kProbeData[2] = {0u, 0u};
-            AM_HL_RxFlush();
-            AM_HL_SendFrame(AM_CMD_QUERY_ALL, kProbeData, 2u);
-            uint8_t prcmd, prdata[AM_HL_PAYLOAD_MAX];
-            uint8_t prlen;
-            if (AM_HL_RecvFrame(&prcmd, prdata, &prlen, 150u) == 0) {
-                s_link = 0;              /* 任意合法回帧 -> 链路恢复就绪 */
-                s_probeBackoff = 0u;
-            } else if (s_probeBackoff < 3u) {
-                s_probeBackoff++;
-            }
-        }
-    } else {
-        s_probeNextMs = 0u;               /* 链路正常/事件结算中: 不探测 */
-    }
-}
-
-/* ---------- 参数写 (携带参数, 等待解码器回显) ---------- */
-int App_AM_SetParam(uint8_t cmd, uint16_t value)
-{
-    uint8_t data[2];
-    data[0] = (uint8_t)((value >> 8) & 0xFF);   /* Data0 = 高位 */
-    data[1] = (uint8_t)(value & 0xFF);          /* Data1 = 低位 */
-
-    /* 清掉可能积压的被动帧, 避免误当作回显 */
-    AM_HL_RxFlush();
-    AM_HL_SendFrame(cmd, data, 2u);
-
-    uint8_t rcmd, rdata[AM_HL_PAYLOAD_MAX];
-    uint8_t rlen;
-    int r = AM_HL_RecvFrame(&rcmd, rdata, &rlen, AM_CMD_TIMEOUT_MS);
-    if (r != 0) { s_link = AM_HL_LINK_TIMEOUT; return APP_AM_ERR_LINK; }
-    s_link = 0;
-    if (rcmd != cmd) return APP_AM_ERR_LINK;    /* 回显命令不一致视为链路异常 */
-
-    /* 回显校验成功 -> 同步本地缓存 (缓存即真相, 供读) */
-    am_cache_by_cmd(cmd, value);
+    bk_apply(type);
+    (void)DecParam_Save(type);    /* 持久化 best-effort (与 UHF 配置同惯例) */
     return APP_AM_ERR_OK;
 }
 
-/* ---------- 0x63 总查询: 真读回全部参数到 s_cfg + 判链路 ---------- */
-static int am_query_all(void)
+/* ---- 周期处理 / 逻辑控制 (转发当后端) ---- */
+void App_AM_Process(void)     { s_bk->Process(); }
+
+int App_AM_SetMode(uint8_t mode)          /* 逻辑模式 0-2 (后端转原生命令字) */
 {
-    uint8_t rcmd, rdata[AM_HL_PAYLOAD_MAX];
-    uint8_t rlen;
-    int bad = 0;
-    uint32_t t0 = SysTickHl_GetMs();
-
-    AM_HL_RxFlush();
-    /* 解码器只认 datalen=2+data 00 00 的完整帧 (live 实测格式), len=0 会被忽略 */
-    static const uint8_t kQueryAllData[2] = {0u, 0u};
-    AM_HL_SendFrame(AM_CMD_QUERY_ALL, kQueryAllData, 2u);
-
-    /* 12 帧背靠背, 需足够时间/轮询取全; 每收到一帧即写入对应缓存 */
-    uint16_t seen = 0u;
-    while ((SysTickHl_GetMs() - t0) < 1200u) {
-        int r = AM_HL_RecvFrame(&rcmd, rdata, &rlen, 200u);
-        if (r != 0) break;
-        switch (rcmd) {
-        case AM_CMD_THRESHOLD:   s_cfg.threshold   = (uint16_t)(((uint16_t)rdata[0] << 8) | rdata[1]); break;
-        case AM_CMD_HIT_COUNT:   s_cfg.hitCount    = (uint16_t)(((uint16_t)rdata[0] << 8) | rdata[1]); break;
-        case AM_CMD_FREQ_RANGE:  s_cfg.freqRange   = rdata[1]; break;
-        case AM_CMD_RECV_DELAY:  s_cfg.recvDelay   = (uint16_t)(((uint16_t)rdata[0] << 8) | rdata[1]); break;
-        case AM_CMD_RECV_LENGTH: s_cfg.recvLength  = rdata[1]; break;
-        case AM_CMD_PHASE_INVERT:s_cfg.phaseInvert = rdata[1]; break;
-        case AM_CMD_PHASE_SYNC:  s_cfg.phaseSync   = (uint16_t)(((uint16_t)rdata[0] << 8) | rdata[1]); break;
-        case AM_CMD_DECODE_VOLT: s_cfg.decodeVolt  = rdata[1]; break;
-        case AM_CMD_MODE:        s_cfg.mode        = rdata[1]; break;
-        case AM_CMD_MAINS_FREQ:  s_cfg.mainsFreq   = rdata[1]; break;
-        default: break;
-        }
-        seen++;
-    }
-    if (seen < 3u) { s_link = AM_HL_LINK_TIMEOUT; bad = -1; }   /* 帧太少判链路断 */
-    else s_link = 0;
-    return bad;
+    return s_bk->SetMode(mode);
 }
 
-/* ---------- 参数读: 经 0x63 真读回 (非本地缓存/非逐参回显) ---------- */
-int App_AM_GetParam(uint8_t cmd, uint16_t *value)
+int App_AM_SetParam(uint8_t cmd, uint16_t value)      /* 原生命令字透传写 */
 {
-    if (cmd == AM_CMD_QUERY_ALL) return APP_AM_ERR_PARAM;   /* 0x63 用 Query/GetConfig */
-    int e = am_query_all();
-    if (e != 0) return APP_AM_ERR_LINK;
-
-    uint16_t v = 0u;
-    switch (cmd) {
-    case AM_CMD_THRESHOLD:   v = s_cfg.threshold;   break;
-    case AM_CMD_HIT_COUNT:   v = s_cfg.hitCount;    break;
-    case AM_CMD_FREQ_RANGE:  v = s_cfg.freqRange;   break;
-    case AM_CMD_RECV_DELAY:  v = s_cfg.recvDelay;   break;
-    case AM_CMD_RECV_LENGTH: v = s_cfg.recvLength;  break;
-    case AM_CMD_PHASE_INVERT:v = s_cfg.phaseInvert; break;
-    case AM_CMD_PHASE_SYNC:  v = s_cfg.phaseSync;   break;
-    case AM_CMD_DECODE_VOLT: v = s_cfg.decodeVolt;  break;
-    case AM_CMD_MODE:        v = s_cfg.mode;        break;
-    case AM_CMD_MAINS_FREQ:  v = s_cfg.mainsFreq;   break;
-    default: return APP_AM_ERR_PARAM;
-    }
-    if (value) *value = v;
-    return APP_AM_ERR_OK;
+    return s_bk->SetParam(cmd, value);
 }
 
+int App_AM_GetParam(uint8_t cmd, uint16_t *value)     /* 原生命令字透传读 */
+{
+    return s_bk->GetParam(cmd, value);
+}
+
+int App_AM_Query(void)        { return s_bk->Query(); }
+int App_AM_GetLinkStatus(void){ return s_bk->GetLinkStatus(); }
+
+/* ---- 监控 / 计数 (0x11 流程逐帧入账源) ---- */
+uint32_t App_AM_GetEventCount(void)   { return s_bk->GetEventCount(); }
+uint32_t App_AM_GetLastEventMs(void)  { return s_bk->GetLastEventMs(); }
+
+AppAMDeactState_t App_AM_GetDeactState(void) { return s_bk->GetDeactState(); }
+uint32_t          App_AM_GetDeactCount(void) { return s_bk->GetDeactCount(); }
+uint32_t          App_AM_GetFailCount(void)  { return s_bk->GetFailCount(); }
+uint8_t           App_AM_BurstActive(void)   { return s_bk->BurstActive(); }
+
+/* ---- 配置 / 波形 (AM 专属; RF 模式下无对应 ops -> PARAM) ---- */
 int App_AM_GetConfig(AppAMConfig_t *cfg)
 {
-    if (!cfg) return APP_AM_ERR_PARAM;
-    *cfg = s_cfg;
-    return APP_AM_ERR_OK;
+    if (s_bk->GetConfig == NULL) {
+        if (cfg) Memset8(cfg, 0, sizeof(*cfg));   /* 供 0x0A 保留路径 amc.mode=0 判 */
+        return APP_AM_ERR_PARAM;
+    }
+    return s_bk->GetConfig(cfg);
 }
 
 int App_AM_SetConfig(const AppAMConfig_t *cfg, int save)
 {
-    (void)save;   /* 持久化由上层 (协议层) 决定 */
-    if (!cfg) return APP_AM_ERR_PARAM;
-
-    /* 逐条下发并验证回显 (含市电) */
-    if (App_AM_SetParam(AM_CMD_THRESHOLD,   cfg->threshold)   != APP_AM_ERR_OK) goto fail;
-    if (App_AM_SetParam(AM_CMD_HIT_COUNT,   cfg->hitCount)    != APP_AM_ERR_OK) goto fail;
-    if (App_AM_SetParam(AM_CMD_FREQ_RANGE,  cfg->freqRange)   != APP_AM_ERR_OK) goto fail;
-    if (App_AM_SetParam(AM_CMD_RECV_DELAY,  cfg->recvDelay)   != APP_AM_ERR_OK) goto fail;
-    if (App_AM_SetParam(AM_CMD_RECV_LENGTH, cfg->recvLength)  != APP_AM_ERR_OK) goto fail;
-    if (App_AM_SetParam(AM_CMD_PHASE_INVERT,cfg->phaseInvert) != APP_AM_ERR_OK) goto fail;
-    if (App_AM_SetParam(AM_CMD_PHASE_SYNC,  cfg->phaseSync)   != APP_AM_ERR_OK) goto fail;
-    if (App_AM_SetParam(AM_CMD_DECODE_VOLT, cfg->decodeVolt)  != APP_AM_ERR_OK) goto fail;
-    if (App_AM_SetParam(AM_CMD_MAINS_FREQ,  cfg->mainsFreq)   != APP_AM_ERR_OK) goto fail;
-    if (App_AM_SetParam(AM_CMD_MODE,        cfg->mode)        != APP_AM_ERR_OK) goto fail;
-
-    /* 写后用 0x63 复核: 若设备真读回与所设不符 -> 算链路异常 */
-    if (am_query_all() == 0) {
-        if (s_cfg.threshold  != cfg->threshold ||
-            s_cfg.hitCount   != cfg->hitCount ||
-            s_cfg.freqRange  != cfg->freqRange ||
-            s_cfg.recvDelay  != cfg->recvDelay ||
-            s_cfg.recvLength != cfg->recvLength ||
-            s_cfg.phaseInvert!= cfg->phaseInvert ||
-            s_cfg.phaseSync  != cfg->phaseSync ||
-            s_cfg.decodeVolt != cfg->decodeVolt ||
-            s_cfg.mode       != cfg->mode ||
-            s_cfg.mainsFreq  != cfg->mainsFreq) return APP_AM_ERR_LINK;
-    }
-
-    s_cfg = *cfg;
-    return APP_AM_ERR_OK;
-
-fail:
-    return APP_AM_ERR_LINK;
+    if (s_bk->SetConfig == NULL) return APP_AM_ERR_PARAM;
+    return s_bk->SetConfig(cfg, save);
 }
 
-int App_AM_Query(void)
-{
-    /* 0x63 主动总查询: 真读回 + 探链 */
-    return (am_query_all() == 0) ? APP_AM_ERR_OK : APP_AM_ERR_LINK;
-}
-
-int App_AM_GetLinkStatus(void) { return s_link; }
-
-uint32_t App_AM_GetEventCount(void)   { return s_evtCount; }
-uint32_t App_AM_GetLastEventMs(void)  { return s_lastEvtMs; }
-
-/* ---- 消磁结果分类 (cmd17) ---- */
-AppAMDeactState_t App_AM_GetDeactState(void) { return s_deact; }
-uint32_t          App_AM_GetDeactCount(void) { return s_deactCount; }
-uint32_t          App_AM_GetFailCount(void)  { return s_failCount; }
-
-uint8_t App_AM_BurstActive(void)
-{
-    /* 突发进行中 (已收帧未满 3s 静默结算窗): 结果未定, 计数窗末宽限判定用 */
-    return (s_burstFrames != 0u) ? 1u : 0u;
-}
-
-/* ---------- 波形 cmd 0x64: 同步采集 4 包 (背靠背, 镜像 am_query_all 时序) ---------- */
 int App_AM_CaptureWave(void)
 {
-    uint8_t data[2] = { 0u, 0u };
-    uint8_t pkt[AM_HL_WAVE_PAYLOAD];
-    uint8_t idx;
-    uint32_t t0 = SysTickHl_GetMs();
-    int got = 0;
-
-    AM_HL_RxFlush();
-    AM_HL_SendFrame(AM_CMD_WAVE, data, 2u);   /* 2A A2 64 01 01 02 00 00 68 */
-
-    while ((SysTickHl_GetMs() - t0) < 1500u) {
-        int r = AM_HL_RecvWavePkt(pkt, &idx, 250u);
-        if (r != 0) break;
-        if (idx >= 4u) continue;               /* 非法包次丢弃 */
-        for (uint16_t i = 0; i < AM_HL_WAVE_PAYLOAD; i++)
-            s_wave[(uint16_t)idx * AM_HL_WAVE_PAYLOAD + i] = pkt[i];
-        got++;
-        if (got >= 4u) break;                  /* 四包集齐 */
-    }
-
-    s_waveCount = (uint16_t)(got * AM_HL_WAVE_PAYLOAD);
-    if (got < 1u) { s_link = AM_HL_LINK_TIMEOUT; return APP_AM_ERR_LINK; }
-    s_link = 0;
-    return APP_AM_ERR_OK;
+    if (s_bk->CaptureWave == NULL) return APP_AM_ERR_PARAM;
+    return s_bk->CaptureWave();
 }
-
-uint16_t App_AM_GetWavePoints(void) { return s_waveCount; }
 
 int App_AM_GetWavePage(uint16_t page, uint8_t *out, uint16_t *outLen)
 {
-    if (!out || !outLen) return APP_AM_ERR_PARAM;
-    if (s_waveCount == 0u) return APP_AM_ERR_PARAM;      /* 未采集 */
+    if (s_bk->GetWavePage == NULL) return APP_AM_ERR_PARAM;
+    return s_bk->GetWavePage(page, out, outLen);
+}
 
-    uint16_t base = (uint16_t)(page * AM_WAVE_PAGE);
-    if (base >= s_waveCount) return APP_AM_ERR_PARAM;    /* 越界页 */
-
-    uint16_t n = s_waveCount - base;
-    if (n > AM_WAVE_PAGE) n = AM_WAVE_PAGE;
-    for (uint16_t i = 0; i < n; i++) out[i] = s_wave[base + i];
-    *outLen = n;
-    return APP_AM_ERR_OK;
+uint16_t App_AM_GetWavePoints(void)
+{
+    return (s_bk->GetWavePoints != NULL) ? s_bk->GetWavePoints() : 0u;
 }

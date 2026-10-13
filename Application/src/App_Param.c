@@ -305,3 +305,29 @@ int AmParam_Save(const AMUserCfg_t *cfg)
     u[16] = cfg->mainsFreq;
     return ParamSave(&g_sParam);
 }
+
+/* ---------- 解码器类型持久化 (userParam 区, 偏移 40, Round_021) ---------- */
+int DecParam_Load(uint8_t *type)
+{
+    if (!type) return -1;
+    extern DeviceParam_t g_sParam;   /* App_Dispatch.c */
+    const uint8_t *u = g_sParam.userParam + DEC_PARM_OFFSET;
+    if (u[1] == DEC_PARM_MAGIC_HI && u[0] == DEC_PARM_MAGIC_LO &&
+        u[2] == DEC_PARM_VERSION) {
+        *type = (u[3] <= 1u) ? u[3] : 0u;   /* 非法值归一 AM (保守) */
+        return 0;
+    }
+    *type = 0u;   /* 无记录 (旧参数区): AM — 现网升级零回归锚点 */
+    return -1;
+}
+
+int DecParam_Save(uint8_t type)
+{
+    extern DeviceParam_t g_sParam;   /* App_Dispatch.c */
+    uint8_t *u = g_sParam.userParam + DEC_PARM_OFFSET;
+    u[0] = DEC_PARM_MAGIC_LO;
+    u[1] = DEC_PARM_MAGIC_HI;
+    u[2] = DEC_PARM_VERSION;
+    u[3] = (type <= 1u) ? type : 0u;
+    return ParamSave(&g_sParam);
+}

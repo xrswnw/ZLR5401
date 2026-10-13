@@ -7,7 +7,10 @@
 #include "stm32f10x_usart.h"
 
 /* =====================================================================
- * AM 消磁器/解码器硬件抽象层 — RS232(USART1) 驱动 + 2A A2 帧收发
+ * 解码器硬件抽象层 — RS232(USART1) 驱动 + 帧收发 (Round_021 双模参数化)
+ *  AM 后端: 帧头 2A A2 (缺省) / RF 后端: B5 A1 (AM_HL_SetHeader 注入)。
+ *  两族帧体同构 (cmd/包数/包次/包长/数据/累加校验), 收发框架整体共用;
+ *  帧头与校验算法如样机实测发现差异, 在本文件内参数化, 后端零改动。
  *
  * 引脚 (见原理图 RS232_TXD1/RXD1):
  *   USART1_TX = PA9, USART1_RX = PA10 (全双工 RS232, 无方向控制脚)
@@ -21,6 +24,16 @@
 static volatile uint8_t  s_rxBuf[AM_HL_RX_BUF_SIZE];
 static volatile uint16_t s_rxHead;
 static volatile uint16_t s_rxTail;
+
+/* Round_021: 帧头运行时注入 (AM 后端 2A A2 / RF 后端 B5 A1), 缺省 AM */
+static volatile uint8_t s_hdr1 = AM_HL_FRAME_HDR1;
+static volatile uint8_t s_hdr2 = AM_HL_FRAME_HDR2;
+
+void AM_HL_SetHeader(uint8_t h1, uint8_t h2)
+{
+    s_hdr1 = h1;
+    s_hdr2 = h2;
+}
 
 void AM_HL_Init(void)
 {
@@ -102,8 +115,8 @@ void AM_HL_SendFrame(uint8_t cmd, const uint8_t *data, uint8_t datalen)
     chk = (uint8_t)(chk + cnt + idx + len);
     for (uint8_t i = 0; i < datalen; i++) chk = (uint8_t)(chk + data[i]);
 
-    (void)am_uart_send_byte(AM_HL_FRAME_HDR1, 50);
-    (void)am_uart_send_byte(AM_HL_FRAME_HDR2, 50);
+    (void)am_uart_send_byte(s_hdr1, 50);
+    (void)am_uart_send_byte(s_hdr2, 50);
     (void)am_uart_send_byte(cmd, 50);
     (void)am_uart_send_byte(cnt, 50);
     (void)am_uart_send_byte(idx, 50);
@@ -118,12 +131,12 @@ static uint16_t am_uart_peek_frame(uint8_t *out, uint16_t maxlen)
 {
     if (s_rxHead == s_rxTail) return 0;
 
-    /* 定位帧头 2A A2 */
+    /* 定位帧头 (Round_021: 注入值, 非编译常量) */
     uint16_t h = s_rxTail;
     while (h != s_rxHead) {
         uint16_t nx = (uint16_t)((h + 1) % AM_HL_RX_BUF_SIZE);
-        if (s_rxBuf[h] == AM_HL_FRAME_HDR1 && nx != s_rxHead &&
-            s_rxBuf[nx] == AM_HL_FRAME_HDR2)
+        if (s_rxBuf[h] == s_hdr1 && nx != s_rxHead &&
+            s_rxBuf[nx] == s_hdr2)
             break;
         h = nx;
     }

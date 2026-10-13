@@ -435,7 +435,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
         AppAMConfig_t amc;
         (void)App_AM_GetConfig(&amc);
         if (amc.mode != AM_MODE_DETECT_ONLY &&
-            App_AM_SetParam(AM_CMD_MODE, AM_MODE_DETECT_ONLY) != APP_AM_ERR_OK) {
+            App_AM_SetMode(AM_MODE_DETECT_ONLY) != APP_AM_ERR_OK) {
             out->err = UNLK_ERR_AM_LINK;
             App_RgbLedPat_Flash(RGBFLASH_FAIL_DOUBLE);   /* 链路断: 红双闪 */
             return;
@@ -577,7 +577,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
         s_phase = UNLK_PH_RISE;
         App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_RISE_HOLD_GREEN);
         if (softCnt > 0u &&
-            App_AM_SetParam(AM_CMD_MODE, AM_MODE_DEACTIVATE) == APP_AM_ERR_OK) {
+            App_AM_SetMode(AM_MODE_DEACTIVATE) == APP_AM_ERR_OK) {
             s_amDemagOn = 1u;
             s_demagBase = App_AM_GetDeactCount();
         }
@@ -618,7 +618,7 @@ static void unlk_run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
         s_phase = UNLK_PH_SOFT;
         App_RgbLedPat_Set(RGBSRC_UNLOCK, RGBPAT_SOFT_WAIT_WHITE);   /* 软标: 白常亮 */
         if (!s_amDemagOn) {   /* 升起时切消磁失败: 入口再试一次, 再败按 AM_LINK 结账 */
-            if (App_AM_SetParam(AM_CMD_MODE, AM_MODE_DEACTIVATE)
+            if (App_AM_SetMode(AM_MODE_DEACTIVATE)
                     == APP_AM_ERR_OK) {
                 s_amDemagOn = 1u;
                 s_demagBase = App_AM_GetDeactCount();
@@ -690,7 +690,7 @@ void App_LockerUnlock_Run(const uint8_t *epc, uint8_t epcLen, uint8_t epcCnt,
      * AM 仅检测模式 (裁决1: 固定仅检测, 不恢复流程前预设)。 */
     if (s_amDemagOn) {
         s_amDemagOn = 0u;
-        (void)App_AM_SetParam(AM_CMD_MODE, AM_MODE_DETECT_ONLY);
+        (void)App_AM_SetMode(AM_MODE_DETECT_ONLY);
     }
     /* 流程返回即撤销灯语声明 (含全部提前失败出口), Finish 再做终清 */
     App_RgbLedPat_Clear(RGBSRC_UNLOCK);
@@ -1165,7 +1165,7 @@ void App_LockerUnlock_EpcRun(const uint8_t *packed, uint8_t epcCnt,
 static uint8_t am_set_mode_confirm(uint16_t mode)
 {
     for (uint8_t i = 0; i < AM_MODE_RETRY; i++) {
-        if (App_AM_SetParam(AM_CMD_MODE, mode) == APP_AM_ERR_OK) return 1u;
+        if (App_AM_SetMode(mode) == APP_AM_ERR_OK) return 1u;
     }
     return 0u;
 }

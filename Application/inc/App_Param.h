@@ -127,6 +127,19 @@ int  AmParam_Load(AMUserCfg_t *cfg);   /* 0=OK (<0 无有效记录) */
 int  AmParam_Save(const AMUserCfg_t *cfg); /* 0=OK */
 void AmParam_Default(AMUserCfg_t *cfg);
 
+/* ---- 解码器类型持久化 (userParam 区: 偏移 40, Round_021 双模) ----
+ * 布局: [magic(2)][ver(1)][type(1)] = 4 字节; magic = 0x4443 ('DC' — Decoder)。
+ * type: 0=AM 消磁解码器 (缺省) / 1=RF 解码器; 运行时单选互斥。
+ * 旧参数区无本记录 (UHF v1 时代) -> Load 返回默认 0 (AM), 现网设备
+ * 升级后行为零变化 — 这是双模兼容的版本兼容锚点。 */
+#define DEC_PARM_MAGIC_HI     0x44u    /* 'D' */
+#define DEC_PARM_MAGIC_LO     0x43u    /* 'C' */
+#define DEC_PARM_VERSION      1U
+#define DEC_PARM_OFFSET       40U
+
+int  DecParam_Load(uint8_t *type);    /* 0=OK (<0 无记录, *type 置 0=AM) */
+int  DecParam_Save(uint8_t type);     /* 0=OK */
+
 /* Flash 控制器原语见 App_Param_HL.h */
 
 #endif /* __PARAM_H */
